@@ -53,7 +53,7 @@ describe('gtfs sql', () => {
 
     const query = toFtsQuery(word);
     assert.ok(query, 'expected a runnable query for a real word');
-    const rows = db.prepare(SEARCH_BY_NAME).all(query, 50);
+    const rows = db.prepare(SEARCH_BY_NAME).all(query.match, 50);
     assert.ok(rows.some((r) => r.stop_id === stop.stop_id));
     assert.ok(rows.every((r) => r.stop_name.toUpperCase().includes(word.toUpperCase())));
   });
@@ -110,7 +110,7 @@ describe('gtfs sql', () => {
     for (const input of ['AND', 'OR', 'NEAR', 'foo AND bar', 'ala-moana', '-lagoon', 'kalihi"quote']) {
       const query = toFtsQuery(input);
       assert.ok(query, `expected a runnable query for ${JSON.stringify(input)}`);
-      assert.doesNotThrow(() => db.prepare(SEARCH_BY_NAME).all(query, 5));
+      assert.doesNotThrow(() => db.prepare(SEARCH_BY_NAME).all(query.match, 5));
     }
   });
 });
@@ -127,12 +127,22 @@ describe('toFtsQuery', () => {
   });
 
   test('quotes and wildcards each term', () => {
-    assert.equal(toFtsQuery('foo bar'), '"foo"* "bar"*');
+    assert.deepEqual(toFtsQuery('foo bar'), { match: '"foo"* "bar"*' });
   });
 
   test('strips embedded quotes and asterisks before quoting', () => {
-    assert.equal(toFtsQuery('kalihi"quote'), '"kalihi"* "quote"*');
-    assert.equal(toFtsQuery('wild*card'), '"wild"* "card"*');
+    assert.deepEqual(toFtsQuery('kalihi"quote'), { match: '"kalihi"* "quote"*' });
+    assert.deepEqual(toFtsQuery('wild*card'), { match: '"wild"* "card"*' });
+  });
+
+  test('wraps the match text so it cannot be bound to SQLite directly', () => {
+    // The wrapper is the whole point of the type: an object is not a legal
+    // SQLite bind parameter, so forgetting `.match` fails loudly here and
+    // fails to compile in TypeScript, rather than silently searching for
+    // the string "[object Object]".
+    const query = toFtsQuery('kalihi');
+    assert.ok(query);
+    assert.equal(typeof query.match, 'string');
   });
 });
 

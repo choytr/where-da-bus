@@ -3,8 +3,8 @@ import type { Coords } from '../../lib/distance';
 const STOP_COLUMNS = 'stop_id, stop_code, stop_name, lat, lon';
 
 /**
- * FTS5 prefix search over stop names. Parameters: (query, limit).
- * The caller appends '*' to the query for prefix matching.
+ * FTS5 prefix search over stop names. Parameters: (query.match, limit),
+ * where `query` comes from `toFtsQuery` — never bind a raw user string here.
  */
 export const SEARCH_BY_NAME = `
   SELECT s.stop_id, s.stop_code, s.stop_name, s.lat, s.lon
@@ -80,21 +80,32 @@ export function boundingBox(center: Coords, radiusMeters: number): BoundingBox {
 }
 
 /**
+ * An escaped, ready-to-bind FTS5 match expression. Deliberately not a bare
+ * `string` — `string` (and `null`) are legal SQLite bind parameters, so a
+ * plain `string | null` return from `toFtsQuery` could still be handed
+ * straight to `db.prepare(SEARCH_BY_NAME).all(query, limit)` without a
+ * null check, and `null` reaching FTS5's `MATCH` throws
+ * `fts5: syntax error near ""`. Wrapping the match text in an object with
+ * no overlap with SQLite's bind-parameter types makes that call a compile
+ * error instead: a caller must unwrap `.match` explicitly, which forces
+ * the null check under `strict`.
+ */
+export type FtsQuery = { readonly match: string };
+
+/**
  * Escapes user input for FTS5 and appends a prefix wildcard to each term.
  *
  * Returns null when there is no runnable query — an empty string, or input
  * that reduces to nothing once quotes/wildcards/whitespace are stripped
- * (e.g. '', '*', '""', '   '). SEARCH_BY_NAME's `MATCH` throws
- * `fts5: syntax error near ""` on an empty match expression, so this
- * returns null rather than '' precisely so a caller cannot pass an empty
- * string through by accident — the type forces a null check before the
- * query runs.
+ * (e.g. '', '*', '""', '   '). Bind `result.match` (never `result` itself,
+ * and never bind on the null case) to SEARCH_BY_NAME's `?` placeholder.
  */
-export function toFtsQuery(input: string): string | null {
+export function toFtsQuery(input: string): FtsQuery | null {
   const cleaned = input.replace(/["*]/g, ' ').trim();
   if (cleaned === '') return null;
-  return cleaned
+  const match = cleaned
     .split(/\s+/)
     .map((term) => `"${term}"*`)
     .join(' ');
+  return { match };
 }
