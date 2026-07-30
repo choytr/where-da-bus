@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -79,10 +79,12 @@ type NearbyState =
   | { state: 'failed' };
 
 /**
- * `running` carries the previous results so a keystroke never blanks the list
- * out from under a thumb already reaching for a row — the same rule the
- * arrival board follows: a spinner does not replace data that is already good
- * enough to act on.
+ * `running` carries whatever the rider was already looking at — earlier
+ * results mid-search, or the favorites-and-nearby list on the first keystroke
+ * — so a keystroke never blanks the list out from under a thumb already
+ * reaching for a row. The same rule the arrival board follows: a spinner does
+ * not replace data that is already good enough to act on. `failed` carries no
+ * stops, deliberately: results that could not be fetched are not results.
  */
 type SearchState =
   | { state: 'off' }
@@ -135,6 +137,10 @@ export function HomeScreen() {
   // The date the feed itself published as its last valid day, read once: it is
   // baked into the bundled asset and cannot change while the app is running.
   const [feedEnd, setFeedEnd] = useState<string | null>(null);
+  // What is on screen right now, so the first keystroke can carry it into the
+  // `running` state. A ref rather than a dependency: the search effect must
+  // not re-run — and re-debounce — every time the list underneath it changes.
+  const onScreen = useRef<Listed[]>(NO_STOPS);
 
   useEffect(() => {
     let cancelled = false;
@@ -195,7 +201,12 @@ export function HomeScreen() {
     }
 
     let cancelled = false;
-    setSearch((previous) => ({ state: 'running', stops: keptStops(previous) }));
+    // On the first keystroke there is no previous search to carry, so what
+    // carries through is the browse list the rider was reading a moment ago.
+    setSearch((previous) => ({
+      state: 'running',
+      stops: previous.state === 'off' ? onScreen.current : keptStops(previous),
+    }));
 
     const run = async () => {
       if (isNumericQuery(trimmed)) {
@@ -272,6 +283,14 @@ export function HomeScreen() {
     const rest = nearbyStops.filter((stop) => !favoriteIds.includes(stop.stop_id));
     return [...pinned, ...rest];
   }, [searching, searchStops, nearbyStops, favoriteStops, favoriteIds]);
+
+  // Declared after `visible` so it holds a committed list, and read by the
+  // search effect above, which runs first in the same commit and therefore
+  // still sees the previous render's list — the one actually on screen when
+  // the key was pressed.
+  useEffect(() => {
+    onScreen.current = visible;
+  }, [visible]);
 
   useEffect(() => {
     const ids = visible.map((stop) => stop.stop_id);

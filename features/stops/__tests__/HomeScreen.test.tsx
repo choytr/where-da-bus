@@ -215,6 +215,31 @@ describe('HomeScreen', () => {
     expect(mockQueries.searchByName).toHaveBeenCalledWith('lagoon');
   });
 
+  it('keeps the list on screen through the first keystroke instead of blanking it', async () => {
+    // The debounce is 175 ms. Blanking the list for that long pulls a row out
+    // from under a thumb already reaching for it — a spinner must never
+    // replace data that is still good enough to act on.
+    mockLocation.status = 'granted';
+    mockLocation.coords = { lat: 21.32, lon: -157.9 };
+    mockQueries.searchByName.mockResolvedValue([stopA]);
+
+    await render(<HomeScreen />);
+    await waitFor(() => screen.getByText('LAGOON DR + KAPALULU PL'));
+    await fireEvent.changeText(
+      screen.getByPlaceholderText(/stop number or name/i),
+      'l',
+    );
+
+    // Still both nearby stops, under a "Searching…" spinner.
+    screen.getByText(/searching/i);
+    screen.getByText('LAGOON DR + IOLANA PL');
+    screen.getByText('LAGOON DR + KAPALULU PL');
+
+    // And the results do replace them once they arrive.
+    await waitFor(() => expect(screen.queryByText('LAGOON DR + KAPALULU PL')).toBeNull());
+    screen.getByText('LAGOON DR + IOLANA PL');
+  });
+
   it('says it is searching while a query is in flight', async () => {
     mockQueries.searchByName.mockResolvedValue([stopA]);
 
