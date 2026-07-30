@@ -66,6 +66,28 @@ describe('gtfs sql', () => {
     assert.ok(typeof row.lat === 'number');
   });
 
+  test('the shipped asset holds one stop per stop_code', () => {
+    // The feed ships an `<id>_merge` twin for seventeen stops, sharing the
+    // original's code. Two rows for one pole is two identical nearby entries
+    // and a code lookup whose answer depends on scan order; the build drops
+    // them (see withoutMergedDuplicateStops).
+    const duplicated = db
+      .prepare("SELECT stop_code FROM stops WHERE stop_code != '' GROUP BY stop_code HAVING COUNT(*) > 1")
+      .all();
+    assert.deepEqual(duplicated, []);
+  });
+
+  test('answers a code lookup the same way however many rows carry the code', () => {
+    // Determinism does not rest on the build having removed the duplicates:
+    // ORDER BY is what makes the answer a property of the query rather than
+    // of SQLite's scan order.
+    const code = db.prepare("SELECT stop_code FROM stops WHERE stop_code != '' LIMIT 1").get().stop_code;
+    const ordered = db
+      .prepare(`SELECT stop_id FROM stops WHERE stop_code = ? ORDER BY LENGTH(stop_id), stop_id`)
+      .all(code);
+    assert.equal(db.prepare(SEARCH_BY_CODE).get(code).stop_id, ordered[0].stop_id);
+  });
+
   test('returns nothing for an unknown code', () => {
     const code = unusedStopCode(db, 'nonexistent-code');
     assert.equal(db.prepare(SEARCH_BY_CODE).get(code), undefined);

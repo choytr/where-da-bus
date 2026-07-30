@@ -45,6 +45,80 @@ const SCHEMA_SQL = `
 `;
 
 /**
+ * Oahu's feed carries a second stops.txt row for a handful of stops, id'd
+ * `<id>_merge`, sharing the original's `stop_code` and usually its name and
+ * sitting five to thirty metres away. Two rows for one pole is two identical
+ * list entries on the nearby screen, and an exact-code lookup that resolves to
+ * whichever of them SQLite happens to reach first.
+ */
+const MERGE_SUFFIX = '_merge';
+
+const stopCodeOf = (stop) => stop.stop_code ?? '';
+const stopIdOf = (stop) => stop.stop_id ?? '';
+
+/**
+ * The set of non-blank `stop_code`s the rows can be searched by. Blank codes
+ * are not a code, so they are not tracked.
+ */
+function stopCodes(stops) {
+  const codes = new Set();
+  for (const stop of stops) {
+    const code = stopCodeOf(stop);
+    if (code !== '') codes.add(code);
+  }
+  return codes;
+}
+
+/**
+ * The guard that makes `withoutMergedDuplicateStops` safe on a feed nobody has
+ * looked at yet. Dropping a row is only ever allowed to remove a *duplicate*
+ * way of reaching a stop, never the last one: if a future feed renames the
+ * surviving row or suffixes both halves of a pair, this throws at build time
+ * rather than shipping a code the rider can type and get nothing back for.
+ *
+ * Exported for its own test — the filter it protects is written so it cannot
+ * fire, which is exactly why the assertion needs proving independently.
+ */
+export function assertEveryStopCodeSurvives(before, after) {
+  const survivors = stopCodes(after);
+  const lost = [...stopCodes(before)].filter((code) => !survivors.has(code));
+  if (lost.length > 0) {
+    throw new Error(
+      `Duplicate-stop filter would leave no stop for stop_code ${lost.join(', ')}. ` +
+        'A rider typing that number would get nothing back. Refusing to build.',
+    );
+  }
+}
+
+/**
+ * Drops each `_merge` stop that duplicates a plain row's `stop_code`.
+ *
+ * Deliberately not "drop every `_merge` id": a `_merge` row that is the only
+ * one carrying its code is that stop's sole entry, and dropping it would take
+ * the code off the map entirely. Same for a `_merge` row with a blank code —
+ * nothing else can be standing in for it.
+ *
+ * Returns the surviving rows and the dropped ones, in input order.
+ */
+export function withoutMergedDuplicateStops(stops) {
+  const codesOnPlainRows = stopCodes(
+    stops.filter((stop) => !stopIdOf(stop).endsWith(MERGE_SUFFIX)),
+  );
+
+  const kept = [];
+  const dropped = [];
+  for (const stop of stops) {
+    const code = stopCodeOf(stop);
+    const duplicates =
+      stopIdOf(stop).endsWith(MERGE_SUFFIX) && code !== '' && codesOnPlainRows.has(code);
+    (duplicates ? dropped : kept).push(stop);
+  }
+
+  assertEveryStopCodeSurvives(stops, kept);
+  return { kept, dropped };
+}
+
+/**
  * Writes the full schema and all rows onto `db`, an already-open
  * `node:sqlite` `DatabaseSync` (a real file or `:memory:`).
  *
@@ -55,13 +129,18 @@ const SCHEMA_SQL = `
  * silently-wrong `0`). `stopRoutes` and `routeStops` are already-derived
  * pairs/sequences from `deriveStopRoutes`/`deriveRouteStops`. Any pair or
  * sequence entry referencing a `stop_id`/`route_id` outside the validated
- * `stops`/`routes` rows is dropped rather than inserted.
+ * `stops`/`routes` rows is dropped rather than inserted — which is also what
+ * keeps `withoutMergedDuplicateStops` from orphaning anything: a dropped stop
+ * takes its `stop_routes`/`route_stops` rows with it.
  *
- * Returns the row counts actually written per table, and closes no
- * resources — the caller owns `db`'s lifecycle.
+ * Returns the row counts actually written per table plus how many duplicate
+ * stops were dropped, and closes no resources — the caller owns `db`'s
+ * lifecycle.
  */
 export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedStartDate, feedEndDate }) {
   db.exec(SCHEMA_SQL);
+
+  const { dropped: droppedStops } = withoutMergedDuplicateStops(stops);
 
   const insertStop = db.prepare(
     'INSERT INTO stops (stop_id, stop_code, stop_name, lat, lon) VALUES (?, ?, ?, ?, ?)',
@@ -81,8 +160,13 @@ export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedSt
 
   db.exec('BEGIN');
 
+  // Iterated over the unfiltered rows, skipping the dropped ones by identity,
+  // so a validation error still names the row's real line in stops.txt rather
+  // than its position after the filter shifted everything up.
   const knownStops = new Set();
+  const isDropped = new Set(droppedStops);
   stops.forEach((s, index) => {
+    if (isDropped.has(s)) return;
     const stopId = requireField(s, 'stop_id', index, 'stops.txt');
     const stopName = requireField(s, 'stop_name', index, 'stops.txt');
     const lat = requireNumberField(s, 'stop_lat', index, 'stops.txt');
@@ -123,5 +207,6 @@ export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedSt
     routes: knownRoutes.size,
     stopRoutes: stopRoutesInserted,
     routeStops: routeStopsInserted,
+    duplicateStopsDropped: droppedStops.length,
   };
 }

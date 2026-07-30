@@ -95,7 +95,7 @@ async function main() {
   db.close();
 
   console.log('--- built ---');
-  console.log('stops       ', counts.stops);
+  console.log('stops       ', counts.stops, `(dropped ${counts.duplicateStopsDropped} duplicate _merge rows)`);
   console.log('routes      ', counts.routes);
   console.log('stop_routes ', counts.stopRoutes);
   console.log('route_stops ', counts.routeStops);

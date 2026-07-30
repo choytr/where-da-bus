@@ -15,15 +15,26 @@ export const SEARCH_BY_NAME = `
   LIMIT ?
 `;
 
-/** Exact stop-code lookup — the number printed on the physical sign. */
+/**
+ * Exact stop-code lookup — the number printed on the physical sign.
+ *
+ * The build drops the feed's duplicate `_merge` stops, so one code should mean
+ * one row. The ordering is the belt to that braces: `LIMIT 1` without it would
+ * hand back whichever row SQLite reached first, so a future feed reintroducing
+ * a duplicate would change the answer to a typed number without changing a
+ * line of code here. Shortest id first, then lexical, which prefers the plain
+ * `5` over any suffixed variant of it.
+ */
 export const SEARCH_BY_CODE = `
-  SELECT ${STOP_COLUMNS} FROM stops WHERE stop_code = ? LIMIT 1
+  SELECT ${STOP_COLUMNS} FROM stops WHERE stop_code = ?
+  ORDER BY LENGTH(stop_id), stop_id
+  LIMIT 1
 `;
 
 /**
  * Look up specific stops by id. Favorites must resolve even when the user is
  * nowhere near them, so they cannot be read out of the nearby results.
- * Build the placeholders with stopIdPlaceholders(n).
+ * Build the placeholders with `stopsByIdsSql(n)`.
  */
 export function stopsByIdsSql(count: number): string {
   const placeholders = new Array(count).fill('?').join(', ');
