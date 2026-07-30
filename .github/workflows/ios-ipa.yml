@@ -38,8 +38,21 @@ jobs:
         working-directory: ios
         run: |
           WORKSPACE=$(find . -maxdepth 1 -name "*.xcworkspace" | head -1)
-          SCHEME=$(xcodebuild -list -json -workspace "$WORKSPACE" \
-            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).workspace.schemes[0]))")
+          # CocoaPods registers a scheme per pod target, so the workspace scheme
+          # list is mostly dependencies. Expo prebuild names the app scheme after
+          # the workspace itself — derive it that way, then verify it exists.
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          xcodebuild -list -json -workspace "$WORKSPACE" | node -e "
+            let s = '';
+            process.stdin.on('data', d => s += d).on('end', () => {
+              const want = process.argv[1];
+              const schemes = JSON.parse(s).workspace.schemes;
+              if (!schemes.includes(want)) {
+                console.error('Scheme ' + want + ' not found. Available: ' + schemes.join(', '));
+                process.exit(1);
+              }
+            });
+          " "$SCHEME"
           echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
           echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
           echo "Resolved workspace=$WORKSPACE scheme=$SCHEME"
