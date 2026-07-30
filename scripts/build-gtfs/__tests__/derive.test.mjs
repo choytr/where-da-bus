@@ -62,6 +62,17 @@ describe('deriveStopRoutes', () => {
     const stopTimes = [{ trip_id: 'ghost', stop_id: '5', stop_sequence: '1' }];
     assert.deepEqual(deriveStopRoutes(stopTimes, trips), []);
   });
+
+  test('round-trips ids containing spaces', () => {
+    // GTFS permits spaces in id fields, so the composite key cannot be
+    // space-separated: 'STOP 5' + ' ' + 'RTE 8' would split into four parts
+    // and yield stop_id 'STOP', route_id '5'.
+    const spacedTrips = [{ trip_id: 't1', route_id: 'RTE 8', direction_id: '0' }];
+    const stopTimes = [{ trip_id: 't1', stop_id: 'STOP 5', stop_sequence: '1' }];
+    assert.deepEqual(deriveStopRoutes(stopTimes, spacedTrips), [
+      { stop_id: 'STOP 5', route_id: 'RTE 8' },
+    ]);
+  });
 });
 
 describe('deriveRouteStops', () => {
@@ -91,6 +102,14 @@ describe('deriveRouteStops', () => {
     ];
     const result = deriveRouteStops(stopTimes, trips);
     assert.deepEqual(result.map((r) => r.stop_id), ['a', 'b']);
+  });
+
+  test('round-trips a route_id containing a space', () => {
+    const spacedTrips = [{ trip_id: 'long', route_id: 'RTE 8', direction_id: '0' }];
+    const stopTimes = [{ trip_id: 'long', stop_id: '5', stop_sequence: '1' }];
+    assert.deepEqual(deriveRouteStops(stopTimes, spacedTrips), [
+      { route_id: 'RTE 8', direction_id: '0', seq: 0, stop_id: '5' },
+    ]);
   });
 });
 

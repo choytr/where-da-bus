@@ -105,6 +105,17 @@ function tripToRoute(tripsRows) {
   return map;
 }
 
+/**
+ * Separator for composite Map/Set keys built from GTFS ids.
+ *
+ * NUL is used because the GTFS spec permits any character except commas and
+ * newlines in id fields — including spaces. A space separator round-trips
+ * correctly only as long as no id contains one, which is true of the current
+ * Oahu feed and is not guaranteed by anything. Written as a named constant
+ * rather than an inline '\0' so the character stays visible when reading.
+ */
+const KEY_SEP = '\0';
+
 /** Which routes serve which stops. Sorted for deterministic output. */
 export function deriveStopRoutes(stopTimesRows, tripsRows) {
   const trips = tripToRoute(tripsRows);
@@ -115,12 +126,12 @@ export function deriveStopRoutes(stopTimesRows, tripsRows) {
     requireField(stopTime, 'stop_id', index, 'stop_times.txt');
     const trip = trips.get(tripId);
     if (trip === undefined) return;
-    seen.add(`${stopTime.stop_id} ${trip.route_id}`);
+    seen.add(`${stopTime.stop_id}${KEY_SEP}${trip.route_id}`);
   });
 
   return [...seen]
     .map((key) => {
-      const [stop_id, route_id] = key.split(' ');
+      const [stop_id, route_id] = key.split(KEY_SEP);
       return { stop_id, route_id };
     })
     .sort(
@@ -149,7 +160,7 @@ export function deriveRouteStops(stopTimesRows, tripsRows) {
   for (const [tripId, count] of countByTrip) {
     const trip = trips.get(tripId);
     if (trip === undefined) continue;
-    const key = `${trip.route_id} ${trip.direction_id ?? ''}`;
+    const key = `${trip.route_id}${KEY_SEP}${trip.direction_id ?? ''}`;
     const current = bestTrip.get(key);
     if (current === undefined || count > current.count) {
       bestTrip.set(key, { count, tripId });
@@ -173,7 +184,7 @@ export function deriveRouteStops(stopTimesRows, tripsRows) {
 
   const out = [];
   for (const key of [...sequences.keys()].sort()) {
-    const [route_id, direction_id] = key.split(' ');
+    const [route_id, direction_id] = key.split(KEY_SEP);
     const ordered = sequences.get(key).sort((a, b) => a.order - b.order);
     ordered.forEach((entry, index) => {
       out.push({ route_id, direction_id, seq: index, stop_id: entry.stop_id });

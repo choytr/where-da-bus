@@ -347,12 +347,12 @@ export function deriveStopRoutes(stopTimesRows, tripsRows) {
   for (const stopTime of stopTimesRows) {
     const trip = trips.get(stopTime.trip_id);
     if (trip === undefined) continue;
-    seen.add(`${stopTime.stop_id} ${trip.route_id}`);
+    seen.add(`${stopTime.stop_id}\0${trip.route_id}`);
   }
 
   return [...seen]
     .map((key) => {
-      const [stop_id, route_id] = key.split(' ');
+      const [stop_id, route_id] = key.split('\0');
       return { stop_id, route_id };
     })
     .sort(
@@ -380,7 +380,7 @@ export function deriveRouteStops(stopTimesRows, tripsRows) {
   for (const [tripId, count] of countByTrip) {
     const trip = trips.get(tripId);
     if (trip === undefined) continue;
-    const key = `${trip.route_id} ${trip.direction_id ?? ''}`;
+    const key = `${trip.route_id}\0${trip.direction_id ?? ''}`;
     const current = bestTrip.get(key);
     if (current === undefined || count > current.count) {
       bestTrip.set(key, { count, tripId });
@@ -405,7 +405,7 @@ export function deriveRouteStops(stopTimesRows, tripsRows) {
 
   const out = [];
   for (const key of [...sequences.keys()].sort()) {
-    const [route_id, direction_id] = key.split(' ');
+    const [route_id, direction_id] = key.split('\0');
     const ordered = sequences.get(key).sort((a, b) => a.order - b.order);
     ordered.forEach((entry, index) => {
       out.push({ route_id, direction_id, seq: index, stop_id: entry.stop_id });
