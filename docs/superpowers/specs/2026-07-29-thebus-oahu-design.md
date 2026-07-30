@@ -20,6 +20,12 @@ the interaction model.
 The specific DaBus affordances to recover: **favorite individual stops**, **see
 scheduled buses per stop**, **see route shapes**, **see live vehicle positions**.
 
+Above all: **browse the network directly.** DaBus was barebones and did no route
+planning, but it showed every stop, every route serving each stop, and every stop
+on a route. That made it possible to reject a suggested stop and find a better
+one for the route you actually need — something no current app supports without
+first naming a destination. See "The central interaction" in §3.
+
 ## Constraints
 
 | Constraint | Value |
@@ -28,7 +34,7 @@ scheduled buses per stop**, **see route shapes**, **see live vehicle positions**
 | Target device | iPhone XR, iOS 18 minimum |
 | Distribution | Free sideload via SideStore/AltStore. No paid Apple Developer account. |
 | Data layer | In-app parsing. No backend service. |
-| Maps | Deferred to v2 (not in v1 scope) |
+| Maps | Deferred to Increment 3 |
 
 The paid Apple Developer Program ($99/yr) is deliberately deferred and may be
 reconsidered if the project proves viable.
@@ -128,9 +134,10 @@ Windows dev  ->  git push  ->  GitHub Actions macOS runner
   Used for essentially all development.
 - **Install loop — the `.ipa` path.** Slow, used only for real device installs.
 
-This split holds *only if v1 restricts itself to modules Expo Go already
+This split holds *only if the app restricts itself to modules Expo Go already
 bundles*. That is a hard design constraint, and the second reason maps are
-out of v1 scope.
+deferred to Increment 3. `expo-location` and `expo-sqlite` are both available in
+Expo Go, so Increments 1 and 2 keep the fast loop intact.
 
 ### Increment 0
 
@@ -152,14 +159,21 @@ surface on day one rather than after an app exists.
 ```
 app/          expo-router screens
 features/
-  stops/      search, favorites
+  stops/      nearby list, search, favorites
+  routes/     route detail, ordered stop list
   arrivals/   arrival board
 data/
   thebus/     TheBusClient interface + network implementation
   gtfs/       bundled static reference data (SQLite)
   storage/    favorites persistence
-lib/          time, geo
+lib/          time, geo, distance
+scripts/
+  build-gtfs/ downloads the feed and derives the SQLite asset
 ```
+
+The GTFS derivation lives in `scripts/`, not in the app. It runs on a developer
+machine or in CI, consumes the 73.8 MB `stop_times.txt`, and emits the ~615 KB
+of tables the app actually ships.
 
 `TheBusClient` is an interface; the network implementation sits behind it. UI
 code never touches a raw API response.
@@ -170,10 +184,49 @@ against fixtures with no network.
 
 ## §3 Data
 
-**v1 bundles `stops.txt` and `routes.txt` only (~1 MB). `stop_times.txt` is
-excluded.** The live arrivals endpoint already answers "what is coming to this
-stop," which is the actual feature. Browsable timetables would require
-`stop_times.txt` (tens of MB) and are deferred until the need is demonstrated.
+### The central interaction
+
+The feature that no competitor provides, and the reason this project exists:
+
+> Browse the network from where you are. See every stop nearby, see exactly which
+> routes serve each one, and see every stop a given route calls at — without
+> naming a destination first.
+
+Google Maps requires a destination before it will reveal anything, then hides the
+alternatives behind its chosen route. The old DaBus app exposed the raw network,
+which is what made it possible to reject the suggested stop and find a better one
+for the route you actually need.
+
+This is a **static** relationship. Live arrivals cannot supply it: at 3am nothing
+is arriving, yet Route 8 still serves that stop.
+
+### What ships, and why the raw feed does not
+
+`stop_times.txt` is 73.8 MB and cannot ship. But the route-to-stop relationship
+is a *derived* table — the bulk of that file is per-trip timing detail the app
+never needs. Both directions of the relationship were computed from the live feed
+and measured:
+
+| Derived table | Rows | Size |
+|---|---|---|
+| `stop_routes` — which routes serve a stop | 8,658 | 76 KB |
+| `route_stops` — ordered stops per route/direction | 9,235 (236 pairs) | 125 KB |
+| `stops.txt` | 3,847 | 418 KB |
+| `routes.txt` | 118 | 5.4 KB |
+| **Total raw CSV** | | **615 KB** |
+
+1,419,279 `stop_times` rows collapse to 8,658 distinct `(stop_id, route_id)`
+pairs — a roughly 1000x reduction. Distribution: median 2 routes per stop
+(max 37), median 54 stops per route (max 374). Three of 3,847 stops are served
+by no route.
+
+A build-time script performs this derivation and emits SQLite. The raw
+`stop_times.txt` is **an input to the build, never an app asset**.
+
+An earlier draft of this spec excluded `stop_times.txt` outright, reasoning that
+live arrivals answered the question. That was wrong: it answers "what is coming
+now," not "what serves this stop." The derivation above preserves the size
+discipline while restoring the feature.
 
 A repo script preprocesses GTFS into a SQLite file shipped as an asset.
 `expo-sqlite` with FTS5 handles stop-name search. Favorites live in
@@ -265,7 +318,7 @@ Working text, **pending verification against the actual user agreement**:
 Personal / open-source use only. A commercial release would require reading the
 full user agreement.
 
-## Maps — deferred to v2
+## Maps — deferred to Increment 3
 
 Recommendation: **`react-native-maps`** over `expo-maps`. Both render Apple Maps
 on iOS with no Google API key and no billing account. `expo-maps` requires a
@@ -277,12 +330,58 @@ Expo Go's current bundled-module list must be confirmed before committing.
 
 ## Increment roadmap
 
-| Increment | Scope |
-|---|---|
-| **0** | Prove Windows -> Actions -> .ipa -> SideStore -> iPhone. Trivial app. |
-| **1** | Stop search over bundled GTFS; favorite/unfavorite; persistence. |
-| **2** | Live arrivals board per stop, with the §4 state model. |
-| **3** | Map: nearby stops, route polylines from `shapes.txt`, live vehicles. |
+| Increment | Scope | Needs API? |
+|---|---|---|
+| **0** | Prove Windows -> Actions -> .ipa -> SideStore -> iPhone. Trivial app. **Done.** | no |
+| **1** | GTFS build script -> SQLite. Nearby stops by distance, search by name and stop number, favorites, and the routes serving each stop. | **no** |
+| **2** | Live arrivals per stop with the §4 state model. Route detail with ordered stop list. | yes |
+| **3** | Map: nearby stops, route polylines from `shapes.txt`, live vehicle positions. | yes |
+
+Increment 1 requires **no API access at all** — it runs entirely on bundled
+static data. The unresolved JSON field types therefore block nothing until
+Increment 2.
+
+## Home screen
+
+The ideal home screen is a map of nearby stops. Maps are deferred to Increment 3,
+so v1 ships the **list-shaped version of that same view**: stops sorted by
+distance, each showing the routes that serve it, with favorites pinned above.
+
+```
+┌────────────────────────────┐
+│ TheBus                  ⚙  │
+│ 🔍  Stop # or name          │
+├────────────────────────────┤
+│ ★ FAVORITES               │
+│   ALA MOANA CENTER    4544 │
+│   8 · 20 · 40 · 42         │
+├────────────────────────────┤
+│ NEARBY                     │
+│   KING ST + BISHOP     596 │
+│   180 m · 2 · 13 · A       │
+│                            │
+│   HOTEL ST + ALAKEA   1075 │
+│   240 m · 2 · 13           │
+└────────────────────────────┘
+```
+
+Every stop row carries its route list, so the network is legible before tapping
+anything. Tapping a stop opens arrivals (Increment 2); tapping a route opens its
+ordered stop list (Increment 2).
+
+This shape is chosen so Increment 3 replaces the *presentation* with a map over
+an unchanged data model — nothing built in Increment 1 is discarded.
+
+### Location
+
+GPS "stops near me" is core, not optional. Distance sorting is what makes the app
+useful somewhere unfamiliar, and it is precisely what the alternatives refuse to
+do without a destination. `expo-location` is available in Expo Go, so it costs
+nothing from the fast iteration loop.
+
+Permission is requested on first use with a plain explanation. Denial is a
+supported state, not an error: the app falls back to favorites and search, and
+never blocks on location.
 
 ## Open questions
 
