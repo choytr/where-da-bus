@@ -258,3 +258,42 @@ describe('useStopQueries.routesForStops', () => {
     expect(routes.get('stop-a')).toEqual([]);
   });
 });
+
+describe('useStopQueries.feedEndDate', () => {
+  it('returns the date the meta row carries', async () => {
+    const db = makeDb();
+    db.getFirstAsync.mockResolvedValue({ feed_end_date: '20260822' });
+
+    const { result } = await renderHook(() => useStopQueries());
+
+    expect(await result.current.feedEndDate()).toBe('20260822');
+  });
+
+  it('returns null when the build wrote no end date', async () => {
+    // SQL NULL is a legitimate value here, not a failed guard.
+    const db = makeDb();
+    db.getFirstAsync.mockResolvedValue({ feed_end_date: null });
+
+    const { result } = await renderHook(() => useStopQueries());
+
+    expect(await result.current.feedEndDate()).toBeNull();
+  });
+
+  it('returns null when there is no meta row at all', async () => {
+    const db = makeDb();
+    db.getFirstAsync.mockResolvedValue(null);
+
+    const { result } = await renderHook(() => useStopQueries());
+
+    expect(await result.current.feedEndDate()).toBeNull();
+  });
+
+  it('returns null rather than a number when the column holds the wrong type', async () => {
+    const db = makeDb();
+    db.getFirstAsync.mockResolvedValue({ feed_end_date: 20260822 });
+
+    const { result } = await renderHook(() => useStopQueries());
+
+    expect(await result.current.feedEndDate()).toBeNull();
+  });
+});

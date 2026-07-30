@@ -42,6 +42,15 @@ export function stopsByIdsSql(count: number): string {
 }
 
 /**
+ * The last day the bundled feed published itself as valid through, as GTFS's
+ * `YYYYMMDD`. One row is written per build; `LIMIT 1` says so rather than
+ * trusting it. Read through `feedValidity` — the raw string is not a date.
+ */
+export const FEED_END_DATE = `
+  SELECT feed_end_date FROM meta LIMIT 1
+`;
+
+/**
  * Cheap bounding-box prefilter. Parameters: (minLat, maxLat, minLon, maxLon).
  * Exact haversine distance and ordering happen in JavaScript afterwards, because
  * SQLite has no trigonometric functions available here.

@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
 import {
+  FEED_END_DATE,
   SEARCH_BY_NAME,
   SEARCH_BY_CODE,
   NEARBY_IN_BOX,
@@ -139,6 +140,15 @@ describe('gtfs sql', () => {
     // Every requested stop is represented, and nothing else is.
     for (const id of ids) assert.ok(rows.some((r) => r.stop_id === id));
     assert.ok(rows.every((r) => ids.includes(r.stop_id)));
+  });
+
+  test('reads the last day the shipped feed is valid through', () => {
+    // Not asserted against a literal date: this proves the meta table answers
+    // and answers in the YYYYMMDD the app's parser expects, whichever feed the
+    // asset was last built from.
+    const row = db.prepare(FEED_END_DATE).get();
+    assert.ok(row, 'expected a meta row in the built database');
+    assert.match(row.feed_end_date, /^\d{8}$/);
   });
 
   test('search treats FTS5 operators and punctuation as literal text without throwing', () => {

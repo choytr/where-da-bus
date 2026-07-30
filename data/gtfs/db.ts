@@ -1,6 +1,7 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback } from 'react';
 import {
+  FEED_END_DATE,
   NEARBY_IN_BOX,
   SEARCH_BY_CODE,
   SEARCH_BY_NAME,
@@ -54,6 +55,20 @@ function isRouteSummary(value: unknown): value is RouteSummary {
     typeof value.short_name === 'string' &&
     'long_name' in value &&
     typeof value.long_name === 'string'
+  );
+}
+
+/**
+ * The `meta` row, narrowed the same way as every other row here. A build that
+ * wrote no end date stores SQL NULL, so `null` is a legitimate value and not a
+ * failed guard.
+ */
+function isFeedEndDateRow(value: unknown): value is { feed_end_date: string | null } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'feed_end_date' in value &&
+    (typeof value.feed_end_date === 'string' || value.feed_end_date === null)
   );
 }
 
@@ -162,5 +177,16 @@ export function useStopQueries() {
     [db],
   );
 
-  return { nearby, searchByName, searchByCode, routesForStops, stopsByIds };
+  /**
+   * The last day the bundled feed is valid through, or null when the feed
+   * never said. Null covers an absent `meta` row and a row with no end date
+   * alike: both mean "no claim on record", which the screen must not read as
+   * "still current". A failed read rejects — it is not a quiet null.
+   */
+  const feedEndDate = useCallback(async (): Promise<string | null> => {
+    const row = await db.getFirstAsync(FEED_END_DATE);
+    return isFeedEndDateRow(row) ? row.feed_end_date : null;
+  }, [db]);
+
+  return { nearby, searchByName, searchByCode, routesForStops, stopsByIds, feedEndDate };
 }

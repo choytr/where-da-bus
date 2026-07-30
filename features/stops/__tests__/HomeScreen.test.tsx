@@ -22,7 +22,19 @@ const mockQueries = {
     async (stopIds: string[]): Promise<Map<string, RouteSummary[]>> => new Map(),
   ),
   stopsByIds: jest.fn(async (stopIds: string[]): Promise<Stop[]> => []),
+  feedEndDate: jest.fn(async (): Promise<string | null> => null),
 };
+
+/**
+ * Feed dates in this file are written out, never derived from the clock. The
+ * bundled feed really does expire, and a test that computed "yesterday" would
+ * keep passing while asserting a different thing every day; one that hardcoded
+ * the real expiry would start asserting the opposite on 22 August 2026.
+ * Boundary behaviour is proved against an injected clock in
+ * data/gtfs/__tests__/feedValidity.test.ts.
+ */
+const LONG_EXPIRED_FEED = '20200101';
+const FEED_VALID_FOR_DECADES = '20991231';
 
 jest.mock('../../../data/gtfs/db', () => ({
   useStopQueries: () => mockQueries,
@@ -89,6 +101,7 @@ describe('HomeScreen', () => {
     mockQueries.searchByName.mockResolvedValue([]);
     mockQueries.searchByCode.mockResolvedValue(null);
     mockQueries.stopsByIds.mockResolvedValue([]);
+    mockQueries.feedEndDate.mockResolvedValue(FEED_VALID_FOR_DECADES);
     mockFavorites.loadFavorites.mockResolvedValue([]);
     mockLocation.status = 'idle';
     mockLocation.coords = null;
@@ -292,6 +305,34 @@ describe('HomeScreen', () => {
 
     await render(<HomeScreen />);
     await waitFor(() => screen.getByText(/something went wrong reading your saved favorites/i));
+  });
+
+  it('says so when the bundled stop data is past the date it was published for', async () => {
+    mockQueries.feedEndDate.mockResolvedValue(LONG_EXPIRED_FEED);
+    mockLocation.status = 'granted';
+    mockLocation.coords = { lat: 21.32, lon: -157.9 };
+
+    await render(<HomeScreen />);
+    await waitFor(() => screen.getByText(/published for service through 1 January 2020/i));
+    // Old, not broken: nothing about it reads like a failure, and the list
+    // underneath it still works.
+    expect(screen.queryByText(/something went wrong/i)).toBeNull();
+    screen.getByText('LAGOON DR + IOLANA PL');
+  });
+
+  it('stays quiet while the bundled stop data is still within its published period', async () => {
+    await render(<HomeScreen />);
+    await waitFor(() => screen.getByText(/stops near you/i));
+    expect(screen.queryByText(/published for service through/i)).toBeNull();
+  });
+
+  it('stays quiet when the feed never stated an end date', async () => {
+    // No claim on record is not the same as a claim that has lapsed.
+    mockQueries.feedEndDate.mockResolvedValue(null);
+
+    await render(<HomeScreen />);
+    await waitFor(() => screen.getByText(/stops near you/i));
+    expect(screen.queryByText(/published for service through/i)).toBeNull();
   });
 
   it('shows the required attribution', async () => {

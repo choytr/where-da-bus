@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStopQueries } from '../../data/gtfs/db';
+import { feedValidity, formatFeedDate } from '../../data/gtfs/feedValidity';
 import { useLocation } from './useLocation';
 import {
   addFavorite,
@@ -48,6 +49,19 @@ const SEARCH_RUNNING = 'Searching…';
 const SEARCH_EMPTY = 'No stops match that.';
 const DATABASE_PROBLEM = 'Something went wrong reading the stop list on this device.';
 const FAVORITES_PROBLEM = 'Something went wrong reading your saved favorites.';
+
+/**
+ * The bundled stop list is reference data with a stated shelf life, and it has
+ * passed it. Worded as a fact about the data's age rather than as a fault:
+ * nothing is broken, nothing is blocked, and the screen behaves exactly as it
+ * did the day before. It reads unlike every other notice here for the same
+ * reason those read unlike each other — a rider must be able to tell "this is
+ * old" from "this failed" at a glance. Refreshing the feed is Increment 3;
+ * saying so out loud is this increment's whole obligation, because reference
+ * data that quietly goes stale is the one thing a rider cannot detect.
+ */
+const feedExpiredNotice = (endsOn: Date): string =>
+  `Stop names and locations on this device were published for service through ${formatFeedDate(endsOn)}. A few may have changed since.`;
 
 /** A stop as this screen lists it: distance is present only when known. */
 type Listed = Stop & { meters?: number };
@@ -101,7 +115,7 @@ export function HomeScreen() {
   const isDark = useColorScheme() === 'dark';
   const palette = isDark ? dark : light;
 
-  const { nearby, searchByName, searchByCode, routesForStops, stopsByIds } =
+  const { nearby, searchByName, searchByCode, routesForStops, stopsByIds, feedEndDate } =
     useStopQueries();
   const location = useLocation();
   const coords = location.coords;
@@ -118,6 +132,23 @@ export function HomeScreen() {
   // will keep failing, so the notice stays up rather than flickering away on
   // the next query.
   const [problem, setProblem] = useState<string | null>(null);
+  // The date the feed itself published as its last valid day, read once: it is
+  // baked into the bundled asset and cannot change while the app is running.
+  const [feedEnd, setFeedEnd] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    feedEndDate()
+      .then((date) => {
+        if (!cancelled) setFeedEnd(date);
+      })
+      .catch(() => {
+        if (!cancelled) setProblem(DATABASE_PROBLEM);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [feedEndDate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,6 +253,10 @@ export function HomeScreen() {
     };
   }, [favoriteIds, stopsByIds]);
 
+  // Compared against the clock at render rather than once at mount, so an app
+  // left open across the expiry date starts saying so on the next redraw.
+  const feed = feedValidity(feedEnd, new Date());
+
   // Search replaces the list rather than adding to it; with the field empty,
   // favorites sit above whatever is nearby.
   const searching = search.state !== 'off';
@@ -288,6 +323,14 @@ export function HomeScreen() {
       {problem === null ? null : (
         <Text style={[styles.notice, { color: palette.warning }]}>{problem}</Text>
       )}
+
+      {feed.state === 'expired' ? (
+        <View style={[styles.feedNotice, { borderColor: palette.border }]}>
+          <Text style={[styles.feedNoticeText, { color: palette.muted }]}>
+            {feedExpiredNotice(feed.endsOn)}
+          </Text>
+        </View>
+      ) : null}
 
       {search.state === 'off' ? (
         <>
@@ -417,6 +460,18 @@ const styles = StyleSheet.create({
   promptText: { fontSize: 16, fontWeight: '600' },
   promptHint: { fontSize: 13, marginTop: 2 },
   notice: { paddingHorizontal: 16, paddingVertical: 12, fontSize: 14 },
+  // Boxed rather than another line of loose text: it is about the data behind
+  // the whole screen, not about the state of the list under it, and must not
+  // be mistaken for either the error line above it or the status lines below.
+  feedNotice: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+  },
+  feedNoticeText: { fontSize: 13, lineHeight: 18 },
   busy: { flexDirection: 'row', alignItems: 'center', paddingLeft: 16 },
   legalBlock: { paddingHorizontal: 16, paddingBottom: 14, gap: 4 },
   legal: { fontSize: 11, lineHeight: 15 },
