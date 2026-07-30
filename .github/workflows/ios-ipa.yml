@@ -7,6 +7,11 @@ name: Build unsigned iOS IPA
 on:
   push:
     branches: [main]
+    # macOS runners bill at 10x on private repos. Documentation changes cannot
+    # affect the build, so they must not consume the monthly minute budget.
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   workflow_dispatch:
 
 concurrency:
