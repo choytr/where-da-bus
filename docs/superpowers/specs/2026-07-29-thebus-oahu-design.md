@@ -44,12 +44,39 @@ Two findings that contradict the original research notes:
    GTFS-RT feed, distinct from static feed `f-87z-thebus`. GTFS-RT would supply
    standard vehicle positions and trip updates rather than polling per-vehicle.
 
-### Unverified — must be pinned down after AppID registration
+### API facts — verification status
 
-Exact endpoint URLs, parameter names, response field names, rate limits, and the
-precise attribution wording all sit behind PDFs gated by AppID registration.
-None are invented here; the API surface is treated as a boundary to resolve once
-credentials exist.
+The official PDFs are committed under `docs/api/`. They turned out to be public,
+not registration-gated as originally assumed.
+
+**Verified against `docs/api/Web_Services_API.pdf` (v1.11, revised 2016-02-05):**
+
+- **Rate limit: 250,000 requests/day** per AppID, enforced against both the
+  AppID and the client IP address. Raising it requires emailing api@thebus.org.
+- **Attribution, verbatim** — note the absent trailing period:
+  > Route and arrival data provided by permission of Oahu Transit Services, Inc
+
+  The terms require it be "prominently displayed."
+- **AppIDs are deleted after 6 months of inactivity.** Relevant to a personal
+  project that may go dormant between bursts of work.
+- Services are read-only, over HTTP GET.
+
+**Verified by direct test:** `api.thebus.org` serves HTTPS with a valid
+certificate (HTTP 200, clean verification). Use `https://` despite the docs
+specifying `http://`. No iOS App Transport Security exception is needed.
+
+**Not yet verified** — `arrivalsJSON.pdf`, `routeJSON.pdf`, and `vehicleJSON.pdf`
+are image-only PDFs with no extractable text layer, and this environment lacks a
+renderer:
+
+- Exact JSON endpoint URLs and parameter names
+- JSON response field names and types
+- Whether numeric fields are strings, and what sentinel values appear for
+  missing GPS fixes or unknown vehicles
+
+These must be confirmed by reading the PDFs or by recording live responses once
+the AppID is in `.env`. Schema types should be written against **observed
+payloads**, not the documentation's field tables.
 
 ## §1 Build pipeline
 
