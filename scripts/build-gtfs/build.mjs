@@ -13,6 +13,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { parseCsv, deriveStopRoutes, deriveRouteStops } from './derive.mjs';
+import { emitDatabase } from './emit.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -42,8 +43,22 @@ async function download() {
   return zipPath;
 }
 
+// Requires the `unzip` CLI on PATH. Preinstalled on macOS and most Linux
+// distros (including WSL2's default Ubuntu/Debian); on bare Windows without
+// WSL, install e.g. via `choco install unzip` or Git Bash's bundled copy.
 async function extract(zipPath) {
-  await execFileAsync('unzip', ['-qo', zipPath, '-d', WORK]);
+  try {
+    await execFileAsync('unzip', ['-qo', zipPath, '-d', WORK]);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error(
+        'Missing prerequisite: the `unzip` command was not found on PATH. ' +
+          'Install it (e.g. `apt install unzip` on WSL/Debian, `choco install unzip` ' +
+          'on Windows, preinstalled on macOS) and re-run `npm run build:gtfs`.',
+      );
+    }
+    throw error;
+  }
   const read = (name) => readFile(path.join(WORK, name), 'utf8');
   return {
     stops: parseCsv(await read('stops.txt')),
@@ -69,82 +84,22 @@ async function main() {
   await rm(OUT, { force: true });
 
   const db = new DatabaseSync(OUT);
-  db.exec(`
-    PRAGMA journal_mode = DELETE;
-    CREATE TABLE stops (
-      stop_id   TEXT PRIMARY KEY,
-      stop_code TEXT,
-      stop_name TEXT NOT NULL,
-      lat       REAL NOT NULL,
-      lon       REAL NOT NULL
-    );
-    CREATE TABLE routes (
-      route_id   TEXT PRIMARY KEY,
-      short_name TEXT NOT NULL,
-      long_name  TEXT NOT NULL
-    );
-    CREATE TABLE stop_routes (
-      stop_id  TEXT NOT NULL,
-      route_id TEXT NOT NULL,
-      PRIMARY KEY (stop_id, route_id)
-    );
-    CREATE TABLE route_stops (
-      route_id     TEXT NOT NULL,
-      direction_id TEXT NOT NULL,
-      seq          INTEGER NOT NULL,
-      stop_id      TEXT NOT NULL,
-      PRIMARY KEY (route_id, direction_id, seq)
-    );
-    CREATE INDEX idx_stops_lat_lon ON stops(lat, lon);
-    CREATE INDEX idx_stop_routes_stop ON stop_routes(stop_id);
-    CREATE VIRTUAL TABLE stops_fts USING fts5(stop_name, content='stops', content_rowid='rowid');
-  `);
-
-  const insertStop = db.prepare(
-    'INSERT INTO stops (stop_id, stop_code, stop_name, lat, lon) VALUES (?, ?, ?, ?, ?)',
-  );
-  const insertRoute = db.prepare(
-    'INSERT INTO routes (route_id, short_name, long_name) VALUES (?, ?, ?)',
-  );
-  const insertStopRoute = db.prepare(
-    'INSERT INTO stop_routes (stop_id, route_id) VALUES (?, ?)',
-  );
-  const insertRouteStop = db.prepare(
-    'INSERT INTO route_stops (route_id, direction_id, seq, stop_id) VALUES (?, ?, ?, ?)',
-  );
-
-  db.exec('BEGIN');
-  for (const s of feed.stops) {
-    const lat = Number(s.stop_lat);
-    const lon = Number(s.stop_lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    insertStop.run(s.stop_id, s.stop_code ?? '', s.stop_name, lat, lon);
-  }
-  for (const r of feed.routes) {
-    insertRoute.run(r.route_id, r.route_short_name ?? '', r.route_long_name ?? '');
-  }
-  const knownStops = new Set(feed.stops.map((s) => s.stop_id));
-  const knownRoutes = new Set(feed.routes.map((r) => r.route_id));
-  for (const pair of stopRoutes) {
-    if (!knownStops.has(pair.stop_id) || !knownRoutes.has(pair.route_id)) continue;
-    insertStopRoute.run(pair.stop_id, pair.route_id);
-  }
-  for (const rs of routeStops) {
-    if (!knownStops.has(rs.stop_id) || !knownRoutes.has(rs.route_id)) continue;
-    insertRouteStop.run(rs.route_id, rs.direction_id, rs.seq, rs.stop_id);
-  }
-  db.exec("INSERT INTO stops_fts(stops_fts) VALUES('rebuild')");
-  db.exec('COMMIT');
-  db.exec('VACUUM');
-
-  const count = (sql) => db.prepare(sql).get().n;
-  console.log('--- built ---');
-  console.log('stops       ', count('SELECT COUNT(*) AS n FROM stops'));
-  console.log('routes      ', count('SELECT COUNT(*) AS n FROM routes'));
-  console.log('stop_routes ', count('SELECT COUNT(*) AS n FROM stop_routes'));
-  console.log('route_stops ', count('SELECT COUNT(*) AS n FROM route_stops'));
-  console.log('feed valid  ', feed.feedInfo[0]?.feed_start_date, '->', feed.feedInfo[0]?.feed_end_date);
+  const counts = emitDatabase(db, {
+    stops: feed.stops,
+    routes: feed.routes,
+    stopRoutes,
+    routeStops,
+    feedStartDate: feed.feedInfo[0]?.feed_start_date,
+    feedEndDate: feed.feedInfo[0]?.feed_end_date,
+  });
   db.close();
+
+  console.log('--- built ---');
+  console.log('stops       ', counts.stops);
+  console.log('routes      ', counts.routes);
+  console.log('stop_routes ', counts.stopRoutes);
+  console.log('route_stops ', counts.routeStops);
+  console.log('feed valid  ', feed.feedInfo[0]?.feed_start_date, '->', feed.feedInfo[0]?.feed_end_date);
   console.log(`wrote ${OUT}`);
 }
 

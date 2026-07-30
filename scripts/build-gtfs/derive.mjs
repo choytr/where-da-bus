@@ -75,7 +75,7 @@ export function parseCsv(text) {
  * tables (e.g. `NaN` from `Number('')`) instead of failing where it is cheap
  * to diagnose.
  */
-function requireField(row, field, index, source) {
+export function requireField(row, field, index, source) {
   const value = row[field];
   if (value === undefined || value === '') {
     throw new Error(`Invalid ${source} row ${index}: missing required field "${field}"`);
@@ -84,7 +84,7 @@ function requireField(row, field, index, source) {
 }
 
 /** Like `requireField`, but also checks the value parses as a finite number. */
-function requireNumberField(row, field, index, source) {
+export function requireNumberField(row, field, index, source) {
   const raw = requireField(row, field, index, source);
   const value = Number(raw);
   if (!Number.isFinite(value)) {
