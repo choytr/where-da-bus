@@ -2064,7 +2064,8 @@ Confirm by observation:
 4. Granting it lists nearby stops with distances ascending.
 5. Denying it leaves search working, with no crash and no error state.
 6. Tapping a star pins the stop to the top; it survives an app restart.
-7. Attribution and disclaimer are visible at the list footer.
+7. Attribution and disclaimer are visible at the list header, above the first
+   stop row, without scrolling (see the ruling above).
 
 - [ ] **Step 8: Commit**
 
