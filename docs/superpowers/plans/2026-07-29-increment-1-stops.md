@@ -1931,8 +1931,8 @@ export function HomeScreen() {
             </Text>
           )
         }
-        ListFooterComponent={
-          <View style={styles.footer}>
+        ListHeaderComponent={
+          <View style={styles.legalBlock}>
             <Text style={[styles.legal, { color: palette.muted }]}>{ATTRIBUTION}</Text>
             <Text style={[styles.legal, { color: palette.muted }]}>{DISCLAIMER}</Text>
           </View>
@@ -1942,6 +1942,29 @@ export function HomeScreen() {
     </SafeAreaView>
   );
 }
+
+> **Corrected during execution (2026-07-30).** Two changes to this snippet,
+> both human-ruled after the Task 9 review:
+>
+> 1. The legal block was originally `ListFooterComponent`, which put the
+>    attribution and disclaimer beneath up to 25 stop rows in the populated
+>    state — reachable only by scrolling to the end. The provider's terms
+>    require *prominent display*, and no test can catch the regression because
+>    RNTL renders all `FlatList` children regardless of viewport. It is now
+>    `ListHeaderComponent`. Scrolling it out of view afterwards is explicitly
+>    acceptable; the bar is that the user sees it without hunting.
+> 2. `SafeAreaView` imported from `react-native` (still shown above) is
+>    deprecated and warns on every test run and in Expo Go's LogBox. The ruling
+>    was to switch to `react-native-safe-area-context`, which Expo Go bundles,
+>    so it costs nothing on the CI loop. Import `SafeAreaView` from there
+>    instead.
+>
+>    No `SafeAreaProvider` is used, contrary to the usual guidance for that
+>    package: `SafeAreaView` reads no context (the provider exists to serve the
+>    hooks), and `SafeAreaContext` renders `{insets != null ? children : null}`
+>    with insets arriving only from a native event — so a provider without
+>    `initialMetrics` renders nothing at all under Jest. Adding one would break
+>    the suite for no benefit.
 
 const light = {
   background: '#ffffff',
