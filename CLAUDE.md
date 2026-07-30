@@ -81,6 +81,18 @@ data — show stale times with an explicit age instead. "No buses coming" and
 "couldn't reach TheBus" must never render alike; that ambiguity is what makes a
 transit app untrustworthy at a stop at night.
 
+## Timer handles are `number`, never `NodeJS.Timeout`
+
+`@types/node` is loaded project-wide (`tsconfig.json`'s `types`) so
+`node:sqlite` resolves in the GTFS build script and its tests. Side effect:
+`@types/node`'s ambient `setTimeout`/`setInterval` overloads (returning
+`NodeJS.Timeout`) win over React Native's (returning `number`). The 60-second
+arrivals poll and anything else that holds a timer handle must type it as
+`number` explicitly — `ReturnType<typeof setInterval>` is **not** a safe
+alternative, since it resolves to `NodeJS.Timeout` for the same reason. React
+Native returns a plain numeric ID at runtime, not a `Timeout` object, so
+`.unref()` / `.refresh()` will typecheck cleanly and then fail at runtime.
+
 ## Legal
 
 Per Oahu Transit Services' terms, the app must carry attribution and a
