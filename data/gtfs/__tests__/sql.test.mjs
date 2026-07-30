@@ -10,9 +10,26 @@ import {
   ROUTES_FOR_STOP,
   boundingBox,
   stopsByIdsSql,
+  toFtsQuery,
 } from '../sql.ts';
 
 const DB = path.resolve(import.meta.dirname, '../../../assets/db/gtfs.db');
+
+/** A stop_id guaranteed not to be present in `db`, built by mutating a candidate until it misses. */
+function unusedStopId(db, candidate) {
+  const ids = new Set(db.prepare('SELECT stop_id FROM stops').all().map((r) => r.stop_id));
+  let id = candidate;
+  while (ids.has(id)) id += '-x';
+  return id;
+}
+
+/** A stop_code guaranteed not to be present in `db`, built the same way. */
+function unusedStopCode(db, candidate) {
+  const codes = new Set(db.prepare('SELECT stop_code FROM stops').all().map((r) => r.stop_code));
+  let code = candidate;
+  while (codes.has(code)) code += '-x';
+  return code;
+}
 
 describe('gtfs sql', () => {
   let db;
@@ -25,36 +42,56 @@ describe('gtfs sql', () => {
   });
 
   test('finds stops by name fragment', () => {
-    const rows = db.prepare(SEARCH_BY_NAME).all('lagoon', 10);
-    assert.ok(rows.length > 0);
-    assert.ok(rows.every((r) => r.stop_name.toUpperCase().includes('LAGOON')));
+    // Structural, not feed-literal: pick any real stop with an alphabetic
+    // word in its name, search for that word, and confirm the stop comes
+    // back and every result actually contains the word. Works regardless
+    // of what names the current feed happens to contain.
+    const stops = db.prepare('SELECT stop_id, stop_name FROM stops').all();
+    const stop = stops.find((s) => /[A-Za-z]{4,}/.test(s.stop_name));
+    assert.ok(stop, 'expected at least one stop with an alphabetic name fragment');
+    const word = stop.stop_name.match(/[A-Za-z]{4,}/)[0];
+
+    const query = toFtsQuery(word);
+    assert.ok(query, 'expected a runnable query for a real word');
+    const rows = db.prepare(SEARCH_BY_NAME).all(query, 50);
+    assert.ok(rows.some((r) => r.stop_id === stop.stop_id));
+    assert.ok(rows.every((r) => r.stop_name.toUpperCase().includes(word.toUpperCase())));
   });
 
   test('finds a stop by its exact code', () => {
-    const row = db.prepare(SEARCH_BY_CODE).get('5');
-    assert.equal(row.stop_id, '5');
+    const stop = db.prepare("SELECT stop_id, stop_code, lat FROM stops WHERE stop_code != '' LIMIT 1").get();
+    assert.ok(stop, 'expected at least one stop with a stop_code');
+    const row = db.prepare(SEARCH_BY_CODE).get(stop.stop_code);
+    assert.equal(row.stop_id, stop.stop_id);
     assert.ok(typeof row.lat === 'number');
   });
 
   test('returns nothing for an unknown code', () => {
-    assert.equal(db.prepare(SEARCH_BY_CODE).get('nonexistent-code'), undefined);
+    const code = unusedStopCode(db, 'nonexistent-code');
+    assert.equal(db.prepare(SEARCH_BY_CODE).get(code), undefined);
   });
 
   test('looks up several stops by id regardless of location', () => {
-    const rows = db.prepare(stopsByIdsSql(2)).all('5', '6');
+    const [a, b] = db.prepare('SELECT stop_id FROM stops LIMIT 2').all();
+    const rows = db.prepare(stopsByIdsSql(2)).all(a.stop_id, b.stop_id);
     assert.equal(rows.length, 2);
-    assert.deepEqual(rows.map((r) => r.stop_id).sort(), ['5', '6']);
+    assert.deepEqual(rows.map((r) => r.stop_id).sort(), [a.stop_id, b.stop_id].sort());
   });
 
   test('id lookup tolerates ids that do not exist', () => {
-    const rows = db.prepare(stopsByIdsSql(2)).all('5', 'ghost');
+    const real = db.prepare('SELECT stop_id FROM stops LIMIT 1').get();
+    const ghost = unusedStopId(db, 'ghost');
+    const rows = db.prepare(stopsByIdsSql(2)).all(real.stop_id, ghost);
     assert.equal(rows.length, 1);
   });
 
   test('bounding box selects stops near a point', () => {
-    const box = boundingBox({ lat: 21.321687, lon: -157.907687 }, 500);
+    // Any real stop is trivially "near" its own coordinates, so this needs
+    // no knowledge of what the feed actually contains.
+    const stop = db.prepare('SELECT stop_id, lat, lon FROM stops LIMIT 1').get();
+    const box = boundingBox({ lat: stop.lat, lon: stop.lon }, 500);
     const rows = db.prepare(NEARBY_IN_BOX).all(box.minLat, box.maxLat, box.minLon, box.maxLon);
-    assert.ok(rows.some((r) => r.stop_id === '5'));
+    assert.ok(rows.some((r) => r.stop_id === stop.stop_id));
   });
 
   test('lists routes serving a stop, ordered numerically', () => {
@@ -65,6 +102,37 @@ describe('gtfs sql', () => {
     assert.ok(rows.length > 2);
     const numeric = rows.map((r) => Number(r.short_name)).filter(Number.isFinite);
     assert.deepEqual(numeric, [...numeric].sort((a, b) => a - b));
+  });
+
+  test('search treats FTS5 operators and punctuation as literal text without throwing', () => {
+    // Regression coverage for the FTS5 syntax-error class of bug: none of
+    // these should ever reach SQLite as a bare/invalid MATCH expression.
+    for (const input of ['AND', 'OR', 'NEAR', 'foo AND bar', 'ala-moana', '-lagoon', 'kalihi"quote']) {
+      const query = toFtsQuery(input);
+      assert.ok(query, `expected a runnable query for ${JSON.stringify(input)}`);
+      assert.doesNotThrow(() => db.prepare(SEARCH_BY_NAME).all(query, 5));
+    }
+  });
+});
+
+describe('toFtsQuery', () => {
+  test('returns null for empty input', () => {
+    assert.equal(toFtsQuery(''), null);
+  });
+
+  test('returns null for input that reduces to nothing', () => {
+    assert.equal(toFtsQuery('*'), null);
+    assert.equal(toFtsQuery('""'), null);
+    assert.equal(toFtsQuery('   '), null);
+  });
+
+  test('quotes and wildcards each term', () => {
+    assert.equal(toFtsQuery('foo bar'), '"foo"* "bar"*');
+  });
+
+  test('strips embedded quotes and asterisks before quoting', () => {
+    assert.equal(toFtsQuery('kalihi"quote'), '"kalihi"* "quote"*');
+    assert.equal(toFtsQuery('wild*card'), '"wild"* "card"*');
   });
 });
 

@@ -79,10 +79,20 @@ export function boundingBox(center: Coords, radiusMeters: number): BoundingBox {
   };
 }
 
-/** Escapes user input for FTS5 and appends a prefix wildcard. */
-export function toFtsQuery(input: string): string {
+/**
+ * Escapes user input for FTS5 and appends a prefix wildcard to each term.
+ *
+ * Returns null when there is no runnable query — an empty string, or input
+ * that reduces to nothing once quotes/wildcards/whitespace are stripped
+ * (e.g. '', '*', '""', '   '). SEARCH_BY_NAME's `MATCH` throws
+ * `fts5: syntax error near ""` on an empty match expression, so this
+ * returns null rather than '' precisely so a caller cannot pass an empty
+ * string through by accident — the type forces a null check before the
+ * query runs.
+ */
+export function toFtsQuery(input: string): string | null {
   const cleaned = input.replace(/["*]/g, ' ').trim();
-  if (cleaned === '') return '';
+  if (cleaned === '') return null;
   return cleaned
     .split(/\s+/)
     .map((term) => `"${term}"*`)
