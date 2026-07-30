@@ -29,6 +29,10 @@
         {
           "locationWhenInUsePermission": "Used to show the bus stops closest to you and sort them by walking distance."
         }
+      ],
+      [
+        "expo-sqlite",
+        { "enableFTS": true }
       ]
     ]
   }
