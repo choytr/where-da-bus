@@ -2,10 +2,10 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback } from 'react';
 import {
   NEARBY_IN_BOX,
-  ROUTES_FOR_STOP,
   SEARCH_BY_CODE,
   SEARCH_BY_NAME,
   boundingBox,
+  routesForStopsSql,
   stopsByIdsSql,
   toFtsQuery,
 } from './sql';
@@ -54,6 +54,20 @@ function isRouteSummary(value: unknown): value is RouteSummary {
     typeof value.short_name === 'string' &&
     'long_name' in value &&
     typeof value.long_name === 'string'
+  );
+}
+
+/**
+ * A route row from the batched lookup, which carries the stop it belongs to so
+ * one result set can be grouped back into per-stop lists.
+ */
+type RouteForStop = RouteSummary & { stop_id: string };
+
+function isRouteForStop(value: unknown): value is RouteForStop {
+  return (
+    isRouteSummary(value) &&
+    'stop_id' in value &&
+    typeof value.stop_id === 'string'
   );
 }
 
@@ -109,12 +123,24 @@ export function useStopQueries() {
     [db],
   );
 
+  /**
+   * One query for the whole list, not one per stop. The caller is a scrolling
+   * list that re-asks on every keystroke, and a per-stop loop could not be
+   * abandoned partway: cancelling the caller only suppresses the result, while
+   * the remaining queries stay queued on the native bridge behind the ones the
+   * next keystroke needs.
+   */
   const routesForStops = useCallback(
     async (stopIds: string[]): Promise<Map<string, RouteSummary[]>> => {
-      const result = new Map<string, RouteSummary[]>();
-      for (const stopId of stopIds) {
-        const rows = await db.getAllAsync(ROUTES_FOR_STOP, stopId);
-        result.set(stopId, rows.filter(isRouteSummary));
+      // Every requested id gets an entry, so "no route serves this stop" stays
+      // distinguishable from "this stop was never looked up".
+      const result = new Map<string, RouteSummary[]>(stopIds.map((id) => [id, []]));
+      if (stopIds.length === 0) return result;
+
+      const rows = await db.getAllAsync(routesForStopsSql(stopIds.length), ...stopIds);
+      for (const row of rows.filter(isRouteForStop)) {
+        const { stop_id, ...route } = row;
+        result.get(stop_id)?.push(route);
       }
       return result;
     },

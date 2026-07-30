@@ -3,13 +3,13 @@ import {
   ActivityIndicator,
   FlatList,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   View,
   useColorScheme,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStopQueries } from '../../data/gtfs/db';
 import { useLocation } from './useLocation';
 import {
@@ -75,6 +75,14 @@ type SearchState =
   | { state: 'running'; stops: Listed[] }
   | { state: 'done'; stops: Listed[] }
   | { state: 'failed' };
+
+/**
+ * How long typing has to pause before the database is asked anything. A query
+ * per keystroke is a query storm on the native bridge — none of which can be
+ * called back once queued — for results nobody reads, since the rider is still
+ * typing. Short enough to feel immediate at the end of a word.
+ */
+const SEARCH_DEBOUNCE_MS = 175;
 
 /** Digits only means the rider typed the number printed on the pole. */
 const isNumericQuery = (value: string): boolean => /^\d+$/.test(value.trim());
@@ -168,14 +176,24 @@ export function HomeScreen() {
       if (!cancelled) setSearch({ state: 'done', stops: found });
     };
 
-    run().catch(() => {
-      if (cancelled) return;
-      setSearch({ state: 'failed' });
-      setProblem(DATABASE_PROBLEM);
-    });
+    // React Native's setTimeout hands back a plain numeric id, but @types/node
+    // is in this program (see tsconfig) and its ambient overload — returning
+    // NodeJS.Timeout — wins, so the handle is converted rather than declared.
+    // Number() is a real conversion and exact on both: React Native returns
+    // the id itself, and NodeJS.Timeout converts to its id.
+    const handle: number = Number(
+      setTimeout(() => {
+        run().catch(() => {
+          if (cancelled) return;
+          setSearch({ state: 'failed' });
+          setProblem(DATABASE_PROBLEM);
+        });
+      }, SEARCH_DEBOUNCE_MS),
+    );
 
     return () => {
       cancelled = true;
+      clearTimeout(handle);
     };
   }, [query, searchByCode, searchByName]);
 
@@ -336,8 +354,12 @@ export function HomeScreen() {
             onToggleFavorite={toggleFavorite}
           />
         )}
-        ListFooterComponent={
-          <View style={styles.footer}>
+        // At the head of the list, not the foot: the provider's terms ask for
+        // prominent display, and under twenty-five rows is not prominent.
+        // Scrolling past it afterwards is fine — being seen without hunting
+        // is the point.
+        ListHeaderComponent={
+          <View style={styles.legalBlock}>
             <Text style={[styles.legal, { color: palette.muted }]}>{ATTRIBUTION}</Text>
             <Text style={[styles.legal, { color: palette.muted }]}>{DISCLAIMER}</Text>
           </View>
@@ -396,6 +418,6 @@ const styles = StyleSheet.create({
   promptHint: { fontSize: 13, marginTop: 2 },
   notice: { paddingHorizontal: 16, paddingVertical: 12, fontSize: 14 },
   busy: { flexDirection: 'row', alignItems: 'center', paddingLeft: 16 },
-  footer: { padding: 16, gap: 6 },
+  legalBlock: { paddingHorizontal: 16, paddingBottom: 14, gap: 4 },
   legal: { fontSize: 11, lineHeight: 15 },
 });

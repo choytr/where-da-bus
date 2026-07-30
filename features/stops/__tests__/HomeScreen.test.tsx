@@ -184,6 +184,37 @@ describe('HomeScreen', () => {
     expect(mockQueries.searchByCode).not.toHaveBeenCalled();
   });
 
+  it('collapses a burst of typing into one query for the finished word', async () => {
+    // Without the debounce this is one FTS query per keystroke, each one
+    // dragging a route lookup behind it, for results nobody reads because the
+    // rider is still typing.
+    mockQueries.searchByName.mockResolvedValue([stopA]);
+
+    await render(<HomeScreen />);
+    const field = screen.getByPlaceholderText(/stop number or name/i);
+    await fireEvent.changeText(field, 'l');
+    await fireEvent.changeText(field, 'la');
+    await fireEvent.changeText(field, 'lag');
+    await fireEvent.changeText(field, 'lagoon');
+
+    await waitFor(() => screen.getByText('LAGOON DR + IOLANA PL'));
+    expect(mockQueries.searchByName).toHaveBeenCalledTimes(1);
+    expect(mockQueries.searchByName).toHaveBeenCalledWith('lagoon');
+  });
+
+  it('says it is searching while a query is in flight', async () => {
+    mockQueries.searchByName.mockResolvedValue([stopA]);
+
+    await render(<HomeScreen />);
+    await fireEvent.changeText(
+      screen.getByPlaceholderText(/stop number or name/i),
+      'lagoon',
+    );
+
+    screen.getByText(/searching/i);
+    await waitFor(() => screen.getByText('LAGOON DR + IOLANA PL'));
+  });
+
   it('says a search matched nothing, in different words from having no stops nearby', async () => {
     mockQueries.searchByName.mockResolvedValue([]);
 

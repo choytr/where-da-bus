@@ -190,22 +190,67 @@ describe('useStopQueries.stopsByIds', () => {
 });
 
 describe('useStopQueries.routesForStops', () => {
-  it('maps each stop id to its routes', async () => {
+  it('groups one result set back onto the stops that were asked for', async () => {
     const db = makeDb();
-    db.getAllAsync
-      .mockResolvedValueOnce([{ route_id: 'A', short_name: '1', long_name: 'Route 1' }])
-      .mockResolvedValueOnce([]);
+    db.getAllAsync.mockResolvedValue([
+      { stop_id: 'stop-a', route_id: 'A', short_name: '1', long_name: 'Route 1' },
+      { stop_id: 'stop-a', route_id: 'B', short_name: '2', long_name: 'Route 2' },
+    ]);
 
     const { result } = await renderHook(() => useStopQueries());
     const routes = await result.current.routesForStops(['stop-a', 'stop-b']);
 
-    expect(routes.get('stop-a')).toEqual([{ route_id: 'A', short_name: '1', long_name: 'Route 1' }]);
+    expect(routes.get('stop-a')).toEqual([
+      { route_id: 'A', short_name: '1', long_name: 'Route 1' },
+      { route_id: 'B', short_name: '2', long_name: 'Route 2' },
+    ]);
+    // Asked for, nothing came back: known to have no routes, not unknown.
     expect(routes.get('stop-b')).toEqual([]);
+  });
+
+  it('asks once for the whole list rather than once per stop', async () => {
+    const db = makeDb();
+    db.getAllAsync.mockResolvedValue([]);
+
+    const { result } = await renderHook(() => useStopQueries());
+    await result.current.routesForStops(['stop-a', 'stop-b', 'stop-c']);
+
+    expect(db.getAllAsync).toHaveBeenCalledTimes(1);
+    expect(db.getAllAsync).toHaveBeenCalledWith(
+      expect.any(String),
+      'stop-a',
+      'stop-b',
+      'stop-c',
+    );
+  });
+
+  it('returns an empty map without querying for an empty id list', async () => {
+    const db = makeDb();
+
+    const { result } = await renderHook(() => useStopQueries());
+    const routes = await result.current.routesForStops([]);
+
+    expect(routes.size).toBe(0);
+    expect(db.getAllAsync).not.toHaveBeenCalled();
   });
 
   it('filters out a row that does not match the RouteSummary shape', async () => {
     const db = makeDb();
-    db.getAllAsync.mockResolvedValue([{ route_id: 'A' /* missing short_name/long_name */ }]);
+    db.getAllAsync.mockResolvedValue([
+      { stop_id: 'stop-a', route_id: 'A' /* missing short_name/long_name */ },
+    ]);
+
+    const { result } = await renderHook(() => useStopQueries());
+    const routes = await result.current.routesForStops(['stop-a']);
+
+    expect(routes.get('stop-a')).toEqual([]);
+  });
+
+  it('filters out a row with no stop to group it under', async () => {
+    const db = makeDb();
+    db.getAllAsync.mockResolvedValue([
+      { route_id: 'A', short_name: '1', long_name: 'Route 1' /* no stop_id */ },
+    ]);
 
     const { result } = await renderHook(() => useStopQueries());
     const routes = await result.current.routesForStops(['stop-a']);

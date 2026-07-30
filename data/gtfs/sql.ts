@@ -40,17 +40,28 @@ export const NEARBY_IN_BOX = `
   WHERE lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?
 `;
 
-/** Routes serving a stop, numeric routes first and in numeric order. */
-export const ROUTES_FOR_STOP = `
-  SELECT r.route_id, r.short_name, r.long_name
+/**
+ * Routes serving each of several stops, numeric routes first and in numeric
+ * order, with `stop_id` carried on every row so the caller can group them.
+ *
+ * Takes a whole list rather than one stop at a time because the caller wants
+ * a screenful at once: a per-stop query would mean up to thirty round trips
+ * across the native bridge per keystroke, and none of them can be abandoned
+ * once queued. Build the placeholders with the count of ids you will bind.
+ */
+export function routesForStopsSql(count: number): string {
+  const placeholders = new Array(count).fill('?').join(', ');
+  return `
+  SELECT sr.stop_id, r.route_id, r.short_name, r.long_name
   FROM stop_routes sr
   JOIN routes r ON r.route_id = sr.route_id
-  WHERE sr.stop_id = ?
+  WHERE sr.stop_id IN (${placeholders})
   ORDER BY
     CASE WHEN CAST(r.short_name AS INTEGER) > 0 THEN 0 ELSE 1 END,
     CAST(r.short_name AS INTEGER),
     r.short_name
 `;
+}
 
 export type BoundingBox = {
   minLat: number;

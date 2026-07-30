@@ -7,8 +7,8 @@ import {
   SEARCH_BY_NAME,
   SEARCH_BY_CODE,
   NEARBY_IN_BOX,
-  ROUTES_FOR_STOP,
   boundingBox,
+  routesForStopsSql,
   stopsByIdsSql,
   toFtsQuery,
 } from '../sql.ts';
@@ -98,10 +98,25 @@ describe('gtfs sql', () => {
     const withRoutes = db
       .prepare('SELECT stop_id FROM stop_routes GROUP BY stop_id HAVING COUNT(*) > 2 LIMIT 1')
       .get();
-    const rows = db.prepare(ROUTES_FOR_STOP).all(withRoutes.stop_id);
+    const rows = db.prepare(routesForStopsSql(1)).all(withRoutes.stop_id);
     assert.ok(rows.length > 2);
+    assert.ok(rows.every((r) => r.stop_id === withRoutes.stop_id));
     const numeric = rows.map((r) => Number(r.short_name)).filter(Number.isFinite);
     assert.deepEqual(numeric, [...numeric].sort((a, b) => a - b));
+  });
+
+  test('lists routes for several stops in a single query', () => {
+    const ids = db
+      .prepare('SELECT stop_id FROM stop_routes GROUP BY stop_id LIMIT 3')
+      .all()
+      .map((r) => r.stop_id);
+    assert.equal(ids.length, 3);
+
+    const rows = db.prepare(routesForStopsSql(ids.length)).all(...ids);
+
+    // Every requested stop is represented, and nothing else is.
+    for (const id of ids) assert.ok(rows.some((r) => r.stop_id === id));
+    assert.ok(rows.every((r) => ids.includes(r.stop_id)));
   });
 
   test('search treats FTS5 operators and punctuation as literal text without throwing', () => {
