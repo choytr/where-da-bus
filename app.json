@@ -22,6 +22,14 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Used to show the bus stops closest to you and sort them by walking distance."
+        }
+      ]
+    ]
   }
 }
