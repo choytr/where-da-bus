@@ -65,18 +65,49 @@ not registration-gated as originally assumed.
 certificate (HTTP 200, clean verification). Use `https://` despite the docs
 specifying `http://`. No iOS App Transport Security exception is needed.
 
-**Not yet verified** — `arrivalsJSON.pdf`, `routeJSON.pdf`, and `vehicleJSON.pdf`
-are image-only PDFs with no extractable text layer, and this environment lacks a
-renderer:
+**Verified endpoints** (from `arrivals.pdf`, `vehicle.pdf`, `route.pdf`) — use
+`https://`, not the documented `http://`:
 
-- Exact JSON endpoint URLs and parameter names
-- JSON response field names and types
-- Whether numeric fields are strings, and what sentinel values appear for
-  missing GPS fixes or unknown vehicles
+```
+/arrivals/?key=<AppID>&stop=<stop_ID>
+/vehicle/?key=<AppID>&num=<vehicle_num>
+/route/?key=<AppID>&route=<route_num>
+/route/?key=<AppID>&headsign=<string>
+```
 
-These must be confirmed by reading the PDFs or by recording live responses once
-the AppID is in `.env`. Schema types should be written against **observed
-payloads**, not the documentation's field tables.
+All against base host `api.thebus.org`.
+
+**The credential has three names in the docs and they are all one value:**
+"AppID" in the overview, `key` as the query parameter, and "API_key" /
+"API registration number" in the endpoint pages. "HEA" is only the registration
+host (`hea.thebus.org`), not a separate credential.
+
+**Verified response fields:**
+
+| Endpoint | Fields |
+|---|---|
+| arrivals | `stopTimes:{errorMessage,stop,timestamp,arrival}`, `arrival:{id,trip,route,headsign,vehicle,direction}` |
+| vehicle | `vehicles:{errorMessage,timestamp,vehicle}`, `vehicle:{number,trip,driver,latitude,longitude,adherence,last_message,route}` |
+| route | `routes:{errorMessage,routeName,routeID}`, `route:{routeNum,shapeID,firstStop,headsign}` |
+
+Two consequences worth designing around:
+
+- **`vehicle:adherence`** reports schedule adherence directly — positive means
+  the bus is early, negative means late. No competing app surfaces this, and it
+  costs nothing to display.
+- **`vehicle:driver`** is an employee number. It is personal data about a driver,
+  must never appear in the UI, and must never be persisted.
+- **`route:shapeID`** keys into `shapes.txt`, which is what makes Increment 3's
+  route polylines possible.
+
+**Still unverified:** `arrivalsJSON.pdf`, `routeJSON.pdf`, and `vehicleJSON.pdf`
+are image-only with no text layer, and this environment has no PDF renderer. The
+JSON endpoints most likely mirror the XML paths with a `JSON` suffix
+(`/arrivalsJSON/`), but the field names and types are unconfirmed — in
+particular whether numerics arrive as strings and what sentinel values mark a
+missing GPS fix. Schema types must be written against **observed payloads**
+recorded once the AppID is in `.env`, not against the documentation's field
+tables.
 
 ## §1 Build pipeline
 
@@ -149,9 +180,49 @@ A repo script preprocesses GTFS into a SQLite file shipped as an asset.
 AsyncStorage, kept separate from reference data — user state with a different
 lifecycle from bundled data.
 
-Oahu's static GTFS feed scores poorly on freshness (GTFS Scorecard grade F).
-Static data is therefore treated as **reference only** — stop names, IDs,
-coordinates. Anything time-sensitive comes from the live API.
+Static data is treated as **reference only** — stop names, IDs, coordinates.
+Anything time-sensitive comes from the live API.
+
+### Verified feed source
+
+```
+https://www.thebus.org/transitdata/production/google_transit.zip
+```
+
+Confirmed live: HTTP 200, valid TLS, 12 MB, contents dated 2026-06-29.
+
+**The widely-cited `webapps.thebus.org/transitdata/Production/...` URL is dead.**
+That host now presents a certificate for `ots-sbc.thebus.org` issued by an Avaya
+`System Manager CA` — it is a telephony session border controller, not a file
+server. It returns 405 over HTTPS and times out over HTTP. Mobility Database
+still lists the dead URL as the producer URL; do not use it.
+
+### Measured contents
+
+| File | Size | Bundled |
+|---|---|---|
+| `stops.txt` | 418 KB (3,847 stops) | yes |
+| `routes.txt` | 5.4 KB (118 routes) | yes |
+| `shapes.txt` | 9.8 MB | Increment 3 only |
+| `stop_times.txt` | 73.8 MB | never |
+
+The 424 KB v1 payload against 73.8 MB for `stop_times.txt` confirms the
+exclusion decision quantitatively.
+
+### Three properties that affect design
+
+- **The feed declares an expiry.** `feed_info.txt` gives
+  `feed_start_date=20260701`, `feed_end_date=20260822` — roughly an eight-week
+  validity window. Bundled data therefore goes stale by design. This is low-risk
+  for v1 because stop names and coordinates rarely change and no schedule data
+  ships, but a refresh path is required before Increment 3 uses `shapes.txt`.
+- **`route_color` and `route_text_color` are empty for every route.** Route
+  colouring cannot come from the agency, so the app needs its own palette. This
+  is a design opportunity rather than a gap, given the project's UX motivation.
+- **`stop_code` matches the number printed on physical stop signage** (and
+  equals `stop_id` in sampled rows). Searching by that number is the fastest
+  path from standing at a stop to seeing its arrivals, and should be a
+  first-class search input rather than an afterthought.
 
 ## §4 Error handling
 
@@ -163,8 +234,11 @@ Transit APIs fail often; this is a feature area, not a footnote.
   explicit age ("updated 45s ago").
 - "No buses coming" and "couldn't reach TheBus" must never render alike. That
   ambiguity is what makes a transit app untrustworthy at a stop at night.
-- Poll interval 30s, matching TheBus's ~1 min AVL refresh. Polling pauses when
-  the app is backgrounded.
+- Poll interval **60s**, pausing when the app is backgrounded. Buses report
+  position about once a minute and TheBus polls its own AVL system on a similar
+  cycle, so the data cannot be fresher than roughly a minute regardless of how
+  often it is requested. A 30s interval would double request volume against the
+  250,000/day budget while returning identical payloads.
 
 ## §5 Testing
 
