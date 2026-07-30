@@ -1,0 +1,43 @@
+name: Tests
+
+# The iOS workflow only proves the app compiles, and it skips documentation
+# changes entirely — so without this, a change that breaks every test merges
+# green. Deliberately ubuntu-latest and deliberately separate: none of this
+# needs a Mac, and macOS runner minutes bill at 10x on private repos.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # `npm run test:scripts` runs node:test over node:sqlite, which the
+          # GTFS build script and its tests both need.
+          node-version: 22
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Component and unit tests
+        run: npm test
+
+      - name: Build-script and SQL tests
+        run: npm run test:scripts
+
+      - name: Typecheck
+        run: npm run typecheck
