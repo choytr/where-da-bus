@@ -1,5 +1,4 @@
 import { renderHook } from '@testing-library/react-native';
-import { useSQLiteContext } from 'expo-sqlite';
 import { useStopQueries } from '../db';
 import { boundingBox } from '../sql';
 import type { Stop } from '../types';
@@ -12,19 +11,24 @@ import type { Stop } from '../types';
  * the FTS null-query short-circuit, and — most importantly — the runtime type
  * guards that stand in for `as Stop`/`as RouteSummary`. A mocked db lets a
  * malformed row be injected on purpose to prove the guard actually filters it.
+ *
+ * The real `SQLiteDatabase` interface has dozens of methods (execAsync,
+ * prepareAsync, withTransactionAsync, ...); this file only ever needs two of
+ * them. Rather than assert a two-method stub into that full interface — the
+ * same "trust me" move as `as Stop` — the mock is read back through
+ * `jest.requireMock`, which is typed `any` by Jest itself for exactly this
+ * "partial native-module double" case, so no assertion is written here.
  */
 jest.mock('expo-sqlite', () => ({
   useSQLiteContext: jest.fn(),
 }));
-
-const mockedContext = jest.mocked(useSQLiteContext);
 
 function makeDb() {
   const db = {
     getAllAsync: jest.fn(),
     getFirstAsync: jest.fn(),
   };
-  mockedContext.mockReturnValue(db as unknown as ReturnType<typeof useSQLiteContext>);
+  jest.requireMock('expo-sqlite').useSQLiteContext.mockReturnValue(db);
   return db;
 }
 
