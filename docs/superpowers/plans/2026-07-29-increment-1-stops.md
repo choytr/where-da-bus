@@ -1206,14 +1206,14 @@ export function useLocation(): LocationState {
   const request = useCallback(async () => {
     setStatus('loading');
 
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (permission.status !== 'granted') {
-      setStatus('denied');
-      setCoords(null);
-      return;
-    }
-
     try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setStatus('denied');
+        setCoords(null);
+        return;
+      }
+
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
@@ -1228,6 +1228,17 @@ export function useLocation(): LocationState {
   return { status, coords, request };
 }
 ```
+
+> **Corrected during execution (2026-07-30).** This snippet originally left
+> `requestForegroundPermissionsAsync()` outside the try/catch, guarding only the
+> position lookup. If the permission call itself rejects — a concurrent pending
+> request, or a native-layer failure — `status` would stay `'loading'` forever
+> and `request()` would produce an unhandled rejection, putting a permanent
+> silent spinner on the Task 9 home screen. That contradicts the rule that a
+> spinner is never a terminal state. The Task 6 review caught it; the human
+> partner ruled it be fixed. The enclosing try/catch above is the corrected
+> form — do not revert it. The bare `catch {}` is deliberate: adding logging
+> was proposed and explicitly declined.
 
 - [ ] **Step 6: Run the test and verify it passes**
 

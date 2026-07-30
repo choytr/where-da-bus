@@ -92,4 +92,17 @@ describe('useLocation', () => {
 
     expect(result.current.status).toBe('error');
   });
+
+  it('reports an error when the permission request itself rejects', async () => {
+    mockedPermission.mockRejectedValue(new Error('permission request already pending'));
+
+    const { result } = await renderHook(() => useLocation());
+    await act(async () => {
+      await result.current.request();
+    });
+
+    expect(result.current.status).toBe('error');
+    expect(result.current.coords).toBeNull();
+    expect(mockedPosition).not.toHaveBeenCalled();
+  });
 });

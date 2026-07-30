@@ -24,14 +24,14 @@ export function useLocation(): LocationState {
   const request = useCallback(async () => {
     setStatus('loading');
 
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (permission.status !== 'granted') {
-      setStatus('denied');
-      setCoords(null);
-      return;
-    }
-
     try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setStatus('denied');
+        setCoords(null);
+        return;
+      }
+
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
