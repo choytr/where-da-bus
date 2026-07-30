@@ -23,7 +23,7 @@
     "web": "expo start --web",
     "test": "jest",
     "test:watch": "jest --watchAll",
-    "test:scripts": "node --test scripts/build-gtfs/**/*.test.mjs"
+    "test:scripts": "node --test \"scripts/build-gtfs/**/*.test.mjs\""
   },
   "jest": {
     "preset": "jest-expo",

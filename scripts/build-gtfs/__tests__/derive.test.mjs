@@ -24,6 +24,19 @@ describe('parseCsv', () => {
   test('ignores a trailing blank line', () => {
     assert.equal(parseCsv('a\n1\n\n').length, 1);
   });
+
+  test('handles CRLF line endings', () => {
+    const rows = parseCsv('a,b\r\n1,2\r\n3,4\r\n');
+    assert.deepEqual(rows, [
+      { a: '1', b: '2' },
+      { a: '3', b: '4' },
+    ]);
+  });
+
+  test('preserves a newline embedded in a quoted field', () => {
+    const rows = parseCsv('a,b\n"line1\nline2",z\n');
+    assert.deepEqual(rows, [{ a: 'line1\nline2', b: 'z' }]);
+  });
 });
 
 describe('deriveStopRoutes', () => {
@@ -78,5 +91,63 @@ describe('deriveRouteStops', () => {
     ];
     const result = deriveRouteStops(stopTimes, trips);
     assert.deepEqual(result.map((r) => r.stop_id), ['a', 'b']);
+  });
+});
+
+describe('required-field validation', () => {
+  const trips = [{ trip_id: 't1', route_id: '8', direction_id: '0' }];
+
+  test('deriveStopRoutes throws on a stop_times row missing trip_id', () => {
+    const stopTimes = [{ trip_id: '', stop_id: '5', stop_sequence: '1' }];
+    assert.throws(() => deriveStopRoutes(stopTimes, trips), {
+      message: 'Invalid stop_times.txt row 0: missing required field "trip_id"',
+    });
+  });
+
+  test('deriveStopRoutes throws on a stop_times row missing stop_id', () => {
+    const stopTimes = [{ trip_id: 't1', stop_id: '', stop_sequence: '1' }];
+    assert.throws(() => deriveStopRoutes(stopTimes, trips), {
+      message: 'Invalid stop_times.txt row 0: missing required field "stop_id"',
+    });
+  });
+
+  test('deriveStopRoutes reports the actual row index for a later malformed row', () => {
+    const stopTimes = [
+      { trip_id: 't1', stop_id: '5', stop_sequence: '1' },
+      { trip_id: 't1', stop_id: '', stop_sequence: '2' },
+    ];
+    assert.throws(() => deriveStopRoutes(stopTimes, trips), {
+      message: 'Invalid stop_times.txt row 1: missing required field "stop_id"',
+    });
+  });
+
+  test('deriveStopRoutes throws on a trips row missing route_id', () => {
+    const badTrips = [{ trip_id: 't1', route_id: '', direction_id: '0' }];
+    const stopTimes = [{ trip_id: 't1', stop_id: '5', stop_sequence: '1' }];
+    assert.throws(() => deriveStopRoutes(stopTimes, badTrips), {
+      message: 'Invalid trips.txt row 0: missing required field "route_id"',
+    });
+  });
+
+  test('deriveStopRoutes throws on a trips row missing trip_id', () => {
+    const badTrips = [{ trip_id: '', route_id: '8', direction_id: '0' }];
+    const stopTimes = [{ trip_id: 't1', stop_id: '5', stop_sequence: '1' }];
+    assert.throws(() => deriveStopRoutes(stopTimes, badTrips), {
+      message: 'Invalid trips.txt row 0: missing required field "trip_id"',
+    });
+  });
+
+  test('deriveRouteStops throws on a missing stop_sequence', () => {
+    const stopTimes = [{ trip_id: 't1', stop_id: '5', stop_sequence: '' }];
+    assert.throws(() => deriveRouteStops(stopTimes, trips), {
+      message: 'Invalid stop_times.txt row 0: missing required field "stop_sequence"',
+    });
+  });
+
+  test('deriveRouteStops throws on a non-numeric stop_sequence', () => {
+    const stopTimes = [{ trip_id: 't1', stop_id: '5', stop_sequence: 'abc' }];
+    assert.throws(() => deriveRouteStops(stopTimes, trips), {
+      message: 'Invalid stop_times.txt row 0: field "stop_sequence" is "abc", not a number',
+    });
   });
 });

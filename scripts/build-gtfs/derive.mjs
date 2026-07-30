@@ -68,11 +68,40 @@ export function parseCsv(text) {
     });
 }
 
+/**
+ * Required-field guard for parsed GTFS rows. Both derive functions trust
+ * `Record<string, string>` shapes coming straight out of `parseCsv`, so a
+ * blank or missing field would otherwise flow silently into the derived
+ * tables (e.g. `NaN` from `Number('')`) instead of failing where it is cheap
+ * to diagnose.
+ */
+function requireField(row, field, index, source) {
+  const value = row[field];
+  if (value === undefined || value === '') {
+    throw new Error(`Invalid ${source} row ${index}: missing required field "${field}"`);
+  }
+  return value;
+}
+
+/** Like `requireField`, but also checks the value parses as a finite number. */
+function requireNumberField(row, field, index, source) {
+  const raw = requireField(row, field, index, source);
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new Error(
+      `Invalid ${source} row ${index}: field "${field}" is "${raw}", not a number`,
+    );
+  }
+  return value;
+}
+
 function tripToRoute(tripsRows) {
   const map = new Map();
-  for (const trip of tripsRows) {
-    map.set(trip.trip_id, trip);
-  }
+  tripsRows.forEach((trip, index) => {
+    const tripId = requireField(trip, 'trip_id', index, 'trips.txt');
+    requireField(trip, 'route_id', index, 'trips.txt');
+    map.set(tripId, trip);
+  });
   return map;
 }
 
@@ -81,11 +110,13 @@ export function deriveStopRoutes(stopTimesRows, tripsRows) {
   const trips = tripToRoute(tripsRows);
   const seen = new Set();
 
-  for (const stopTime of stopTimesRows) {
-    const trip = trips.get(stopTime.trip_id);
-    if (trip === undefined) continue;
+  stopTimesRows.forEach((stopTime, index) => {
+    const tripId = requireField(stopTime, 'trip_id', index, 'stop_times.txt');
+    requireField(stopTime, 'stop_id', index, 'stop_times.txt');
+    const trip = trips.get(tripId);
+    if (trip === undefined) return;
     seen.add(`${stopTime.stop_id} ${trip.route_id}`);
-  }
+  });
 
   return [...seen]
     .map((key) => {
@@ -109,9 +140,10 @@ export function deriveRouteStops(stopTimesRows, tripsRows) {
   const trips = tripToRoute(tripsRows);
 
   const countByTrip = new Map();
-  for (const stopTime of stopTimesRows) {
-    countByTrip.set(stopTime.trip_id, (countByTrip.get(stopTime.trip_id) ?? 0) + 1);
-  }
+  stopTimesRows.forEach((stopTime, index) => {
+    const tripId = requireField(stopTime, 'trip_id', index, 'stop_times.txt');
+    countByTrip.set(tripId, (countByTrip.get(tripId) ?? 0) + 1);
+  });
 
   const bestTrip = new Map();
   for (const [tripId, count] of countByTrip) {
@@ -130,15 +162,14 @@ export function deriveRouteStops(stopTimesRows, tripsRows) {
   }
 
   const sequences = new Map();
-  for (const stopTime of stopTimesRows) {
+  stopTimesRows.forEach((stopTime, index) => {
     const key = keptTrips.get(stopTime.trip_id);
-    if (key === undefined) continue;
+    if (key === undefined) return;
+    requireField(stopTime, 'stop_id', index, 'stop_times.txt');
+    const order = requireNumberField(stopTime, 'stop_sequence', index, 'stop_times.txt');
     if (!sequences.has(key)) sequences.set(key, []);
-    sequences.get(key).push({
-      order: Number(stopTime.stop_sequence),
-      stop_id: stopTime.stop_id,
-    });
-  }
+    sequences.get(key).push({ order, stop_id: stopTime.stop_id });
+  });
 
   const out = [];
   for (const key of [...sequences.keys()].sort()) {
