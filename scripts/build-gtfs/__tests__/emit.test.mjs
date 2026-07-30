@@ -160,7 +160,7 @@ describe('emitDatabase', () => {
     db.close();
   });
 
-  test('drops a _merge stop that duplicates a plain row’s stop_code', () => {
+  test('drops a _merge stop when a plain row already carries its stop_code', () => {
     const db = new DatabaseSync(':memory:');
     const withDuplicate = [
       ...stops,
@@ -204,7 +204,7 @@ describe('emitDatabase', () => {
     db.close();
   });
 
-  test('takes the dropped duplicate’s stop_routes and route_stops with it', () => {
+  test('takes the dropped duplicate rows in stop_routes and route_stops with it', () => {
     const db = new DatabaseSync(':memory:');
     const withDuplicate = [
       ...stops,
