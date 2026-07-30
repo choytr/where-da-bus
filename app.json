@@ -1,13 +1,15 @@
 {
   "expo": {
-    "name": "new-the-bus",
+    "name": "TheBus Oahu",
     "slug": "new-the-bus",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.choytr.thebusoahu",
+      "deploymentTarget": "18.0"
     },
     "android": {
       "adaptiveIcon": {
