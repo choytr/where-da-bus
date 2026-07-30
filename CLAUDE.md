@@ -15,11 +15,22 @@ the source of truth for scope and sequencing.
 
 ```bash
 npm start              # Expo dev server — scan QR with Expo Go. The normal dev loop.
-npx tsc --noEmit       # Typecheck
+npm test               # Jest: everything that imports React Native
+npm run test:watch     # The same, watching
+npm run test:scripts   # node --test: the GTFS build script, and the SQL against the real asset
+npm run typecheck      # tsc --noEmit
+npm run build:gtfs     # Rebuild assets/db/gtfs.db from the feed (cached in .gtfs-cache)
 ```
 
-No test runner is configured yet. Jest + `jest-expo` + React Native Testing
-Library arrive with Increment 1 — do not reference test commands until they exist.
+**Two test runners, deliberately.** Jest (`jest-expo` preset, React Native
+Testing Library) covers anything that touches React Native. The GTFS build
+script and the SQL are plain Node — `node --test` runs them against
+`node:sqlite` and the real built `assets/db/gtfs.db`, with no React Native in
+the program at all. That is why Jest's config ignores `/scripts/`, and why a
+change to the database layer needs *both* commands run.
+
+`.github/workflows/tests.yml` runs `npm test`, `npm run test:scripts` and
+`npm run typecheck` on Ubuntu for every push and pull request to `main`.
 
 iOS builds do **not** run locally. Pushing to `main` triggers
 `.github/workflows/ios-ipa.yml`, which builds on a GitHub Actions macOS runner.
@@ -48,17 +59,28 @@ account.** Consequences that are not obvious from reading the code:
 
 ## Architecture
 
+What exists after Increment 1. There is no `app/` directory and no
+expo-router: `index.ts` registers `App.tsx` directly.
+
 ```
-app/          expo-router screens
-features/
-  stops/      search, favorites
-  arrivals/   arrival board
-data/
-  thebus/     TheBusClient interface + network implementation
-  gtfs/       bundled static reference data (SQLite)
-  storage/    favorites persistence
-lib/          time, geo
+index.ts              registerRootComponent(App)
+App.tsx               opens the bundled SQLite asset read-only, then HomeScreen
+features/stops/       HomeScreen, StopRow, useLocation — nearby, search, favorites
+data/gtfs/            sql.ts (queries), db.ts (typed hooks), feedValidity.ts
+data/storage/         favorites persistence over AsyncStorage
+lib/distance.ts       haversine metres between two coordinates
+scripts/build-gtfs/   Node build: the GTFS feed -> assets/db/gtfs.db
+assets/db/gtfs.db     the built asset, committed
 ```
+
+Increments 2–3 add `data/thebus/` (the live API client) and
+`features/arrivals/` (the arrival board). Neither exists yet.
+
+**`data/gtfs/package.json` is three bytes and load-bearing.** It holds
+`{"type":"module"}` so Node treats `data/gtfs/sql.ts` as ESM when
+`data/gtfs/__tests__/sql.test.mjs` imports it — the root `package.json`
+declares no `type`. It looks like cruft; deleting it breaks
+`npm run test:scripts`.
 
 Two boundaries carry real weight:
 
@@ -68,10 +90,17 @@ PDFs), and a JSON proxy remains a deferred option — the interface is what keep
 both from rippling into screens.
 
 **GTFS static data is reference-only.** Oahu's feed scores grade F on freshness,
-so bundled data supplies stop names, IDs, and coordinates. Anything
-time-sensitive comes from the live API. Only `stops.txt` and `routes.txt` ship;
-`stop_times.txt` is deliberately excluded as tens of MB answering a question the
-live arrivals endpoint already answers.
+so bundled data supplies stop names, codes, coordinates, and which routes serve
+which stop. Anything time-sensitive comes from the live API. No `.txt` ships:
+`scripts/build-gtfs` reads the feed — including the 73 MB `stop_times.txt` —
+and emits a ~1.2 MB SQLite asset holding only the relationships those files
+imply. `stop_times.txt` itself is deliberately never an asset, being tens of MB
+answering a question the live arrivals endpoint already answers.
+
+The feed states the last day it is valid through, the build carries that into
+the asset's `meta` table, and the home screen says so once that day is past.
+Refreshing the feed on-device is Increment 3; until then a rebuild is
+`npm run build:gtfs` plus a commit of the regenerated asset.
 
 ## Error handling is a feature here
 
