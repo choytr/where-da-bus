@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "TheBus Oahu",
-    "slug": "new-the-bus",
+    "name": "WhereDaBus",
+    "slug": "wheredabus",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.choytr.thebusoahu",
+      "bundleIdentifier": "com.choytr.wheredabus",
       "deploymentTarget": "18.0"
     },
     "android": {

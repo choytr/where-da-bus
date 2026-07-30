@@ -20,7 +20,7 @@ export default function App() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <Text style={[styles.title, { color: theme.text }]}>TheBus Oahu</Text>
+      <Text style={[styles.title, { color: theme.text }]}>WhereDaBus</Text>
       <Text style={[styles.subtitle, { color: theme.muted }]}>
         Pipeline check
       </Text>

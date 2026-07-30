@@ -43,8 +43,8 @@ Repeat this whenever you want the latest code on the phone.
 
 1. Open the [Actions tab](https://github.com/choytr/new-the-bus/actions).
 2. Click the most recent green **Build unsigned iOS IPA** run.
-3. Download the **TheBusOahu-ipa** artifact. GitHub serves it as a `.zip`
-   containing `TheBusOahu.ipa`.
+3. Download the **app-ipa** artifact. GitHub serves it as a `.zip` containing
+   `WhereDaBus.ipa`.
 4. Get the `.ipa` onto the phone — iCloud Drive, AirDrop from another device, or
    a direct download in Safari on the phone all work.
 5. In SideStore: **My Apps** → **+** → pick the `.ipa`.

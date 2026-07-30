@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-An unofficial real-time bus tracking app for Oahu (React Native + Expo, iOS 18+),
-replacing the discontinued DaBus / HEA-TheBus apps. The design lives in
-`docs/superpowers/specs/2026-07-29-thebus-oahu-design.md` and is the source of
-truth for scope and sequencing.
+**WhereDaBus** — an unofficial real-time bus tracking app for Oahu (React
+Native + Expo, iOS 18+), replacing the discontinued DaBus / HEA-TheBus apps. The
+design lives in `docs/superpowers/specs/2026-07-29-wheredabus-design.md` and is
+the source of truth for scope and sequencing.
 
 ## Commands
 

@@ -1,4 +1,4 @@
-# TheBus Oahu — Design
+# WhereDaBus — Design
 
 **Date:** 2026-07-29
 **Status:** Approved
