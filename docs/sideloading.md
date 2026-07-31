@@ -36,7 +36,7 @@ case [replace it with iloader](https://docs.sidestore.io/docs/advanced/pairing-f
 
 Repeat this whenever you want the latest code on the phone.
 
-1. Open the [Actions tab](https://github.com/choytr/new-the-bus/actions).
+1. Open the [Actions tab](https://github.com/choytr/where-da-bus/actions).
 2. Click the most recent green **Build unsigned iOS IPA** run.
 3. Download the **app-ipa** artifact. GitHub serves it as a `.zip` containing
    `WhereDaBus.ipa`.
