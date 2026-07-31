@@ -23,6 +23,22 @@ jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
 
+/**
+ * `initialWindowMetrics` is read from the native module at import time and is
+ * `null` off-device. A `SafeAreaProvider` seeded with `null` renders its
+ * children only once native reports the window — which never happens under
+ * Jest — so the whole tree would come back empty and every assertion below
+ * would fail for a reason that has nothing to do with the database gate.
+ * Substituting a real device's metrics is what native would have supplied.
+ */
+jest.mock('react-native-safe-area-context', () => ({
+  ...jest.requireActual('react-native-safe-area-context'),
+  initialWindowMetrics: {
+    frame: { x: 0, y: 0, width: 393, height: 852 },
+    insets: { top: 59, left: 0, right: 0, bottom: 34 },
+  },
+}));
+
 const sqlite = () => jest.requireMock('expo-sqlite');
 
 describe('App', () => {

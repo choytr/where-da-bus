@@ -2,6 +2,7 @@ import { Component, Suspense, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View, useColorScheme } from 'react-native';
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { DISCLAIMER, HomeScreen } from './features/stops/HomeScreen';
 
 /**
@@ -27,7 +28,27 @@ async function openReadOnly(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA query_only = ON;');
 }
 
+/**
+ * `SafeAreaView` is a native view that finds its insets by walking *up the
+ * native view tree* for an `RNCSafeAreaProvider` (see
+ * ios/Fabric/RNCSafeAreaViewComponentView.mm, `findNearestProvider`). With no
+ * provider that walk falls through to the view itself and the insets come back
+ * zero — which put the search field under the Dynamic Island. The provider is
+ * what makes the inset real, so it wraps everything, including the two states
+ * that render before the database is open.
+ *
+ * `initialWindowMetrics` seeds the first frame from values the native side
+ * already knows, so the screen does not paint once at zero inset and jump.
+ */
 export default function App() {
+  return (
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+      <AppContent />
+    </SafeAreaProvider>
+  );
+}
+
+function AppContent() {
   return (
     <DatabaseGate>
       <Suspense fallback={<Waiting />}>

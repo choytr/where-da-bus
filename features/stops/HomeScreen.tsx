@@ -9,7 +9,7 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStopQueries } from '../../data/gtfs/db';
 import { feedValidity, formatFeedDate } from '../../data/gtfs/feedValidity';
 import { useLocation } from './useLocation';
@@ -116,6 +116,7 @@ const keptStops = (search: SearchState): Listed[] =>
 export function HomeScreen() {
   const isDark = useColorScheme() === 'dark';
   const palette = isDark ? dark : light;
+  const insets = useSafeAreaInsets();
 
   const { nearby, searchByName, searchByCode, routesForStops, stopsByIds, feedEndDate } =
     useStopQueries();
@@ -325,7 +326,14 @@ export function HomeScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.screen, { backgroundColor: palette.background }]}>
+    // Top, left and right only. The bottom inset is applied to the list's
+    // content instead (see contentContainerStyle), so rows scroll under the
+    // home indicator the way a native list does rather than stopping short of
+    // it, while the last row still comes to rest above it.
+    <SafeAreaView
+      edges={['top', 'left', 'right']}
+      style={[styles.screen, { backgroundColor: palette.background }]}
+    >
       <TextInput
         value={query}
         onChangeText={setQuery}
@@ -427,6 +435,7 @@ export function HomeScreen() {
           </View>
         }
         keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: insets.bottom }}
       />
     </SafeAreaView>
   );

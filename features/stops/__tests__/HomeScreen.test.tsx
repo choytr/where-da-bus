@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react-native';
+import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { HomeScreen } from '../HomeScreen';
 import type { RouteSummary, Stop, StopWithDistance } from '../../../data/gtfs/types';
 import type { LocationState } from '../useLocation';
@@ -87,6 +88,26 @@ const noRoutes = new Map<string, RouteSummary[]>([
   ['6', []],
 ]);
 
+/**
+ * A Dynamic Island phone's metrics. The provider is not decoration here: the
+ * screen calls `useSafeAreaInsets`, which throws without one, and a provider
+ * given no `initialMetrics` renders `null` under Jest — nothing native ever
+ * measures the window, so it waits forever for insets that never arrive.
+ * Passing metrics explicitly is what makes the tree render at all.
+ */
+const IPHONE_METRICS: Metrics = {
+  frame: { x: 0, y: 0, width: 393, height: 852 },
+  insets: { top: 59, left: 0, right: 0, bottom: 34 },
+};
+
+function renderScreen() {
+  return render(
+    <SafeAreaProvider initialMetrics={IPHONE_METRICS}>
+      <HomeScreen />
+    </SafeAreaProvider>,
+  );
+}
+
 // @testing-library/react-native@14.0.1 returns a Promise from `render`,
 // `fireEvent.*` and `renderHook`; `screen` only populates once it resolves, so
 // every call here is awaited (see dist/render.d.ts, dist/fire-event.d.ts).
@@ -108,14 +129,14 @@ describe('HomeScreen', () => {
   });
 
   it('prompts for location before any is granted', async () => {
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/stops near you/i));
   });
 
   it('says it is locating while the permission request is in flight', async () => {
     mockLocation.status = 'loading';
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/finding your location/i));
     expect(screen.queryByText(/stops near you/i)).toBeNull();
   });
@@ -124,7 +145,7 @@ describe('HomeScreen', () => {
     mockLocation.status = 'granted';
     mockLocation.coords = { lat: 21.32, lon: -157.9 };
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText('LAGOON DR + IOLANA PL'));
     screen.getByText('LAGOON DR + KAPALULU PL');
     screen.getByText('120 m');
@@ -135,7 +156,7 @@ describe('HomeScreen', () => {
     mockLocation.coords = { lat: 21.32, lon: -157.9 };
     mockQueries.nearby.mockResolvedValue([]);
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/no stops found within walking distance/i));
     expect(screen.queryByText(/something went wrong/i)).toBeNull();
   });
@@ -143,7 +164,7 @@ describe('HomeScreen', () => {
   it('remains usable when location is denied', async () => {
     mockLocation.status = 'denied';
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/search for a stop/i));
     expect(screen.queryByText('LAGOON DR + IOLANA PL')).toBeNull();
     screen.getByPlaceholderText(/stop number or name/i);
@@ -152,7 +173,7 @@ describe('HomeScreen', () => {
   it('distinguishes a location failure from a location denial', async () => {
     mockLocation.status = 'error';
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/could not read your location/i));
     expect(screen.queryByText(/location is off/i)).toBeNull();
   });
@@ -164,7 +185,7 @@ describe('HomeScreen', () => {
       { stop_id: '9999', stop_code: '9999', stop_name: 'FAR AWAY STOP', lat: 21.5, lon: -158.1 },
     ]);
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText('FAR AWAY STOP'));
     screen.getByText(/location is off/i);
   });
@@ -172,7 +193,7 @@ describe('HomeScreen', () => {
   it('searches by stop number when the query is numeric', async () => {
     mockQueries.searchByCode.mockResolvedValue(stopA);
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await fireEvent.changeText(
       screen.getByPlaceholderText(/stop number or name/i),
       '5',
@@ -186,7 +207,7 @@ describe('HomeScreen', () => {
   it('searches by name when the query is not numeric', async () => {
     mockQueries.searchByName.mockResolvedValue([stopA]);
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await fireEvent.changeText(
       screen.getByPlaceholderText(/stop number or name/i),
       'lagoon',
@@ -203,7 +224,7 @@ describe('HomeScreen', () => {
     // rider is still typing.
     mockQueries.searchByName.mockResolvedValue([stopA]);
 
-    await render(<HomeScreen />);
+    await renderScreen();
     const field = screen.getByPlaceholderText(/stop number or name/i);
     await fireEvent.changeText(field, 'l');
     await fireEvent.changeText(field, 'la');
@@ -223,7 +244,7 @@ describe('HomeScreen', () => {
     mockLocation.coords = { lat: 21.32, lon: -157.9 };
     mockQueries.searchByName.mockResolvedValue([stopA]);
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText('LAGOON DR + KAPALULU PL'));
     await fireEvent.changeText(
       screen.getByPlaceholderText(/stop number or name/i),
@@ -243,7 +264,7 @@ describe('HomeScreen', () => {
   it('says it is searching while a query is in flight', async () => {
     mockQueries.searchByName.mockResolvedValue([stopA]);
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await fireEvent.changeText(
       screen.getByPlaceholderText(/stop number or name/i),
       'lagoon',
@@ -256,7 +277,7 @@ describe('HomeScreen', () => {
   it('says a search matched nothing, in different words from having no stops nearby', async () => {
     mockQueries.searchByName.mockResolvedValue([]);
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await fireEvent.changeText(
       screen.getByPlaceholderText(/stop number or name/i),
       'zzzz',
@@ -281,7 +302,7 @@ describe('HomeScreen', () => {
     mockQueries.stopsByIds.mockResolvedValue([distant]);
     mockQueries.routesForStops.mockResolvedValue(new Map([['9999', []]]));
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText('FAR AWAY STOP'));
   });
 
@@ -291,7 +312,7 @@ describe('HomeScreen', () => {
     mockFavorites.addFavorite.mockResolvedValue(['6']);
     mockQueries.stopsByIds.mockResolvedValue([stopB]);
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText('LAGOON DR + KAPALULU PL'));
     await fireEvent.press(
       screen.getByLabelText('Add LAGOON DR + KAPALULU PL to favorites'),
@@ -311,7 +332,7 @@ describe('HomeScreen', () => {
     mockQueries.nearby.mockResolvedValue([{ ...stopA, meters: 120 }]);
     mockQueries.routesForStops.mockResolvedValue(new Map());
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText('LAGOON DR + IOLANA PL'));
   });
 
@@ -320,7 +341,7 @@ describe('HomeScreen', () => {
     mockLocation.coords = { lat: 21.32, lon: -157.9 };
     mockQueries.nearby.mockRejectedValue(new Error('disk I/O error'));
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/something went wrong reading the stop list/i));
     expect(screen.queryByText(/no stops found within walking distance/i)).toBeNull();
   });
@@ -328,7 +349,7 @@ describe('HomeScreen', () => {
   it('reports a failure to read saved favorites', async () => {
     mockFavorites.loadFavorites.mockRejectedValue(new Error('storage unavailable'));
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/something went wrong reading your saved favorites/i));
   });
 
@@ -337,7 +358,7 @@ describe('HomeScreen', () => {
     mockLocation.status = 'granted';
     mockLocation.coords = { lat: 21.32, lon: -157.9 };
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/published for service through 1 January 2020/i));
     // Old, not broken: nothing about it reads like a failure, and the list
     // underneath it still works.
@@ -346,7 +367,7 @@ describe('HomeScreen', () => {
   });
 
   it('stays quiet while the bundled stop data is still within its published period', async () => {
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/stops near you/i));
     expect(screen.queryByText(/published for service through/i)).toBeNull();
   });
@@ -355,13 +376,13 @@ describe('HomeScreen', () => {
     // No claim on record is not the same as a claim that has lapsed.
     mockQueries.feedEndDate.mockResolvedValue(null);
 
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/stops near you/i));
     expect(screen.queryByText(/published for service through/i)).toBeNull();
   });
 
   it('shows the required attribution', async () => {
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() =>
       screen.getByText(
         'Route and arrival data provided by permission of Oahu Transit Services, Inc',
@@ -370,7 +391,7 @@ describe('HomeScreen', () => {
   });
 
   it('states it is not affiliated with the agency', async () => {
-    await render(<HomeScreen />);
+    await renderScreen();
     await waitFor(() => screen.getByText(/not affiliated with or endorsed by/i));
   });
 });
