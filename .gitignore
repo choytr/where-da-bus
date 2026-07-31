@@ -40,3 +40,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# GTFS download cache — inputs to scripts/build-gtfs, not app assets
+.gtfs-cache/

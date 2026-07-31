@@ -1,6 +1,12 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    // "node" is required so `import { DatabaseSync } from 'node:sqlite'` resolves in the
+    // GTFS build script and its SQL tests (Tasks 3 and 4) — those files share this program.
+    // Cost: @types/node's ambient setTimeout/setInterval overloads (returning NodeJS.Timeout)
+    // win over React Native's (returning number). Type RN timer handles as `number`, never
+    // `NodeJS.Timeout` — see CLAUDE.md.
+    "types": ["jest", "node"]
   }
 }

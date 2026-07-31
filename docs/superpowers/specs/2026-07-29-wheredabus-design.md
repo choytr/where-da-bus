@@ -1,4 +1,4 @@
-# TheBus Oahu — Design
+# WhereDaBus — Design
 
 **Date:** 2026-07-29
 **Status:** Approved
@@ -385,11 +385,27 @@ never blocks on location.
 
 ## Open questions
 
-Resolved at AppID registration, all of which block Increment 2 and none of which
-block Increments 0 or 1:
+**Mostly resolved on 2026-07-31** by reading the vendor documentation obtained
+at AppID registration. Full detail in `docs/api/README.md`; summarised here so
+this section is not misleading.
 
-- Exact endpoint URLs, parameters, and response schemas
-- Whether JSON is genuinely available (removing the XML parsing requirement)
-- Published rate limits, which set the safe poll interval
-- Whether the GTFS-RT feed is openly accessible and what message types it carries
-- Exact required attribution wording
+| Question | Answer |
+|---|---|
+| Exact endpoint URLs, parameters, response schemas | Resolved — three endpoints, documented field by field |
+| Is JSON genuinely available? | **Yes.** `arrivalsJSON`, `vehicleJSON`, `routeJSON`. No XML parser needed |
+| Published rate limits | 250,000 requests/day per AppID — not a constraint at this scale |
+| Required attribution wording | Resolved and verified verbatim; see the Legal section of `CLAUDE.md` |
+| Is the GTFS-RT feed openly accessible, and what message types? | **Still open** — not mentioned anywhere in the vendor docs |
+
+Two new questions took their place, both of which block Increment 2:
+
+- **The documented base URL is `http://`, with no HTTPS endpoint anywhere in
+  the docs.** iOS App Transport Security blocks cleartext HTTP, so a plain
+  `fetch` fails on device while working fine in Node. Try `https://` first; if
+  that fails, a host-scoped `NSExceptionDomains` entry is a native-config
+  change and therefore rides the slow CI loop.
+- **Error and empty-result shapes are undocumented.** Only the field name
+  `errorMessage` is specified — no example, no HTTP status contract, and no
+  statement of what a stop with no upcoming buses returns. The app must tell
+  "no buses coming" apart from "request failed", so this needs settling
+  empirically against the live API before the arrival board is designed.

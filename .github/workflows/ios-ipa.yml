@@ -93,16 +93,19 @@ jobs:
             echo "No .app produced — build failed silently"
             exit 1
           fi
-          echo "Packaging $APP"
+          # Name the .ipa after the built .app rather than hardcoding it, so a
+          # rename in app.json cannot leave this step pointing at a stale name.
+          NAME=$(basename "$APP" .app)
+          echo "Packaging $APP as $NAME.ipa"
           mkdir -p Payload
           cp -R "$APP" Payload/
-          zip -qry TheBusOahu.ipa Payload
-          ls -lh TheBusOahu.ipa
+          zip -qry "$NAME.ipa" Payload
+          ls -lh "$NAME.ipa"
 
       - name: Upload .ipa artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TheBusOahu-ipa
-          path: TheBusOahu.ipa
+          name: app-ipa
+          path: "*.ipa"
           if-no-files-found: error
           retention-days: 30

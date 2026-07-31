@@ -8,43 +8,38 @@ using a free Apple ID, which is what makes the no-Mac path possible.
 
 ## One-time setup
 
-You only do this once. Budget 30–45 minutes; most of it is waiting.
+You only do this once. Follow the
+[official SideStore install guide](https://docs.sidestore.io/docs/installation/install)
+and its [prerequisites](https://docs.sidestore.io/docs/installation/prerequisites) —
+that guide is the authority, and this process changes often enough that anything
+written down here goes stale. In outline, on Windows:
 
-### 1. Generate a pairing file (Windows)
-
-SideStore needs a pairing file to talk to the phone.
-
-1. Install [iTunes from Apple's site](https://www.apple.com/itunes/download/win32) —
-   **not** the Microsoft Store version. The Store version does not expose the
-   drivers the pairing tool needs.
-2. Download `jitterbugpair.exe` from the
-   [JitterbugPair releases](https://github.com/osy/Jitterbug/releases).
+1. Install iTunes (Microsoft Store or Apple's site — either works).
+2. Install [iloader](https://github.com/nab138/iloader) (MSI recommended).
 3. Connect the iPhone by USB, unlock it, and tap **Trust**.
-4. Run `jitterbugpair.exe`. It writes a `.mobiledevicepairing` file next to itself.
-
-### 2. Install SideStore
-
-Follow the [official SideStore install guide](https://docs.sidestore.io/docs/installation/).
-In outline:
-
-1. Install SideStore's `.ipa` onto the phone using
-   [idevicerestore/AltServer](https://docs.sidestore.io/docs/installation/) as
-   the guide directs.
-2. Open SideStore, import the pairing file from step 1.
-3. Sign in with your Apple ID. Use an
+4. In iloader: sign in with your Apple ID, select the device, choose
+   **Install SideStore (Stable)**. Use an
    [app-specific password](https://support.apple.com/en-us/HT204397) if you have
    two-factor auth on.
-4. Enable **StosVPN** when prompted. SideStore needs it to refresh apps on-device
-   over WiFi, with no computer involved.
+5. On the phone: trust the developer certificate under **VPN & Device
+   Management**, enable Developer Mode, and connect **LocalDevVPN** — it must be
+   active whenever you install, update, or refresh an app.
+
+iloader handles the pairing file itself; you do not generate one by hand.
+Older guides describe doing this with **JitterbugPair**, which SideStore now
+lists under
+[alternative/outdated instructions](https://docs.sidestore.io/docs/advanced/alternative) —
+skip it. A pairing file can expire if the phone is updated or reset, in which
+case [replace it with iloader](https://docs.sidestore.io/docs/advanced/pairing-file).
 
 ## Installing a build
 
 Repeat this whenever you want the latest code on the phone.
 
-1. Open the [Actions tab](https://github.com/choytr/new-the-bus/actions).
+1. Open the [Actions tab](https://github.com/choytr/where-da-bus/actions).
 2. Click the most recent green **Build unsigned iOS IPA** run.
-3. Download the **TheBusOahu-ipa** artifact. GitHub serves it as a `.zip`
-   containing `TheBusOahu.ipa`.
+3. Download the **app-ipa** artifact. GitHub serves it as a `.zip` containing
+   `WhereDaBus.ipa`.
 4. Get the `.ipa` onto the phone — iCloud Drive, AirDrop from another device, or
    a direct download in Safari on the phone all work.
 5. In SideStore: **My Apps** → **+** → pick the `.ipa`.
@@ -62,8 +57,8 @@ These are Apple's constraints on free provisioning, not choices this project mad
 | No push notifications | Ruled out for this project regardless |
 | 10 app IDs per 7 days | Only relevant if the bundle identifier changes often |
 
-StosVPN makes the weekly refresh a background on-device operation, so in practice
-it is a notification you dismiss rather than a chore requiring a computer.
+With LocalDevVPN connected, the weekly refresh happens on-device over WiFi, so in
+practice it is a notification you dismiss rather than a chore requiring a computer.
 
 ## Day-to-day development does not need any of this
 
