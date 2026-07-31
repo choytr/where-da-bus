@@ -34,7 +34,11 @@
     "preset": "jest-expo",
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/scripts/"
+      "/scripts/",
+      "/.claude/"
+    ],
+    "modulePathIgnorePatterns": [
+      "/.claude/"
     ]
   },
   "private": true

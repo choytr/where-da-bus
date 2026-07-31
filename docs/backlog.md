@@ -77,11 +77,22 @@ future feed with an id-format change would lose rows invisibly.
 
 ## Tests
 
+- **The suite flakes on a cold Jest cache — observed, not predicted.** On
+  2026-07-31, immediately after `npm ci`, `App › shows the stop list once the
+  database is open` and `HomeScreen › prompts for location before any is
+  granted` both failed; the same suite passed on every warm-cache run
+  (~4 s versus ~20 s cold). Both failures are `waitFor` calls timing out at the
+  1 s default while the transform cache is still being built.
+
+  **This is a CI problem specifically**, because `.github/workflows/tests.yml`
+  runs `npm ci` followed by `npm test` — a cold cache every time, on a shared
+  runner. Expect intermittent red. The cheap mitigations are raising the
+  `waitFor` timeout for these tests or warming the cache in CI; the honest one
+  is that these assertions should not be racing a timer at all.
 - **The debounce test is real-timer dependent** with roughly 50 ms of headroom,
   two-sidedly: too slow and it sees 2+ calls, too fast and a sibling test
-  fails. Now that CI runs the suite on a shared runner, this is the likely
-  first flake. RNTL 14's `waitFor` does detect fake timers and advance them, so
-  the original "fake timers would hang RNTL" justification was overstated.
+  fails. RNTL 14's `waitFor` does detect fake timers and advance them, so the
+  original "fake timers would hang RNTL" justification was overstated.
 - `HomeScreen.test.tsx` asserts `/search for a stop/i` in a place where that
   matches **both** the denied and error copy — the two states could collapse
   into one and the suite would still pass. This is precisely the defect class
