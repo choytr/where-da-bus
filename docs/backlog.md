@@ -119,15 +119,19 @@ exit in `scripts/pdf-text.mjs`, the undocumented `adherence` unit, the
 `.claude/` exclusions for git and tsc, and the safe-area guard assertion. What
 was consciously left:
 
-- **The keyboard covers the search results.** `HomeScreen`'s `FlatList` sets
-  neither `automaticallyAdjustKeyboardInsets` (RN defaults it to `false`) nor
-  `keyboardDismissMode`, on a screen whose primary interaction is typing into a
-  field and reading the list beneath it. Two props. Not a regression — it has
-  always been this way — which is why it is here rather than in the fix batch.
-- `contentContainerStyle={{ paddingBottom: insets.bottom }}` allocates a new
-  object per render, in a file that keeps `NO_STOPS` around specifically to
-  avoid that. `scrollIndicatorInsets` is the usual companion prop and is unset,
-  so the scroll indicator runs under the home indicator.
+- ~~**The keyboard covers the search results.**~~ Fixed by hand in `ffc7190` and
+  `037c7c0`: `automaticallyAdjustKeyboardInsets`, plus `keyboardDismissMode` as
+  `interactive` on iOS rather than `on-drag`, so the keyboard tracks the finger
+  the way Messages and Mail do.
+- ~~`contentContainerStyle` allocates a new object per render~~ — memoised on
+  `insets.bottom` in `037c7c0`. **`scrollIndicatorInsets` is still unset**, so
+  the scroll indicator still runs under the home indicator. That half remains
+  open.
+- Two leftovers from those two commits, neither caught by `tsc`
+  (`noUnusedLocals` is off): `EdgeInsets` is imported into `HomeScreen.tsx` and
+  never used, and the memo wraps its value in `Platform.select({ default: … })`,
+  which returns that value on every platform — the `useMemo` is what does the
+  work, the select is indirection.
 - `App.tsx`'s `Waiting` and `Unavailable` consume no insets. Safe today only
   because their content is vertically centred, and `Unavailable` is the screen
   every render error currently lands on.
