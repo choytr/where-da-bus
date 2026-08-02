@@ -92,7 +92,7 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
   const palette = useColorScheme() === 'dark' ? dark : light;
   const insets = useSafeAreaInsets();
   const { searchByCode } = useStopQueries();
-  const { board, failure, fetchedAt, loading, refresh } = useArrivals(stopCode, client);
+  const { board, failure, fetchedAt, loading, refreshing, refresh } = useArrivals(stopCode, client);
   const tick = useNow(TICK_MS);
 
   const [stop, setStop] = useState<Stop | null>(null);
@@ -161,9 +161,9 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
       keyExtractor={(arrival) => arrival.id}
       stickySectionHeadersEnabled={false}
       refreshControl={
-        // Pull-to-refresh, and deliberately never spinning on its own: a
-        // refresh in progress must not be able to replace the times on screen.
-        <RefreshControl refreshing={false} onRefresh={refresh} tintColor={palette.muted} />
+        // Spins only for a pull, never for the 60s poll, and never in place
+        // of the list — the times stay readable the whole way through.
+        <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={palette.muted} />
       }
       ListHeaderComponent={
         <View style={styles.header}>

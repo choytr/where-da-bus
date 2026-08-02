@@ -260,6 +260,41 @@ describe('useArrivals', () => {
     expect(client.calls).toBe(2);
   });
 
+  it('flags a pull-to-refresh while it runs, but never a background poll', async () => {
+    // The distinction the RefreshControl depends on. A spinner that blinked
+    // every 60 seconds would be noise, and one that never appeared would make
+    // a pull feel broken.
+    const pending = deferred<ArrivalsResult>();
+    let call = 0;
+    const client: TheBusClient = {
+      arrivals: async () => (call++ === 0 ? boardResult('45') : pending.promise),
+    };
+    const { result } = await renderHook(() => useArrivals('45', client));
+
+    await flush();
+    expect(result.current.refreshing).toBe(false);
+
+    await act(async () => {
+      result.current.refresh();
+    });
+    expect(result.current.refreshing).toBe(true);
+
+    await act(async () => {
+      pending.settle(boardResult('45'));
+    });
+    expect(result.current.refreshing).toBe(false);
+  });
+
+  it('does not flag refreshing for the 60-second poll', async () => {
+    const client = clientReturning(boardResult('45'));
+    const { result } = await renderHook(() => useArrivals('45', client));
+
+    await flush();
+    await advance(60_000);
+
+    expect(result.current.refreshing).toBe(false);
+  });
+
   it('starts over when the stop changes', async () => {
     // The second stop's response is held open so the state between the two
     // can be observed. That gap is the point of the test: it is where the

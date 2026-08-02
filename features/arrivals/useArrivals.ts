@@ -36,6 +36,13 @@ export type ArrivalsView = {
   readonly fetchedAt: Date | null;
   /** True only before anything has been shown. Never true over a cached board. */
   readonly loading: boolean;
+  /**
+   * True while a *user-initiated* refresh is in flight, for a pull-to-refresh
+   * control and nothing else. Background polls deliberately do not set it: a
+   * spinner blinking every 60 seconds would be noise, and this must never be
+   * allowed to gate the list — that is the rule `loading` already carries.
+   */
+  readonly refreshing: boolean;
   readonly refresh: () => void;
 };
 
@@ -44,6 +51,7 @@ export function useArrivals(stopCode: string, client: TheBusClient = theBus): Ar
   const [failure, setFailure] = useState<ArrivalsFailure | null>(null);
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   /**
    * Resetting during render rather than in an effect, so that navigating to
@@ -81,8 +89,11 @@ export function useArrivals(stopCode: string, client: TheBusClient = theBus): Ar
     [client, stopCode],
   );
 
-  /** Set by the effect below so `refresh` can reach the current fetch. */
-  const fetchNow = useRef<() => void>(() => {});
+  /**
+   * Set by the effect below so `refresh` can reach the current fetch. It hands
+   * back the in-flight promise so a pull-to-refresh can tell when it is done.
+   */
+  const fetchNow = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     let inFlight = new AbortController();
@@ -94,7 +105,7 @@ export function useArrivals(stopCode: string, client: TheBusClient = theBus): Ar
       // times than the ones already on screen.
       inFlight.abort();
       inFlight = new AbortController();
-      void load(inFlight.signal);
+      return load(inFlight.signal);
     };
 
     const startPolling = () => {
@@ -107,7 +118,7 @@ export function useArrivals(stopCode: string, client: TheBusClient = theBus): Ar
     };
 
     fetchNow.current = tick;
-    tick();
+    void tick();
     startPolling();
 
     /**
@@ -118,7 +129,7 @@ export function useArrivals(stopCode: string, client: TheBusClient = theBus): Ar
      */
     const subscription = AppState.addEventListener('change', (status) => {
       if (status === 'active') {
-        tick();
+        void tick();
         startPolling();
       } else {
         pausePolling();
@@ -133,7 +144,10 @@ export function useArrivals(stopCode: string, client: TheBusClient = theBus): Ar
     };
   }, [load]);
 
-  const refresh = useCallback(() => fetchNow.current(), []);
+  const refresh = useCallback(() => {
+    setRefreshing(true);
+    void fetchNow.current().finally(() => setRefreshing(false));
+  }, []);
 
-  return { board, failure, fetchedAt, loading, refresh };
+  return { board, failure, fetchedAt, loading, refreshing, refresh };
 }

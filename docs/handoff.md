@@ -4,17 +4,25 @@
 session picks up. Update it at the end of a session rather than writing fresh
 instructions each time — that is the whole point of it existing.
 
-Last updated: **2026-08-02**, end of the post-Increment-1 cleanup session.
-Everything below was true at commit `b01cf14`, with all three suites green:
-90 Jest, 63 `node --test`, clean typecheck, expo-doctor 18/18.
+Last updated: **2026-08-02**, end of the Increment 2 build session.
+Everything below was true on branch `dev`, with all three suites green:
+**179 Jest, 70 `node --test`, clean typecheck, expo-doctor 18/18.**
+
+**Work happens on `dev` now.** Truman created it so changes can reach GitHub
+without triggering the macOS `.ipa` build. Commit and push there freely;
+**merging to `main` needs his explicit permission.** `tests.yml` was extended
+to run on `dev` too — "no build" must not mean "no tests", and that trigger
+caught a real break within one commit of being added.
 
 ---
 
 ## Read these first, in this order
 
 1. **`CLAUDE.md`** — the traps, written down so they are not re-derived from
-   source every session. The safe-area provider, the `number`-not-`NodeJS.Timeout`
-   rule, the two test runners, the legal constants, and the SDK ceiling.
+   source every session. The safe-area provider, timer handles, the two test
+   runners, the legal constants, the SDK ceiling, and — new in Increment 2 —
+   that **React Native Testing Library 14 is async and fails silently** when a
+   `render`/`renderHook` is not awaited.
 2. **`docs/superpowers/specs/2026-07-29-wheredabus-design.md`** — scope and
    sequencing, the source of truth for what belongs in which increment.
 3. **`docs/api/README.md`** — the live API, verified against the vendor PDFs.
@@ -27,14 +35,17 @@ was done once, deliberately, and the README exists so it is not done again.
 
 ## Where the project is
 
-Increment 1 shipped: nearby stops by distance, search by name and stop number,
-favorites, and the routes serving each stop — all on bundled static GTFS data,
-no network. Its review is closed; everything not fixed is in `docs/backlog.md`.
+Increment 1 shipped nearby stops, search, favorites and the routes serving each
+stop, all offline. **Increment 2 is built and its code is on `dev`**: live
+arrivals per stop with the §4 state model, and route detail with an ordered
+stop list. What remains is device verification — see the top of the next
+section.
 
-Green as of the last commit: **90 Jest tests, 63 `node --test` tests, clean
-typecheck, expo-doctor 18/18.** Run all three — `npm test`, `npm run
-test:scripts`, `npm run typecheck` — before claiming anything works. A change to
-the database layer needs both test commands, for the reason CLAUDE.md gives.
+Run all three — `npm test`, `npm run test:scripts`, `npm run typecheck` —
+before claiming anything works. A change to the database layer needs both test
+commands, for the reason CLAUDE.md gives. **Also run `npm ci` after touching
+dependencies**: `npm install` tolerates a peer conflict that `npm ci` refuses,
+so the tree can be entirely green while every clean install fails.
 
 **The SDK is pinned to 54 and this is not negotiable.** Expo Go on iOS 18 tops
 out there, and the fast loop is the whole development model. Install with
@@ -43,37 +54,56 @@ out there, and the fast loop is the whole development model. Install with
 build and prebuild toolchains, none reach the device, and they have been
 triaged — do not "fix" them.
 
-## What Increment 2 is
+## What to pick up first
 
-Per the design spec: **live arrivals per stop**, with the §4 state model, and
-**route detail with an ordered stop list**. It is the first increment that
-touches the network.
+**Verify Increment 2 on the phone.** This is the one thing not done, and it is
+the thing this project does not cut. `gh workflow run ios-ipa.yml --ref dev`
+builds without merging. What to look at, in rough order of risk:
 
-Two directories that do not exist yet:
+1. **The safe area on the two new screens.** They are the first screens with
+   the stack's native header, and the header is what handles the top inset now
+   — `index` keeps `headerShown: false` because HomeScreen draws its own. This
+   is exactly the class of bug that nine review rounds and 90 tests missed last
+   time, and it cannot be seen anywhere but on a device.
+2. **Tapping a stop, then a route, then back.** The back swipe comes from the
+   native stack; nothing under Jest exercises it.
+3. **An arrival board at a real stop.** Whether "Scheduled — no bus tracking
+   yet" reads right when it is 23 of 25 rows, which is the normal case.
+4. **Backgrounding and returning.** The poll stops and refetches immediately;
+   the age line should jump.
 
-- **`data/thebus/`** — the `TheBusClient` interface and its network
-  implementation. UI code never touches a raw API response. The vendor JSON is
-  string-typed throughout, disagrees with its own field tables in three places,
-  and uses `"0"` and `"???"` as sentinels, so the mapping into app types is real
-  work and it belongs here rather than in a screen.
-- **`features/arrivals/`** — the arrival board.
+Then review the whole diff at the increment boundary, per CLAUDE.md, and put
+what is not worth fixing into `docs/backlog.md` — Increment 2's deferrals are
+already there under "Increment 2 — deferred".
+
+## What Increment 2 built
+
+- **`data/thebus/`** — `TheBusClient` and its network implementation, with
+  `parse.ts` and `time.ts` as pure, separately tested pieces. Fixtures are real
+  captured responses, not hand-written; the vendor documentation is wrong in
+  two places that matter.
+- **`features/arrivals/`** — the board: one chronological list sectioned by
+  direction, matching the discontinued DaBus app. `useArrivals` owns the §4
+  state model; `format.ts` is pure and takes `now` as an argument.
+- **`features/routes/`** — route detail, entirely offline from `route_stops`.
+- **expo-router** — Truman's call over React Navigation. `AppShell.tsx` keeps
+  the old `App.tsx` body and takes children, so `app/_layout.tsx` is ten lines
+  and the safe-area provider did not have to be re-derived.
 
 The AppID lives in `.env` as `EXPO_PUBLIC_THEBUS_APP_ID` (see `.env.example`).
-It is already set locally. `EXPO_PUBLIC_` means it ships inside the bundle and
-is extractable from the `.ipa` — an accepted, documented tradeoff, not an
-oversight to fix.
+`EXPO_PUBLIC_` means it ships inside the bundle and is extractable from the
+`.ipa` — an accepted, documented tradeoff, not an oversight to fix.
 
-### Settled already
+### Settled, and now implemented
 
-- **Poll interval is 60s**, paused when backgrounded. Buses report position
-  about once a minute, so a shorter interval doubles request volume for
-  identical payloads. The handle is typed `number` — see CLAUDE.md, this one
-  typechecks clean and then fails at runtime if you get it wrong.
+- **Poll interval is 60s**, paused when backgrounded, refetching immediately on
+  return. Timer handles go through `lib/schedule.ts`, which hands back a
+  canceller so the `NodeJS.Timeout` trap cannot be expressed.
 - **`vehicle:driver` is an employee number.** Never display, log, or persist it.
+  Nothing reads the vehicle endpoint today, and it is XML-only if anything ever
+  does.
 - **Loading, data-with-age, and error-with-last-known-values are three distinct
-  states.** A spinner never replaces cached data; show stale times with an
-  explicit age. "No buses coming" and "couldn't reach TheBus" must never render
-  alike. `HomeScreen`'s existing notice constants are the pattern to follow.
+  states**, and `useArrivals` is where that is enforced.
 
 ### Was blocking — all settled 2026-08-01
 

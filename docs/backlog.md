@@ -191,13 +191,17 @@ was consciously left:
 
 ## Structure
 
-- **Legal constants are exported from a screen module.** `App.tsx` imports
-  `DISCLAIMER` from `features/stops/HomeScreen`, so the app root depends on a
-  feature screen for legally required text. A `lib/legal.ts` fixes the
-  inverted dependency — worth doing before a second screen needs the same
-  strings.
-- The palette is duplicated across `App.tsx`, `HomeScreen.tsx` and
-  `StopRow.tsx`: three `useColorScheme` calls and three copies of the same hex.
+- ~~**Legal constants are exported from a screen module.**~~ **Fixed in
+  Increment 2** — they live in `lib/legal.ts`. The prediction that this would
+  bite "before a second screen needs the same strings" was exact: the arrival
+  board's import of `HomeScreen` dragged in AsyncStorage and broke the suite.
+- **The palette is now duplicated across six files** — `AppShell`,
+  `HomeScreen`, `StopRow`, `ArrivalRow`, `ArrivalsScreen`, `RouteScreen` —
+  each with its own `useColorScheme` call and its own copy of the same hex.
+  Increment 2 doubled this rather than fixing it. It is the single largest
+  piece of duplication in the codebase and the obvious next cleanup; deferred
+  because a theme module is a change to every screen at once, and Increment 3
+  adds a map that will want the same palette.
 - Route chips flicker for one frame when search clears, and stale entries
   persist when the id list is empty.
 - The favorite `Pressable` lacks `accessibilityState={{ selected: isFavorite }}`.
@@ -213,3 +217,50 @@ point calls `useSafeAreaInsets()`, which throws without a provider.
 **Increment 1 added `SafeAreaProvider` at the app root, so this may now be
 fixed** — unverified, since web is not a target. `package.json` still ships
 `"web": "expo start --web"`.
+
+## Increment 2 — deferred
+
+Recorded at the increment boundary. None of these block Increment 3.
+
+### The live API
+
+- **What separates `estimated` `"0"` from `"2"` is unknown.** Both mean
+  schedule-only as far as the payload shows; three samples of `"0"` against
+  1,225 of `"2"`, with no other field differing. It changes nothing — the
+  `=== "1"` whitelist is correct either way — so this is curiosity.
+- **`adherence` may not fit ±60 minutes.** Thirty live values spanned −19…+4
+  and nothing bounds it. Nothing renders it yet, so nothing is wrong today.
+- **The `*.thebus.org` certificate expires 2026-10-25.** If it lapses
+  un-renewed, HTTPS breaks on device with no change on our side and the
+  `NSExceptionDomains` fallback comes back. Worth re-checking in October.
+- **`vehicleJSON` 404s, so there is no vehicle detail screen.** The vehicle
+  endpoint is XML-only, and `adherence` is the only field unique to it.
+  Deferred until something needs it enough to justify an XML parser.
+- **Arrivals are capped at 25 by the server, with no pagination.** A busy stop
+  returns 25 covering ~2.5 hours. There is no way to ask for more.
+- **An unknown stop and a quiet stop are indistinguishable** — both return an
+  empty array. Harmless, because stop codes come from the bundled asset and so
+  exist by construction.
+
+### Screens
+
+- **The stack header on the arrivals screen reads "Arrivals", not the stop
+  name.** The stop name is the first thing in the list body, so nothing is
+  hidden; a dynamic title would read better.
+- **Route detail shows no arrival times.** It is the ordered stop list and
+  nothing else. Times per stop would mean one API request per stop.
+- **Deep links are unverified.** `scheme: wheredabus` is set and the routes are
+  URL-shaped (`/stop/596`), but nothing has opened one from outside the app.
+- **`useNow` re-renders the whole board every 10 seconds** to move the
+  countdowns. Fine at 25 rows; worth memoising rows if it ever grows.
+
+### Process
+
+- **Nothing tests the router itself.** Screens are tested directly and the
+  route files are three lines each, so the untested surface is which component
+  a URL maps to. `expo-router/testing-library` exists if that ever earns a
+  test.
+- **`npm ci` is not run locally by default.** It is the only thing that catches
+  a lockfile peer conflict; `npm install` and the whole test suite stay green
+  through one. CI covers it now that `dev` runs tests, which is how the
+  `react-dom` break was found — three pushes late.

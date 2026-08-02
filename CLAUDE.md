@@ -30,7 +30,16 @@ the program at all. That is why Jest's config ignores `/scripts/`, and why a
 change to the database layer needs *both* commands run.
 
 `.github/workflows/tests.yml` runs `npm test`, `npm run test:scripts` and
-`npm run typecheck` on Ubuntu for every push and pull request to `main`.
+`npm run typecheck` on Ubuntu for every push and pull request to **`main` and
+`dev`**. Day-to-day work lands on `dev`, which exists so changes can reach
+GitHub without spending macOS runner minutes — but "no `.ipa` build" must not
+mean "no tests". Merging `dev` into `main` needs Truman's explicit permission.
+
+**Run `npm ci` locally, not just `npm test`, after touching dependencies.**
+`npm install` tolerates a peer conflict that `npm ci` refuses, so the working
+tree can be green while every clean install fails at the first step. That is
+exactly how `react-dom@19.2.8` — pulled in as an optional peer of expo-router,
+against the pinned `react@19.1.0` — broke three pushes before anyone saw it.
 
 iOS builds do **not** run locally. Pushing to `main` triggers
 `.github/workflows/ios-ipa.yml`, which builds on a GitHub Actions macOS runner.
@@ -66,20 +75,37 @@ account.** Consequences that are not obvious from reading the code:
 
 ## Architecture
 
-What exists after Increment 1. There is no `app/` directory and no
-expo-router: `index.ts` registers `App.tsx` directly.
+What exists after Increment 2. Routing is **expo-router**: `package.json`'s
+`main` is `expo-router/entry`, and every file under `app/` is a URL.
 
 ```
-index.ts              registerRootComponent(App)
-App.tsx               opens the bundled SQLite asset read-only, then HomeScreen
+app/_layout.tsx       ten lines: a Stack inside AppShell
+app/index.tsx         -> HomeScreen
+app/stop/[code].tsx   -> ArrivalsScreen        (/stop/596)
+app/route/[id].tsx    -> RouteScreen           (/route/1L)
+AppShell.tsx          SafeAreaProvider + database gate; takes children
 features/stops/       HomeScreen, StopRow, useLocation — nearby, search, favorites
+features/arrivals/    ArrivalsScreen, ArrivalRow, useArrivals, useNow, format.ts
+features/routes/      RouteScreen — ordered stop list, entirely offline
 data/gtfs/            sql.ts (queries), db.ts (typed hooks), feedValidity.ts
+data/thebus/          TheBusClient: client.ts, parse.ts, time.ts, types.ts
 data/storage/         favorites persistence over AsyncStorage
 lib/distance.ts       haversine metres between two coordinates
+lib/schedule.ts       timers that return a canceller, not a handle (see below)
+lib/legal.ts          the required attribution and disclaimer
 scripts/build-gtfs/   Node build: the GTFS feed -> assets/db/gtfs.db
 scripts/pdf-text.mjs  reads docs/api/*.pdf (see below)
 assets/db/gtfs.db     the built asset, committed
 ```
+
+**Screens live under `features/`, not under `app/`.** Every file in `app/` is a
+route, so a `__tests__` directory there would become navigable. Route files are
+three lines that read a param and render a screen.
+
+**`AppShell` is not `_layout.tsx`, deliberately.** It takes `children`, so
+`__tests__/App.test.tsx` can drive the three database-open outcomes without
+standing up a router. See the safe-area section below for why the provider
+stays there rather than being left to the one expo-router mounts.
 
 ## Where things are written down
 
@@ -96,8 +122,7 @@ assets/db/gtfs.db     the built asset, committed
 extractor returns *zero bytes* and they look like scanned images. They are not.
 `node scripts/pdf-text.mjs docs/api/arrivalsJSON.pdf` decodes them properly.
 
-Increments 2–3 add `data/thebus/` (the live API client) and
-`features/arrivals/` (the arrival board). Neither exists yet.
+Increment 3 adds the map. `data/thebus/` and `features/arrivals/` now exist.
 
 **`data/gtfs/package.json` is three bytes and load-bearing.** It holds
 `{"type":"module"}` so Node treats `data/gtfs/sql.ts` as ESM when
@@ -162,6 +187,31 @@ trimming review makes it more load-bearing, not less. `ios-ipa.yml` declares
 `workflow_dispatch`, so a branch can be built without merging:
 `gh workflow run ios-ipa.yml --ref <branch>`.
 
+## React Native Testing Library 14 is async, and fails silently when you forget
+
+`render`, `renderHook`, `rerender` and `unmount` **all return promises** — the
+React 19 renderer flushes through an async `act`. Every call site must `await`.
+
+Forgetting does not throw. The tree never mounts, no effect runs, and the
+symptom is `result.current` being `undefined`, or `screen` reporting
+"`render` function has not been called" — neither of which points at a missing
+keyword. Existing suites already do `await render(<App />)`; copy that shape.
+
+Two more, both of which break the *next* test in the file rather than the one
+that caused them, which makes them look like a broken component:
+
+- **Drive `AppState` transitions through an async `act`.** Backgrounding and
+  foregrounding start a fetch from outside React's render cycle, and its
+  `setState` lands a microtask after a synchronous `act(() => …)` has closed.
+- **`await cleanup()` before swapping fake timers back.** RNTL registers its
+  auto-cleanup as a top-level `afterEach`, which Jest runs *after* a
+  `describe`-level one — so components mounted in the test are still mounted
+  and still polling while `jest.useRealTimers()` runs.
+
+`jest.advanceTimersByTimeAsync` awaits inside its calling `act` scope and trips
+React's overlapping-act guard. Advance synchronously inside an async `act`
+instead: `await act(async () => { jest.advanceTimersByTime(ms); })`.
+
 ## Error handling is a feature here
 
 Transit APIs fail constantly. Arrival views distinguish **loading**, **data with
@@ -203,6 +253,12 @@ with explicit `initialMetrics`. `App.test.tsx` cannot — `App` owns the provide
 — so it mocks the module's `initialWindowMetrics` instead, substituting the
 provider's *input*.
 
+## Timer handles never escape a closure
+
+`lib/schedule.ts` exists for this. Use `schedule(fn, ms)` and `repeat(fn, ms)`;
+both return a canceller, and the handle is never given a type at all — so the
+wrong method is unexpressible rather than merely mistyped. The reasoning:
+
 ## Timer handles are `number`, never `NodeJS.Timeout`
 
 `@types/node` is loaded project-wide (`tsconfig.json`'s `types`) so
@@ -215,12 +271,24 @@ alternative, since it resolves to `NodeJS.Timeout` for the same reason. React
 Native returns a plain numeric ID at runtime, not a `Timeout` object, so
 `.unref()` / `.refresh()` will typecheck cleanly and then fail at runtime.
 
+Annotating as `number` cannot actually be written without a type assertion,
+which this project also forbids — `const n: number = setTimeout(...)` is
+TS2322 here, verified. Hence `lib/schedule.ts` above: keep the handle inside a
+closure and hand back a `() => void`.
+
 ## Legal
 
 Per Oahu Transit Services' terms, the app must carry attribution and a
-non-affiliation disclaimer. These live as constants so they cannot be silently
-dropped, and the attribution is rendered at the **top** of the stop list
-because the terms require prominent display.
+non-affiliation disclaimer. These live in **`lib/legal.ts`** so they cannot be
+silently dropped, and the attribution is rendered at the **top** of the stop
+list, the arrival board and the route detail alike, because the terms require
+prominent display wherever their data appears.
+
+They are in `lib/` rather than on a screen for a concrete reason: while they
+lived on `HomeScreen`, the arrival board had to import a screen — and with it
+AsyncStorage, expo-location and the whole GTFS query layer — to render one line
+of small print. An obligation every data-showing screen carries must not be
+reachable only through whichever screen declared it first.
 
 The required wording is **verified** against the Terms of Use page of
 `docs/api/Web_Services_API.pdf` and is reproduced verbatim, including the

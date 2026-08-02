@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createTheBusClient, type HttpResponse } from '../client';
 
 /**
@@ -18,11 +20,19 @@ const json = (body: unknown, status = 200): HttpResponse => ({
   text: async () => JSON.stringify(body),
 });
 
+/**
+ * The real IIS error page, captured from a live 404 rather than approximated.
+ * It is what `/vehicleJSON/` and every unknown path return, and the point of
+ * using the genuine article is that it is 1,245 bytes of HTML with an
+ * unhelpful `text/html` content-type — exactly what `res.json()` chokes on.
+ */
+const NOT_FOUND_BODY = readFileSync(join(__dirname, 'fixtures/not-found.html'), 'utf8');
+
 const html = (status: number): HttpResponse => ({
   ok: status >= 200 && status < 300,
   status,
   headers: { get: (name) => (name.toLowerCase() === 'content-type' ? 'text/html' : null) },
-  text: async () => '<!DOCTYPE html><html><title>404 - File or directory not found.</title></html>',
+  text: async () => NOT_FOUND_BODY,
 });
 
 const board = {
