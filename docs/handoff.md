@@ -4,8 +4,8 @@
 session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
-Last updated: **2026-08-02**, mid-Increment-3. Tasks 1–4 and 6 are done and
-pushed to `dev`; task 5 and task 7 onward are not.
+Last updated: **2026-08-02**, mid-Increment-3. Tasks 1–7 are done, pushed to
+`dev`, and **verified on Truman's phone in Expo Go**; tasks 8–10 are not built.
 
 **Everything durable is already in the repo.** This document exists only to
 carry what a transcript would otherwise lose. Read the repo docs first; they are
@@ -71,6 +71,15 @@ keyboard handling on the stops list. Do not silently rewrite his work or hand
 him finished code for something he has said he wants to do himself. Review it
 like anyone's, say what you find, and leave the fix to him unless he asks.
 
+**Asked directly on 2026-08-02, he waived that for the keyboard handling** and
+said to rewrite it freely while splitting `HomeScreen`. Very little changed,
+because very little needed to. The waiver was for that piece of code, not a
+standing one — ask again next time.
+
+**He starts the dev server himself.** Do not run `npm start` or `npx expo start`
+from a session. Say when something needs looking at in Expo Go and let him run
+it. `npm ci`, the test commands and `gh workflow run` are still ours.
+
 **A caution that generalises.** That review produced a finding that was simply
 wrong — that the scroll indicator ran under the home indicator. It had been
 reasoned from the code, never observed, and one look at the device disproved it.
@@ -103,11 +112,14 @@ sites migrated (3), the three-tab restructure (4), the Settings screen (6), and
 an arrivals request cache that was not in the plan (6a, see below). 217 Jest, 70
 `node --test`, clean typecheck.
 
-**Next is task 5** — the Stops tab, splitting `HomeScreen` — and then **task 7**,
-which is the deliberate stop-and-device-verify. Task 7 installs
-`react-native-maps` and is the first thing in the increment that can fail
-natively; nothing after it is worth building if the map does not render. Run
-`npm ci` after it, not just `npm test`.
+**Next is task 8** — `useAnchoredStops` — then 9 and 10, the pins and the sheet.
+Everything before them is built and looked at on a real phone.
+
+**Task 7's gate is passed.** The map renders, the three tabs are labelled
+correctly, search and the empty state behave, and the theme carries through to
+the status bar. Two things that gate did *not* cover: reanimated and
+gesture-handler are installed but nothing imports them yet, so they are not even
+in the bundle — task 9's sheet is their first real exercise.
 
 **Three things this session decided that the diff does not explain:**
 
@@ -177,6 +189,29 @@ user register their own AppID because the 250,000/day quota is per key. We ship
 one for every install, so **our quota is a shared resource with a ceiling** —
 roughly 170 concurrent open arrival boards at a 60-second poll. That is a bet,
 not an oversight, and it is now written down as one.
+
+## Increment 4 is decided, and it is not what the design spec says
+
+`docs/superpowers/specs/2026-08-02-increment-4-own-api-key.md`. **Every install
+registers its own AppID and pastes it into Settings; the bundled key goes
+away.** Truman's call on 2026-08-02 — his view is that a registration wall is
+normal for an app and that he is the only user for the foreseeable future.
+
+An optional override (bundled key stays, pasted key wins) was recommended and
+rejected. **Do not reopen it by rediscovering that mandatory is more work** —
+that was known when it was chosen.
+
+The spec has the traps. The short version: it is not a text field. `theBus` is
+built at import time from an environment variable and has to become
+reconstructible; `withCache`'s cache is keyed by stop code alone and must be
+cleared when the key changes; and "no key yet" is a fourth §4 state that must
+not read like an outage, with "key rejected" a fifth that this API reports
+through an HTTP 200 body rather than a status code.
+
+This does not replace feed refresh, which the design spec has in the Increment 4
+slot. They are unrelated and the order between them is open — though feed
+refresh has a dated forcing function (`feed_end_date` is `20260822`) and this
+does not.
 
 ## Suggested skills
 
