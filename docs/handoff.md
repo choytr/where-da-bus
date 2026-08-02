@@ -4,7 +4,8 @@
 session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
-Last updated: **2026-08-02**, after the Increment 3 design session.
+Last updated: **2026-08-02**, mid-Increment-3. Tasks 1–4 and 6 are done and
+pushed to `dev`; task 5 and task 7 onward are not.
 
 **Everything durable is already in the repo.** This document exists only to
 carry what a transcript would otherwise lose. Read the repo docs first; they are
@@ -90,11 +91,35 @@ red, invisible locally because `npm install` tolerates what `npm ci` refuses.
 
 ## What to pick up next
 
-**Increment 3 is specified and planned. Execute the plan** —
-`docs/superpowers/plans/2026-08-02-increment-3-map.md`, inline and in order.
-It is the theme provider, then a three-tab restructure, then the map. Task 7 is
-a deliberate stop-and-device-verify: it is the first thing that can fail
-natively, and nothing after it is worth building if the map does not render.
+**Increment 3 is part-built.** The plan
+(`docs/superpowers/plans/2026-08-02-increment-3-map.md`) is annotated with what
+is done and where reality disagreed with it.
+
+Landed on `dev`: the theme preference and provider (tasks 1–2), the seven call
+sites migrated (3), the three-tab restructure (4), the Settings screen (6), and
+an arrivals request cache that was not in the plan (6a, see below). 217 Jest, 70
+`node --test`, clean typecheck.
+
+**Next is task 5** — the Stops tab, splitting `HomeScreen` — and then **task 7**,
+which is the deliberate stop-and-device-verify. Task 7 installs
+`react-native-maps` and is the first thing in the increment that can fail
+natively; nothing after it is worth building if the map does not render. Run
+`npm ci` after it, not just `npm test`.
+
+**Three things this session decided that the diff does not explain:**
+
+- **`ThemeProvider` takes its storage as a prop.** Importing the preference
+  module from `lib/theme.tsx` put AsyncStorage in the module graph of every
+  screen that reads a colour, and four suites failed at import before a single
+  assertion ran. That is the same coupling `lib/legal.ts` exists to break,
+  arriving by a different route. The edge runs storage -> theme, never back.
+- **`useTheme` throws without a provider, deliberately.** A default palette
+  would make a missing provider invisible in Jest and wrong on the device —
+  what `SafeAreaProvider` already cost this project once. The price is that
+  every screen suite needs `TestTheme` from `lib/testing/theme.tsx`.
+- **The plan's palette keys were a guess and were wrong.** It named `surface`,
+  `accent` and `separator`, which nothing uses, and omitted six that six screens
+  do. The real list is in `lib/theme.tsx`.
 
 Nothing about Increment 3 is still open. The design session on 2026-08-02
 settled it end to end, including two reversals worth knowing about because the
@@ -126,6 +151,25 @@ something to show, so Increment 5 is worth building. Details and the two
 corrections it forced on `route_short_name` and the ghost count are in
 `docs/api/README.md`. What is *not* measured is a **weekday** peak; Sunday
 service is thinner, so 235 is a floor for it. Not a blocker for anything.
+
+## The TheBusLive comparison, and what came of it
+
+`docs/superpowers/specs/2026-08-02-thebuslive-comparison.md` reads the data
+layer of `ashvr0/TheBusLive` — an independent unofficial replacement for the
+same app, against the same API, in SwiftUI — against ours. Read it before
+building anything that touches the vehicle endpoint or the map.
+
+Two things were acted on. The arrivals cache (task 6a) is done: `withCache`
+coalesces in-flight requests by stop and caches successes for 30 s, never
+failures, with callers reference-counted so one abort cannot cancel another's
+request. The second, *do not recentre the map camera on a poll the user did not
+ask for*, is noted on task 9 and not yet built.
+
+The rest is recorded and not acted on. The one worth knowing: they make each
+user register their own AppID because the 250,000/day quota is per key. We ship
+one for every install, so **our quota is a shared resource with a ceiling** —
+roughly 170 concurrent open arrival boards at a 60-second poll. That is a bet,
+not an oversight, and it is now written down as one.
 
 ## Suggested skills
 

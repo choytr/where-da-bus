@@ -10,7 +10,7 @@ Every `render`/`renderHook`/`rerender`/`unmount` is awaited — see `CLAUDE.md`.
 
 ---
 
-## 1. Theme preference storage
+## 1. Theme preference storage — **done**
 
 - `data/storage/preferences.ts`, `data/storage/__tests__/preferences.test.ts`
 - `export type ThemePreference = 'light' | 'dark' | 'automatic'`
@@ -21,12 +21,16 @@ Every `render`/`renderHook`/`rerender`/`unmount` is awaited — see `CLAUDE.md`.
   stored string falls back rather than propagating
 - Mirrors `favorites.ts`'s shape; same AsyncStorage, distinct key
 
-## 2. Theme provider
+## 2. Theme provider — **done**
 
 - `lib/theme.tsx`, `lib/__tests__/theme.test.tsx`
-- `export type Palette = { background, surface, text, muted, accent, border,
-  separator }` — exact keys derived from the seven current call sites, not
-  invented
+- `export type Palette` — the keys above were a guess and were wrong. The real
+  union of the seven call sites is `background, text, muted, border, section,
+  chip, star, live, canceled, warning, bannerBg, bannerText`; `surface`,
+  `accent` and `separator` are used by nothing.
+- **`ThemeProvider` takes its storage as a prop.** Importing task 1 from here
+  put AsyncStorage in the module graph of every screen that reads a colour and
+  broke four suites at import. The edge runs storage -> theme, never back.
 - `<ThemeProvider>` (children) and `useTheme(): { palette: Palette; scheme:
   'light' | 'dark'; preference: ThemePreference; setPreference: (p) => void }`
 - `'automatic'` resolves through `useColorScheme()`; `'light'`/`'dark'` ignore it
@@ -35,18 +39,23 @@ Every `render`/`renderHook`/`rerender`/`unmount` is awaited — see `CLAUDE.md`.
 - Mounted inside `AppShell`, above `DatabaseGate`, so the two pre-database
   screens are themed too
 
-## 3. Migrate the seven call sites
+## 3. Migrate the seven call sites — **done**
 
 - `AppShell.tsx`, `app/_layout.tsx`, `features/stops/HomeScreen.tsx`,
   `features/stops/StopRow.tsx`, `features/arrivals/ArrivalsScreen.tsx`,
   `features/arrivals/ArrivalRow.tsx`, `features/routes/RouteScreen.tsx`
 - Each drops its local `useColorScheme` and `light`/`dark` objects for
   `useTheme()`. No visual change intended.
-- Existing suites must stay green unmodified except where they stub a palette
+- Existing suites could *not* stay unmodified: `useTheme` throws without a
+  provider by design, so the four screen suites gained a `TestTheme` wrapper
+  from `lib/testing/theme.tsx`. A stub palette was rejected — it would let a
+  screen read a colour the real palette does not define and still pass.
+- Also fixed here: `StatusBar style="auto"` asks the OS, which is the wrong
+  question once the app has its own preference.
 - Verification: `grep -rn useColorScheme --include=*.tsx .` returns only
   `lib/theme.tsx`
 
-## 4. Tabs skeleton
+## 4. Tabs skeleton — **done**
 
 - `app/(tabs)/_layout.tsx`, `app/(tabs)/index.tsx` (Map),
   `app/(tabs)/stops.tsx`, `app/(tabs)/settings.tsx`; `app/index.tsx` removed
@@ -57,7 +66,10 @@ Every `render`/`renderHook`/`rerender`/`unmount` is awaited — see `CLAUDE.md`.
 - Tab titles are copy, not filenames — the "Index" back-button bug came from
   exactly this
 - Tests: `__tests__/App.test.tsx` still drives the three database outcomes;
-  tab bar renders three labels
+  the tab-bar test is `__tests__/TabsLayout.test.tsx`, **not** `app/__tests__/`
+  — every file under `app/` is a URL and "it has no default export" is not a
+  guarantee worth relying on
+- Map and Settings landed as placeholders here; task 6 filled Settings in
 
 ## 5. Stops tab
 
@@ -71,7 +83,7 @@ Every `render`/`renderHook`/`rerender`/`unmount` is awaited — see `CLAUDE.md`.
 - Tests: empty query shows favorites; typing replaces them with results; no
   favorites and no query shows an empty state, not a blank screen
 
-## 6. Settings tab
+## 6. Settings tab — **done**, taken before task 5
 
 - `features/settings/SettingsScreen.tsx` + `__tests__`
 - Three-way theme control via `useTheme()`; feed status via
@@ -81,6 +93,10 @@ Every `render`/`renderHook`/`rerender`/`unmount` is awaited — see `CLAUDE.md`.
   feed status, so it counts
 - Tests: selecting each preference persists it; expired feed renders the
   expired wording; `unknown` validity is not rendered as current
+- The selected row is marked with a checkmark and `accessibilityState`, not by
+  colour — this is the screen where someone checks that Dark took
+- Its suite drives the real `ThemeProvider`, not `TestTheme`: persistence is
+  half of what the screen is for
 
 ## 7. Map dependencies and a bare map
 
@@ -129,6 +145,34 @@ Every `render`/`renderHook`/`rerender`/`unmount` is awaited — see `CLAUDE.md`.
 - Tests: pin tap and row tap produce identical state; changing selection aborts
   the prior fetch; error state renders last-known values with an age, not a
   spinner; deselecting stops the poll
+
+---
+
+## 6a. Arrivals request cache — added after the plan was written
+
+Not in the original plan. It comes from
+`../specs/2026-08-02-thebuslive-comparison.md`, which found that TheBusLive
+coalesces in-flight requests and caches responses for 30 s, and that they solve
+the shared-quota problem by making each user register their own AppID. We ship
+one AppID for every install, so the caching half of that answer is worth taking
+and the onboarding half is not.
+
+- `data/thebus/cache.ts` + `__tests__` — `withCache(client, { ttlMs, now })`
+- Coalesces by stop code; caches successes for 30 s; **never caches failures**
+- Callers are reference-counted, so one caller's abort cannot cancel a request
+  another is still waiting on
+- `TheBusClient.arrivals` gains `fresh?: boolean`; `useArrivals`'s pull-to-
+  refresh sets it
+- The shared `theBus` instance in `data/thebus/index.ts` is now wrapped
+
+The comparison's second item — don't recentre the camera on a refresh the user
+did not ask for — belongs to task 9 and is noted there.
+
+## 9. Map, pins, sheet — note added
+
+- **Do not recentre on every poll.** Keep a "have we centred yet" flag, as
+  TheBusLive's `VehicleMapViewModel` does, or a refresh yanks the view back
+  while the user is panning.
 
 ---
 
