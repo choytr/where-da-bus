@@ -392,20 +392,28 @@ this section is not misleading.
 | Question | Answer |
 |---|---|
 | Exact endpoint URLs, parameters, response schemas | Resolved — three endpoints, documented field by field |
-| Is JSON genuinely available? | **Yes.** `arrivalsJSON`, `vehicleJSON`, `routeJSON`. No XML parser needed |
+| Is JSON genuinely available? | **For two of three.** `arrivalsJSON` and `routeJSON` work; **`vehicleJSON` 404s** and the vehicle endpoint is XML-only (verified live 2026-08-01). Increment 2 needs neither it nor an XML parser |
 | Published rate limits | 250,000 requests/day per AppID — not a constraint at this scale |
 | Required attribution wording | Resolved and verified verbatim; see the Legal section of `CLAUDE.md` |
 | Is the GTFS-RT feed openly accessible, and what message types? | **Still open** — not mentioned anywhere in the vendor docs |
 
-Two new questions took their place, both of which block Increment 2:
+Two new questions took their place and blocked Increment 2. **Both were settled
+against the live API on 2026-08-01**; detail and sample sizes in
+`docs/api/README.md`.
 
-- **The documented base URL is `http://`, with no HTTPS endpoint anywhere in
-  the docs.** iOS App Transport Security blocks cleartext HTTP, so a plain
-  `fetch` fails on device while working fine in Node. Try `https://` first; if
-  that fails, a host-scoped `NSExceptionDomains` entry is a native-config
-  change and therefore rides the slow CI loop.
-- **Error and empty-result shapes are undocumented.** Only the field name
-  `errorMessage` is specified — no example, no HTTP status contract, and no
-  statement of what a stop with no upcoming buses returns. The app must tell
-  "no buses coming" apart from "request failed", so this needs settling
-  empirically against the live API before the arrival board is designed.
+- **The base URL is documented as `http://`, but `https://` works.** iOS App
+  Transport Security would have blocked cleartext, forcing a host-scoped
+  `NSExceptionDomains` entry through the slow CI loop. It is not needed: TLS is
+  served on every endpoint with a valid certificate. That certificate expires
+  2026-10-25, so this can reopen without any change on our side.
+- **Errors are HTTP 200 with `{"errorMessage": "…"}`** and no `stop` or
+  `timestamp` key; a stop with no upcoming buses returns `arrivals: []` with
+  both keys present. The two are cleanly separable, so §4's requirement that
+  "no buses coming" and "couldn't reach the API" never render alike is
+  implementable. HTTP status carries no application-level signal — never branch
+  on `res.ok`.
+
+A third fact, not previously asked about, changes the arrival board directly:
+**`estimated` emits an undocumented `"2"` for 96% of arrivals.** The vendor
+sheets document only `0` and `1`. An arrival is a live GPS estimate if and only
+if `estimated === "1"`; everything else is schedule-only.

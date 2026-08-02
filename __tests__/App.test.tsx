@@ -1,11 +1,19 @@
 import { render, screen, waitFor } from '@testing-library/react-native';
-import App from '../App';
+import { AppShell } from '../AppShell';
+import { HomeScreen } from '../features/stops/HomeScreen';
 
 /**
  * What this file owns is the gate in front of the stop list: the bundled
  * database is opened read-only, and the three outcomes of that open —
  * running, opened, failed — each reach the user as something different. The
  * screen behind the gate has its own tests.
+ *
+ * `HomeScreen` is passed in as the child rather than being reached through
+ * the router. `AppShell` takes children precisely so this suite does not have
+ * to stand up Expo Router to test a database gate — and passing the real
+ * screen is what keeps the safe-area guard below meaningful, since a stub
+ * child would not call `useSafeAreaInsets` and the missing provider would go
+ * unnoticed.
  *
  * `expo-sqlite` is a native module, so `SQLiteProvider` is doubled and driven
  * through each outcome by hand. Its props are read back through
@@ -41,7 +49,7 @@ jest.mock('react-native-safe-area-context', () => ({
 
 const sqlite = () => jest.requireMock('expo-sqlite');
 
-describe('App', () => {
+describe('AppShell', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     sqlite().SQLiteProvider.mockImplementation((props: { children: unknown }) => props.children);
@@ -52,7 +60,7 @@ describe('App', () => {
   });
 
   it('shows the stop list once the database is open', async () => {
-    await render(<App />);
+    await render(<AppShell><HomeScreen /></AppShell>);
     await waitFor(() => screen.getByPlaceholderText(/stop number or name/i));
   });
 
@@ -68,13 +76,13 @@ describe('App', () => {
    * Naming the wrong screen makes the real cause legible.
    */
   it('renders the stop list rather than the database-failure screen', async () => {
-    await render(<App />);
+    await render(<AppShell><HomeScreen /></AppShell>);
     await waitFor(() => screen.getByPlaceholderText(/stop number or name/i));
     expect(screen.queryByText(/stop data unavailable/i)).toBeNull();
   });
 
   it('opens the bundled database read-only', async () => {
-    await render(<App />);
+    await render(<AppShell><HomeScreen /></AppShell>);
 
     const props = sqlite().SQLiteProvider.mock.calls[0][0];
     const db = { execAsync: jest.fn(async () => {}) };
@@ -84,7 +92,7 @@ describe('App', () => {
   });
 
   it('re-copies the bundled asset rather than trusting an older copy on disk', async () => {
-    await render(<App />);
+    await render(<AppShell><HomeScreen /></AppShell>);
 
     const props = sqlite().SQLiteProvider.mock.calls[0][0];
     expect(props.assetSource.forceOverwrite).toBe(true);
@@ -98,7 +106,7 @@ describe('App', () => {
       throw pending;
     });
 
-    await render(<App />);
+    await render(<AppShell><HomeScreen /></AppShell>);
     screen.getByText(/opening stop data/i);
     expect(screen.queryByText(/could not be opened/i)).toBeNull();
   });
@@ -111,7 +119,7 @@ describe('App', () => {
       throw new Error('file is not a database');
     });
 
-    await render(<App />);
+    await render(<AppShell><HomeScreen /></AppShell>);
 
     screen.getByText(/stop data unavailable/i);
     screen.getByText(/could not be opened/i);
@@ -126,7 +134,7 @@ describe('App', () => {
       throw new Error('file is not a database');
     });
 
-    await render(<App />);
+    await render(<AppShell><HomeScreen /></AppShell>);
 
     screen.getByText(/not affiliated with or endorsed by/i);
     reported.mockRestore();

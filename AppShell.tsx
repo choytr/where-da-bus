@@ -3,15 +3,22 @@ import { ActivityIndicator, StyleSheet, Text, View, useColorScheme } from 'react
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
-import { DISCLAIMER, HomeScreen } from './features/stops/HomeScreen';
+import { DISCLAIMER } from './features/stops/HomeScreen';
 
 /**
- * Increment 1 — the app root: the bundled GTFS database, then the stop list.
+ * Everything that must be true before any screen renders: the safe-area
+ * provider, the bundled GTFS database opened read-only, and an honest screen
+ * for each way that open can go wrong.
  *
  * `SQLiteProvider` copies `assets/db/gtfs.db` into the app's database
  * directory before opening it, so the three states of that copy-and-open —
  * running, opened, failed — are what this file is about. Everything after a
- * successful open is HomeScreen's problem.
+ * successful open is a screen's problem.
+ *
+ * This is deliberately *not* `app/_layout.tsx`. Taking `children` keeps it
+ * renderable on its own, so `__tests__/App.test.tsx` can drive the three
+ * outcomes above without standing up a router; `_layout.tsx` is the ten-line
+ * file that puts a navigator inside it.
  */
 
 /**
@@ -37,37 +44,39 @@ async function openReadOnly(db: SQLiteDatabase): Promise<void> {
  * what makes the inset real, so it wraps everything, including the two states
  * that render before the database is open.
  *
+ * It stays here, above the navigator, rather than being left to React
+ * Navigation. Expo Router mounts its own provider, but relying on that would
+ * make the inset depend on a transitive detail of a library this project does
+ * not control — and the failure mode is silent, renders correctly under Jest,
+ * and only appears as content beneath the Dynamic Island on a real phone.
+ * Nesting a provider is supported and costs nothing; this project has paid for
+ * that bug once already.
+ *
  * `initialWindowMetrics` seeds the first frame from values the native side
  * already knows, so the screen does not paint once at zero inset and jump.
  */
-export default function App() {
+export function AppShell({ children }: { children: ReactNode }) {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <AppContent />
+      <DatabaseGate>
+        <Suspense fallback={<Waiting />}>
+          <SQLiteProvider
+            databaseName="gtfs.db"
+            // Re-copied from the bundle on every launch. The file on disk is a
+            // disposable copy of reference data — never user state, which lives
+            // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
+            // (npm run build:gtfs) from being shadowed by a stale first-launch
+            // copy for the entire life of the install.
+            assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
+            onInit={openReadOnly}
+            useSuspense
+          >
+            {children}
+          </SQLiteProvider>
+        </Suspense>
+        <StatusBar style="auto" />
+      </DatabaseGate>
     </SafeAreaProvider>
-  );
-}
-
-function AppContent() {
-  return (
-    <DatabaseGate>
-      <Suspense fallback={<Waiting />}>
-        <SQLiteProvider
-          databaseName="gtfs.db"
-          // Re-copied from the bundle on every launch. The file on disk is a
-          // disposable copy of reference data — never user state, which lives
-          // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
-          // (npm run build:gtfs) from being shadowed by a stale first-launch
-          // copy for the entire life of the install.
-          assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
-          onInit={openReadOnly}
-          useSuspense
-        >
-          <HomeScreen />
-        </SQLiteProvider>
-      </Suspense>
-      <StatusBar style="auto" />
-    </DatabaseGate>
   );
 }
 
