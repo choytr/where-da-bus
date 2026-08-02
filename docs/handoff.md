@@ -119,6 +119,15 @@ carrying real Oahu coordinates — filter on `last_message` or plot ghosts).
 commit the regenerated asset before then, or the app starts calling itself
 stale. Increment 4 is what ends this being manual.
 
+**One measurement owed, and Truman asked to be reminded of it.** How many buses
+carry a live position at *rush hour*. Both samples so far were taken at night —
+41 real-time arrivals at 22:00, 46 fresh vehicles at 01:07 — and those are the
+floor, not the number. Take it in an Oahu daytime window (07:00–18:00 HST =
+17:00–04:00 UTC) with `/vehicle/?key=<AppID>` and no other parameters, counting
+vehicles whose `last_message` is within 15 minutes. It decides whether the live
+vehicle map in Increment 5 is worth building at all. **Raise this rather than
+waiting to be asked.**
+
 ## Suggested skills
 
 - **`superpowers:executing-plans`** — Increment 3's design and plan are both
