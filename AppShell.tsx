@@ -1,9 +1,11 @@
 import { Component, Suspense, type ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { DISCLAIMER } from './lib/legal';
+import { ThemeProvider, useTheme } from './lib/theme';
+import { themeStorage } from './data/storage/preferences';
 
 /**
  * Everything that must be true before any screen renders: the safe-area
@@ -58,24 +60,26 @@ async function openReadOnly(db: SQLiteDatabase): Promise<void> {
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <DatabaseGate>
-        <Suspense fallback={<Waiting />}>
-          <SQLiteProvider
-            databaseName="gtfs.db"
-            // Re-copied from the bundle on every launch. The file on disk is a
-            // disposable copy of reference data — never user state, which lives
-            // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
-            // (npm run build:gtfs) from being shadowed by a stale first-launch
-            // copy for the entire life of the install.
-            assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
-            onInit={openReadOnly}
-            useSuspense
-          >
-            {children}
-          </SQLiteProvider>
-        </Suspense>
-        <StatusBar style="auto" />
-      </DatabaseGate>
+      <ThemeProvider storage={themeStorage}>
+        <DatabaseGate>
+          <Suspense fallback={<Waiting />}>
+            <SQLiteProvider
+              databaseName="gtfs.db"
+              // Re-copied from the bundle on every launch. The file on disk is a
+              // disposable copy of reference data — never user state, which lives
+              // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
+              // (npm run build:gtfs) from being shadowed by a stale first-launch
+              // copy for the entire life of the install.
+              assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
+              onInit={openReadOnly}
+              useSuspense
+            >
+              {children}
+            </SQLiteProvider>
+          </Suspense>
+          <ThemedStatusBar />
+        </DatabaseGate>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
@@ -101,8 +105,20 @@ class DatabaseGate extends Component<{ children: ReactNode }, { failed: boolean 
   }
 }
 
+/**
+ * `style="auto"` asks the OS what appearance it is in, which stopped being the
+ * right question once the app got its own preference. A user who picks Dark on
+ * a light phone would get dark status-bar glyphs over a dark screen — invisible
+ * clock, invisible battery. The theme's *resolved* scheme is the answer, and it
+ * agrees with `auto` for everyone who has not overridden anything.
+ */
+function ThemedStatusBar() {
+  const { scheme } = useTheme();
+  return <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />;
+}
+
 function Waiting() {
-  const palette = usePalette();
+  const { palette } = useTheme();
   return (
     <View style={[styles.center, { backgroundColor: palette.background }]}>
       <ActivityIndicator />
@@ -112,7 +128,7 @@ function Waiting() {
 }
 
 function Unavailable() {
-  const palette = usePalette();
+  const { palette } = useTheme();
   return (
     <View style={[styles.center, { backgroundColor: palette.background }]}>
       <Text style={[styles.title, { color: palette.text }]}>Stop data unavailable</Text>
@@ -124,22 +140,6 @@ function Unavailable() {
     </View>
   );
 }
-
-function usePalette() {
-  return useColorScheme() === 'dark' ? dark : light;
-}
-
-const light = {
-  background: '#ffffff',
-  text: '#11181c',
-  muted: '#687076',
-};
-
-const dark = {
-  background: '#101314',
-  text: '#ecedee',
-  muted: '#9ba1a6',
-};
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },

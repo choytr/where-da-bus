@@ -1,5 +1,10 @@
-import { render, fireEvent, screen } from '@testing-library/react-native';
+import { render as rtlRender, fireEvent, screen } from '@testing-library/react-native';
+import type { ReactElement } from 'react';
 import { StopRow } from '../StopRow';
+import { TestTheme } from '../../../lib/testing/theme';
+
+/** StopRow reads its colours from the theme, which throws without a provider. */
+const render = (ui: ReactElement) => rtlRender(<TestTheme>{ui}</TestTheme>);
 
 const stop = {
   stop_id: '5',

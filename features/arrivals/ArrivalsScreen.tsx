@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStopQueries } from '../../data/gtfs/db';
@@ -18,6 +17,7 @@ import { ArrivalRow } from './ArrivalRow';
 import { ageLabel, serverClockOffset } from './format';
 import { useArrivals } from './useArrivals';
 import { useNow } from './useNow';
+import { useTheme } from '../../lib/theme';
 
 /**
  * The arrival board for one stop.
@@ -89,7 +89,7 @@ export type ArrivalsScreenProps = {
 };
 
 export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
-  const palette = useColorScheme() === 'dark' ? dark : light;
+  const { palette } = useTheme();
   const insets = useSafeAreaInsets();
   const { searchByCode } = useStopQueries();
   const { board, failure, fetchedAt, loading, refreshing, refresh } = useArrivals(stopCode, client);
@@ -210,26 +210,6 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
     />
   );
 }
-
-const light = {
-  background: '#ffffff',
-  text: '#11181c',
-  muted: '#687076',
-  border: '#e6e8eb',
-  section: '#f5f6f7',
-  bannerBg: '#fdf0e3',
-  bannerText: '#8a4b08',
-};
-
-const dark = {
-  background: '#101314',
-  text: '#ecedee',
-  muted: '#9ba1a6',
-  border: '#2a2f31',
-  section: '#171c1e',
-  bannerBg: '#3a2a14',
-  bannerText: '#f0c48a',
-};
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },

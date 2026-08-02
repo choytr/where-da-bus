@@ -3,6 +3,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { HomeScreen } from '../HomeScreen';
 import type { RouteSummary, Stop, StopWithDistance } from '../../../data/gtfs/types';
 import type { LocationState } from '../useLocation';
+import { TestTheme } from '../../../lib/testing/theme';
 
 /**
  * The two boundaries this screen sits on — the GTFS query layer and the
@@ -103,7 +104,9 @@ const IPHONE_METRICS: Metrics = {
 function renderScreen() {
   return render(
     <SafeAreaProvider initialMetrics={IPHONE_METRICS}>
-      <HomeScreen />
+      <TestTheme>
+        <HomeScreen />
+      </TestTheme>
     </SafeAreaProvider>,
   );
 }

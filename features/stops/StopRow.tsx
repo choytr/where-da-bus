@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
+import { useTheme } from '../../lib/theme';
 
 export type StopRowProps = {
   stop: Stop;
@@ -37,8 +38,7 @@ export function StopRow({
   onPress,
   onPressRoute,
 }: StopRowProps) {
-  const isDark = useColorScheme() === 'dark';
-  const palette = isDark ? dark : light;
+  const { palette } = useTheme();
 
   const label = isFavorite
     ? `Remove ${stop.stop_name} from favorites`
@@ -104,22 +104,6 @@ export function StopRow({
     </View>
   );
 }
-
-const light = {
-  text: '#11181c',
-  muted: '#687076',
-  border: '#e6e8eb',
-  chip: '#eceef0',
-  star: '#e5a50a',
-};
-
-const dark = {
-  text: '#ecedee',
-  muted: '#9ba1a6',
-  border: '#2a2f31',
-  chip: '#22282a',
-  star: '#f5c518',
-};
 
 const styles = StyleSheet.create({
   row: {

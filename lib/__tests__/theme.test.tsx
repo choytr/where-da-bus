@@ -1,20 +1,6 @@
 import { Text } from 'react-native';
 import { act, render, renderHook, waitFor } from '@testing-library/react-native';
-import { ThemeProvider, useTheme } from '../theme';
-import { loadThemePreference } from '../../data/storage/preferences';
-
-jest.mock('@react-native-async-storage/async-storage', () => {
-  let store: Record<string, string> = {};
-  return {
-    getItem: jest.fn(async (k: string) => store[k] ?? null),
-    setItem: jest.fn(async (k: string, v: string) => {
-      store[k] = v;
-    }),
-    __reset: () => {
-      store = {};
-    },
-  };
-});
+import { ThemeProvider, useTheme, type ThemePreference, type ThemeStorage } from '../theme';
 
 /** The OS scheme, controlled per test. */
 let mockOsScheme: 'light' | 'dark' = 'light';
@@ -22,21 +8,31 @@ jest.mock('react-native/Libraries/Utilities/useColorScheme', () => ({
   default: () => mockOsScheme,
 }));
 
-function resetStorage(): void {
-  const mocked: Record<string, unknown> = jest.mocked(
-    jest.requireMock('@react-native-async-storage/async-storage'),
-  );
-  const helper = mocked.__reset;
-  if (typeof helper === 'function') helper();
+/**
+ * The provider takes its storage as a prop, so this is the whole of it — no
+ * AsyncStorage, no native module, nothing to reset between files. The real
+ * implementation is data/storage/preferences.ts and is tested on its own.
+ */
+function fakeStorage(): ThemeStorage & { stored: () => ThemePreference } {
+  let value: ThemePreference = 'automatic';
+  return {
+    load: async () => value,
+    save: async (next) => {
+      value = next;
+    },
+    stored: () => value,
+  };
 }
 
+let storage: ThemeStorage & { stored: () => ThemePreference };
+
 const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <ThemeProvider>{children}</ThemeProvider>
+  <ThemeProvider storage={storage}>{children}</ThemeProvider>
 );
 
 describe('theme', () => {
   beforeEach(() => {
-    resetStorage();
+    storage = fakeStorage();
     mockOsScheme = 'light';
   });
 
@@ -84,16 +80,13 @@ describe('theme', () => {
       result.current.setPreference('dark');
     });
 
-    await waitFor(async () => {
-      expect(await loadThemePreference()).toBe('dark');
+    await waitFor(() => {
+      expect(storage.stored()).toBe('dark');
     });
   });
 
   it('restores a stored preference over the OS scheme on mount', async () => {
-    const { result: first } = await renderHook(() => useTheme(), { wrapper });
-    await act(async () => {
-      first.current.setPreference('dark');
-    });
+    await storage.save('dark');
 
     const { result } = await renderHook(() => useTheme(), { wrapper });
     await waitFor(() => {

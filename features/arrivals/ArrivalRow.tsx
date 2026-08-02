@@ -1,6 +1,7 @@
-import { StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import type { Arrival } from '../../data/thebus';
 import { countdown, hawaiiClock } from './format';
+import { useTheme } from '../../lib/theme';
 
 export type ArrivalRowProps = {
   arrival: Arrival;
@@ -23,7 +24,7 @@ export type ArrivalRowProps = {
  * reading.
  */
 export function ArrivalRow({ arrival, now }: ArrivalRowProps) {
-  const palette = useColorScheme() === 'dark' ? dark : light;
+  const { palette } = useTheme();
   const isLive = arrival.estimate === 'live';
 
   /**
@@ -91,24 +92,6 @@ export function ArrivalRow({ arrival, now }: ArrivalRowProps) {
     </View>
   );
 }
-
-const light = {
-  text: '#11181c',
-  muted: '#687076',
-  border: '#e6e8eb',
-  chip: '#eceef0',
-  live: '#0a7d33',
-  canceled: '#b3261e',
-};
-
-const dark = {
-  text: '#ecedee',
-  muted: '#9ba1a6',
-  border: '#2a2f31',
-  chip: '#22282a',
-  live: '#4ac26b',
-  canceled: '#f2836b',
-};
 
 const styles = StyleSheet.create({
   row: {

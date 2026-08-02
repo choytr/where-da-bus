@@ -6,13 +6,13 @@ import {
   StyleSheet,
   Text,
   View,
-  useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useStopQueries, type RouteDirection } from '../../data/gtfs/db';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
 import { ATTRIBUTION } from '../../lib/legal';
+import { useTheme } from '../../lib/theme';
 
 /**
  * One route, and every stop it serves in order.
@@ -47,7 +47,7 @@ function sectionsFor(directions: RouteDirection[]): Section[] {
 }
 
 export function RouteScreen({ routeId }: { routeId: string }) {
-  const palette = useColorScheme() === 'dark' ? dark : light;
+  const { palette } = useTheme();
   const insets = useSafeAreaInsets();
   const { routeById, routeStops } = useStopQueries();
 
@@ -134,22 +134,6 @@ export function RouteScreen({ routeId }: { routeId: string }) {
     />
   );
 }
-
-const light = {
-  background: '#ffffff',
-  text: '#11181c',
-  muted: '#687076',
-  border: '#e6e8eb',
-  section: '#f5f6f7',
-};
-
-const dark = {
-  background: '#101314',
-  text: '#ecedee',
-  muted: '#9ba1a6',
-  border: '#2a2f31',
-  section: '#171c1e',
-};
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },

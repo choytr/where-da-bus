@@ -8,7 +8,6 @@ import {
   Text,
   TextInput,
   View,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -24,6 +23,7 @@ import {
 import { StopRow } from './StopRow';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
 import { ATTRIBUTION, DISCLAIMER } from '../../lib/legal';
+import { useTheme } from '../../lib/theme';
 
 // Required by the data provider's terms. Defined in lib/legal so that every
 // screen showing this data can reach them without importing a screen.
@@ -115,8 +115,7 @@ const KEYBOARD_DISMISS_MODE = Platform.select({
 } as const);
 
 export function HomeScreen() {
-  const isDark = useColorScheme() === 'dark';
-  const palette = isDark ? dark : light;
+  const { palette } = useTheme();
   const insets = useSafeAreaInsets();
 
   const { nearby, searchByName, searchByCode, routesForStops, stopsByIds, feedEndDate } =
@@ -474,22 +473,6 @@ function Busy({ label, color }: { label: string; color: string }) {
     </View>
   );
 }
-
-const light = {
-  background: '#ffffff',
-  text: '#11181c',
-  muted: '#687076',
-  border: '#e6e8eb',
-  warning: '#b3261e',
-};
-
-const dark = {
-  background: '#101314',
-  text: '#ecedee',
-  muted: '#9ba1a6',
-  border: '#2a2f31',
-  warning: '#f2b8b5',
-};
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },

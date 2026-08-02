@@ -3,6 +3,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { ArrivalsScreen, NOTICES } from '../ArrivalsScreen';
 import type { Arrival, ArrivalsResult, TheBusClient } from '../../../data/thebus';
 import type { Stop } from '../../../data/gtfs/types';
+import { TestTheme } from '../../../lib/testing/theme';
 
 /**
  * What a rider actually sees in each of §4's three states. The GTFS query
@@ -93,7 +94,9 @@ const clientOf = (...results: ArrivalsResult[]): TheBusClient => {
 const show = (client: TheBusClient) =>
   render(
     <SafeAreaProvider initialMetrics={METRICS}>
-      <ArrivalsScreen stopCode="596" client={client} />
+      <TestTheme>
+        <ArrivalsScreen stopCode="596" client={client} />
+      </TestTheme>
     </SafeAreaProvider>,
   );
 

@@ -3,6 +3,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { NOTICES, RouteScreen } from '../RouteScreen';
 import type { RouteDirection } from '../../../data/gtfs/db';
 import type { RouteSummary, Stop } from '../../../data/gtfs/types';
+import { TestTheme } from '../../../lib/testing/theme';
 
 const stop = (id: string, name: string): Stop => ({
   stop_id: id,
@@ -48,7 +49,9 @@ const METRICS: Metrics = {
 const show = (routeId = '1') =>
   render(
     <SafeAreaProvider initialMetrics={METRICS}>
-      <RouteScreen routeId={routeId} />
+      <TestTheme>
+        <RouteScreen routeId={routeId} />
+      </TestTheme>
     </SafeAreaProvider>,
   );
 

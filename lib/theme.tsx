@@ -1,11 +1,31 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
-import {
-  loadThemePreference,
-  saveThemePreference,
-  type ThemePreference,
-} from '../data/storage/preferences';
+
+/**
+ * `automatic` follows the OS appearance. The two explicit values override it,
+ * because a transit app gets used at a stop at night and "the OS says light" is
+ * not always the answer the user wants.
+ *
+ * The type lives here rather than next to the code that persists it, because
+ * *what a theme preference is* is a property of the theme and *where it is
+ * written down* is a detail. Keeping it this way round is what lets this file
+ * import nothing: a screen that reads a colour must not thereby depend on
+ * AsyncStorage, which is the same coupling lib/legal.ts was extracted to break.
+ */
+export const THEME_PREFERENCES = ['light', 'dark', 'automatic'] as const;
+
+export type ThemePreference = (typeof THEME_PREFERENCES)[number];
+
+/**
+ * How the preference outlives the process. Passed in rather than imported so
+ * this file stays free of storage, and so a test can drive the provider with a
+ * plain object instead of mocking a native module.
+ */
+export type ThemeStorage = {
+  load: () => Promise<ThemePreference>;
+  save: (preference: ThemePreference) => Promise<void>;
+};
 
 /**
  * Every colour the app draws with. The keys are the union of what the seven
@@ -86,7 +106,13 @@ export type Theme = {
  */
 const ThemeContext = createContext<Theme | null>(null);
 
-export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.Element {
+export function ThemeProvider({
+  children,
+  storage,
+}: {
+  children: ReactNode;
+  storage: ThemeStorage;
+}): React.JSX.Element {
   const osScheme = useColorScheme();
   const [preference, setPreferenceState] = useState<ThemePreference>('automatic');
 
@@ -95,13 +121,13 @@ export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.
   // the majority — sees nothing, and the two pre-database screens are brief.
   useEffect(() => {
     let cancelled = false;
-    void loadThemePreference().then((stored) => {
+    void storage.load().then((stored) => {
       if (!cancelled) setPreferenceState(stored);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [storage]);
 
   const value = useMemo<Theme>(() => {
     const scheme =
@@ -115,10 +141,10 @@ export function ThemeProvider({ children }: { children: ReactNode }): React.JSX.
         // Applied immediately and persisted in the background: the toggle must
         // not wait on AsyncStorage to show the user it worked.
         setPreferenceState(next);
-        void saveThemePreference(next);
+        void storage.save(next);
       },
     };
-  }, [preference, osScheme]);
+  }, [preference, osScheme, storage]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
