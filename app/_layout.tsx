@@ -8,10 +8,11 @@ import { useTheme } from '../lib/theme';
  * running or has failed — so this file is only the navigator that sits inside
  * it, and so that shell stays testable without a router.
  *
- * `index` keeps `headerShown: false` because `HomeScreen` draws its own
- * header inside a `SafeAreaView` and has been verified on a device that way.
- * The screens added in Increment 2 take the stack's native header instead,
- * which is what gives them a back affordance and the swipe gesture.
+ * The root stack holds two things: the `(tabs)` group, and the screens pushed
+ * over it — `/stop/[code]` and `/route/[id]`. Those two are defined once at
+ * the root rather than once inside each tab that can reach them, and they take
+ * the stack's native header, which is what gives them a back affordance and
+ * the swipe gesture. The tab group draws its own chrome and takes none.
  */
 
 /**
@@ -54,7 +55,12 @@ function ThemedStack() {
         headerBackButtonDisplayMode: 'minimal',
       }}
     >
-      <Stack.Screen name="index" options={{ headerShown: false, title: 'Stops' }} />
+      {/*
+        The tab group owns its own chrome, so the root stack shows no header
+        over it. The two pushed screens below it keep the stack's native
+        header, which is what gives them a back affordance and the swipe.
+      */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
     </Stack>
   );
 }
