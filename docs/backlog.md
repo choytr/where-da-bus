@@ -131,17 +131,37 @@ was consciously left:
   `automaticallyAdjustsScrollIndicatorInsets` defaults to `true`
   (`ScrollView.js:191`), and iOS syncs the indicator insets to the adjusted
   content inset by itself. Needing the companion prop is pre-iOS-13 folklore.
-  Note for anyone who does want manual control: while that flag is `true` iOS
-  overwrites `scrollIndicatorInsets`, so it must be set to `false` in the same
-  breath or the values silently do nothing.
+  A second claim made alongside it — that `scrollIndicatorInsets` is silently
+  overwritten while `automaticallyAdjustsScrollIndicatorInsets` is `true` — was
+  also wrong, and was also reasoned rather than tested. Setting it alone does
+  take effect; verified on device 2026-08-02. Two wrong claims in one entry,
+  from the same habit of reading Apple's semantics off the docs and reporting
+  the reading as behaviour.
 - **The scroll indicator's top is inset by roughly half the legal block**, so it
   starts below the top of the list rather than level with it. Observed on
-  device, 2026-08-02. Unexplained: `contentInsetAdjustmentBehavior` defaults to
-  `"never"` in React Native (unlike UIKit's `automatic`), and nothing in
-  `HomeScreen` sets a top inset. Prime suspect is a residual `contentInset` left
-  by `automaticallyAdjustKeyboardInsets` after the keyboard dismisses; not yet
-  confirmed against `911c39e`, which would establish whether it predates the
-  keyboard fix.
+  device, 2026-08-02. **Still unexplained after a full pass through React
+  Native's native scroll code.** Ruled out, with sources:
+
+  - safe-area folding into the content inset — `contentInsetAdjustmentBehavior`
+    is hard-set to `Never` in both architectures
+    (`RCTEnhancedScrollView.mm:37`, `RCTScrollView.m:377`)
+  - keyboard inset residue — the only assignment to
+    `verticalScrollIndicatorInsets` sits inside the keyboard handler
+    (`RCTScrollViewComponentView.mm:248`), and the offset is present at
+    `911c39e`, before `automaticallyAdjustKeyboardInsets` existed here
+  - legacy `autoAdjustInsetsForView` (`RCTView.m:495`) — needs an
+    `RCTAutoInsetsProtocol` parent, which a `FlatList` in a plain `View` has not
+  - the list not filling its space — `ScrollView.js:1861` applies
+    `flexGrow: 1, flexShrink: 1`
+
+  So nothing in this codebase or in RN applies a top inset, and the list's frame
+  should begin level with the legal header. Next step is measurement rather than
+  more reading: log `contentInset` from the `onScroll` event (it is in the
+  native payload, `CoreEventTypes.js:291`) and compare against the list's
+  `onLayout` frame. A negative `scrollIndicatorInsets.top` is the one-prop probe
+  for whether the gap is inset-driven at all. Untested hypothesis worth ruling
+  out early: Expo Go hosts the app inside its own view hierarchy, so this may
+  not reproduce in the standalone `.ipa`.
 - Two leftovers from those two commits, neither caught by `tsc`
   (`noUnusedLocals` is off): `EdgeInsets` is imported into `HomeScreen.tsx` and
   never used, and the memo wraps its value in `Platform.select({ default: … })`,
