@@ -15,7 +15,13 @@ import {
 import { metersBetween, type Coords } from '../../lib/distance';
 import type { RouteSummary, Stop, StopWithDistance } from './types';
 
-const NEARBY_RADIUS_METERS = 1500;
+/**
+ * Exported because the map frames its camera on exactly this distance — see
+ * features/map/region.ts. A camera and a query that disagree about how far
+ * "nearby" reaches produce a map showing stops that are not in the list under
+ * it, or a list of stops that are off screen.
+ */
+export const NEARBY_RADIUS_METERS = 1500;
 const NEARBY_LIMIT = 25;
 const SEARCH_LIMIT = 30;
 

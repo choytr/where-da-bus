@@ -1,0 +1,260 @@
+import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { useAnchoredStops, FALLBACK_ANCHOR } from '../useAnchoredStops';
+import type { LocationState } from '../../stops/useLocation';
+import type { StopWithDistance } from '../../../data/gtfs/types';
+import { metersBetween } from '../../../lib/distance';
+
+const mockQueries = {
+  nearby: jest.fn(async (_center: { lat: number; lon: number }): Promise<StopWithDistance[]> => []),
+  searchByName: jest.fn(async () => []),
+  searchByCode: jest.fn(async () => null),
+  routesForStops: jest.fn(async () => new Map()),
+  stopsByIds: jest.fn(async () => []),
+  feedEndDate: jest.fn(async () => null),
+};
+
+jest.mock('../../../data/gtfs/db', () => ({
+  useStopQueries: () => mockQueries,
+  NEARBY_RADIUS_METERS: 1500,
+}));
+
+/**
+ * `useLocation` is one-shot and permission-gated by design — nothing is
+ * requested until `request()` is called. This double keeps that contract, and
+ * lets a test decide what granting produces.
+ */
+const mockLocation: LocationState & { granted: { lat: number; lon: number } | null } = {
+  status: 'idle',
+  coords: null,
+  granted: null,
+  request: jest.fn(async () => {}),
+};
+
+jest.mock('../../stops/useLocation', () => ({
+  useLocation: () => mockLocation,
+}));
+
+const stop = (id: string, meters: number): StopWithDistance => ({
+  stop_id: id,
+  stop_code: id,
+  stop_name: `STOP ${id}`,
+  lat: 21.3,
+  lon: -157.85,
+  meters,
+});
+
+const WAIKIKI = { lat: 21.2793, lon: -157.8294 };
+
+describe('useAnchoredStops', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockQueries.nearby.mockResolvedValue([]);
+    mockLocation.status = 'idle';
+    mockLocation.coords = null;
+  });
+
+  it('falls back to Honolulu when there is no location', async () => {
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    expect(result.current.anchor).toEqual(FALLBACK_ANCHOR);
+    expect(result.current.source).toBe('fallback');
+  });
+
+  it('uses the location once it is known', async () => {
+    mockLocation.status = 'granted';
+    mockLocation.coords = WAIKIKI;
+
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    expect(result.current.anchor).toEqual(WAIKIKI);
+    expect(result.current.source).toBe('location');
+  });
+
+  it('queries once for the initial anchor', async () => {
+    await renderHook(() => useAnchoredStops());
+
+    await waitFor(() => {
+      expect(mockQueries.nearby).toHaveBeenCalledTimes(1);
+    });
+    expect(mockQueries.nearby).toHaveBeenCalledWith(FALLBACK_ANCHOR);
+  });
+
+  it('queries again, once, when the anchor moves', async () => {
+    const { result } = await renderHook(() => useAnchoredStops());
+    await waitFor(() => {
+      expect(mockQueries.nearby).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      result.current.setAnchor(WAIKIKI);
+    });
+
+    await waitFor(() => {
+      expect(mockQueries.nearby).toHaveBeenCalledTimes(2);
+    });
+    expect(mockQueries.nearby).toHaveBeenLastCalledWith(WAIKIKI);
+  });
+
+  it('does not query again when nothing but a re-render happens', async () => {
+    // The viewport version of this hook would refetch on every drag settle.
+    // There is no pan or zoom input to fire here, so the proof is that
+    // re-rendering on its own changes nothing.
+    const { result, rerender } = await renderHook(() => useAnchoredStops());
+    await waitFor(() => {
+      expect(mockQueries.nearby).toHaveBeenCalledTimes(1);
+    });
+
+    await rerender({});
+    await rerender({});
+
+    expect(mockQueries.nearby).toHaveBeenCalledTimes(1);
+    expect(result.current.anchor).toEqual(FALLBACK_ANCHOR);
+  });
+
+  it('reports an empty result as empty, not as a failure', async () => {
+    mockQueries.nearby.mockResolvedValue([]);
+
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('empty');
+    });
+    expect(result.current.stops).toEqual([]);
+  });
+
+  it('reports a failed query as failed, not as empty', async () => {
+    mockQueries.nearby.mockRejectedValue(new Error('disk'));
+
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('failed');
+    });
+  });
+
+  it('keeps the stops it already had when a later query fails', async () => {
+    mockQueries.nearby.mockResolvedValue([stop('5', 120)]);
+    const { result } = await renderHook(() => useAnchoredStops());
+    await waitFor(() => {
+      expect(result.current.status).toBe('ready');
+    });
+
+    mockQueries.nearby.mockRejectedValue(new Error('disk'));
+    await act(async () => {
+      result.current.setAnchor(WAIKIKI);
+    });
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('failed');
+    });
+    // Blanking the list would blank the map with it, and a failed query is not
+    // a reason to throw away a working view.
+    expect(result.current.stops).toHaveLength(1);
+  });
+
+  it('hands back the stops the query returned', async () => {
+    mockQueries.nearby.mockResolvedValue([stop('5', 120), stop('6', 340)]);
+
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    await waitFor(() => {
+      expect(result.current.status).toBe('ready');
+    });
+    expect(result.current.stops.map((s) => s.stop_id)).toEqual(['5', '6']);
+  });
+
+  it('a tapped anchor outlives a location fix arriving later', async () => {
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    await act(async () => {
+      result.current.setAnchor(WAIKIKI);
+    });
+
+    // The location resolves after the tap. The map must stay where it was put.
+    mockLocation.status = 'granted';
+    mockLocation.coords = { lat: 21.4, lon: -157.9 };
+    await act(async () => {});
+
+    expect(result.current.anchor).toEqual(WAIKIKI);
+    expect(result.current.source).toBe('chosen');
+  });
+
+  it('recentre gives the anchor back to the location', async () => {
+    mockLocation.status = 'granted';
+    mockLocation.coords = WAIKIKI;
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    await act(async () => {
+      result.current.setAnchor({ lat: 21.4, lon: -157.9 });
+    });
+    expect(result.current.source).toBe('chosen');
+
+    await act(async () => {
+      result.current.recentre();
+    });
+
+    expect(result.current.anchor).toEqual(WAIKIKI);
+    expect(result.current.source).toBe('location');
+  });
+
+  it('recentre asks for permission when it has never been asked for', async () => {
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    await act(async () => {
+      result.current.recentre();
+    });
+
+    expect(mockLocation.request).toHaveBeenCalledTimes(1);
+  });
+
+  it('recentre does not re-prompt when the location is already known', async () => {
+    mockLocation.status = 'granted';
+    mockLocation.coords = WAIKIKI;
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    await act(async () => {
+      result.current.recentre();
+    });
+
+    expect(mockLocation.request).not.toHaveBeenCalled();
+  });
+
+  it('still yields a usable anchor when location was denied', async () => {
+    mockLocation.status = 'denied';
+    mockLocation.coords = null;
+
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    expect(result.current.anchor).toEqual(FALLBACK_ANCHOR);
+    expect(result.current.source).toBe('fallback');
+    expect(result.current.locationStatus).toBe('denied');
+    await waitFor(() => {
+      expect(mockQueries.nearby).toHaveBeenCalledWith(FALLBACK_ANCHOR);
+    });
+  });
+
+  it('frames a camera around the anchor that contains the query radius', async () => {
+    const { result } = await renderHook(() => useAnchoredStops());
+    const { region } = result.current;
+
+    expect(region.latitude).toBe(FALLBACK_ANCHOR.lat);
+    const northEdge = {
+      lat: FALLBACK_ANCHOR.lat + region.latitudeDelta / 2,
+      lon: FALLBACK_ANCHOR.lon,
+    };
+    expect(metersBetween(FALLBACK_ANCHOR, northEdge)).toBeGreaterThan(1500);
+    // Walking scale, not the whole island.
+    expect(metersBetween(FALLBACK_ANCHOR, northEdge)).toBeLessThan(2000);
+  });
+
+  it('moves the camera with the anchor', async () => {
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    await act(async () => {
+      result.current.setAnchor(WAIKIKI);
+    });
+
+    expect(result.current.region.latitude).toBe(WAIKIKI.lat);
+    expect(result.current.region.longitude).toBe(WAIKIKI.lon);
+  });
+});

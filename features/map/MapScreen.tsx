@@ -1,41 +1,42 @@
+import { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView from 'react-native-maps';
+import { useAnchoredStops } from './useAnchoredStops';
 
 /**
- * Task 7: a bare map and nothing else. Pins, the anchored stop set and the
- * bottom sheet are tasks 8–10.
- *
- * It is deliberately this empty. This is the first thing in the increment that
- * can fail *natively* — `react-native-maps` renders an `MKMapView`, which Jest
- * cannot exercise and about which no amount of green suite proves anything. If
- * a map is going to fail to appear, it should fail here, with nothing else on
- * screen to confuse the question.
+ * The map, anchored to one point. Pins and the bottom sheet are tasks 9 and 10;
+ * what this file owns today is the camera and where it is pointed.
  *
  * No attribution line yet: what is on screen is Apple's tiles, not the
  * provider's data. It arrives with the stops in task 9, at the top of the
  * sheet.
  */
 
-/**
- * Downtown Honolulu, with the whole island in view. Only the starting camera —
- * task 8 replaces it with the rider's location where that is known and keeps
- * this as the fallback when permission is denied.
- */
-const HONOLULU = {
-  latitude: 21.3069,
-  longitude: -157.8583,
-  latitudeDelta: 0.35,
-  longitudeDelta: 0.35,
-};
-
 export function MapScreen() {
+  const { region } = useAnchoredStops();
+  const map = useRef<MapView | null>(null);
+
+  /**
+   * `initialRegion` is read once at mount and ignored afterwards, so moving the
+   * camera later has to be an imperative call. Animating rather than snapping
+   * because the anchor only moves when the rider caused it to — a tap, or a
+   * recentre — and an animation is what tells them the map understood which.
+   *
+   * `region` is memoised on the anchor inside `useAnchoredStops`, so its
+   * identity changes exactly when the anchor does and nothing else needs to be
+   * listed here.
+   */
+  useEffect(() => {
+    map.current?.animateToRegion(region, 350);
+  }, [region]);
+
   return (
     // No SafeAreaView. A map is one of the few things that should run under the
     // status bar and behind the tab bar; insetting it would leave grey bars top
     // and bottom. What sits *on* the map — the recentre button, the sheet —
     // takes the insets instead, in task 9.
     <View style={styles.fill}>
-      <MapView style={styles.fill} initialRegion={HONOLULU} />
+      <MapView ref={map} style={styles.fill} initialRegion={region} />
     </View>
   );
 }
