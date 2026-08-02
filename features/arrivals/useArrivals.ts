@@ -70,8 +70,10 @@ export function useArrivals(stopCode: string, client: TheBusClient = theBus): Ar
   }
 
   const load = useCallback(
-    async (signal: AbortSignal) => {
-      const result = await client.arrivals(stopCode, { signal });
+    async (signal: AbortSignal, fresh = false) => {
+      // `fresh` is set only by a pull, and it is what stops a cached client
+      // from answering the one gesture that means "I do not believe this".
+      const result = await client.arrivals(stopCode, { signal, fresh });
       // The stop changed, the screen went away, or the app was backgrounded
       // while this was in flight. Whatever came back is about a question
       // nobody is asking any more.
@@ -95,19 +97,19 @@ export function useArrivals(stopCode: string, client: TheBusClient = theBus): Ar
    * Set by the effect below so `refresh` can reach the current fetch. It hands
    * back the in-flight promise so a pull-to-refresh can tell when it is done.
    */
-  const fetchNow = useRef<() => Promise<void>>(async () => {});
+  const fetchNow = useRef<(fresh?: boolean) => Promise<void>>(async () => {});
 
   useEffect(() => {
     let inFlight = new AbortController();
     let stopPolling: (() => void) | null = null;
 
-    const tick = () => {
+    const tick = (fresh = false) => {
       // At most one request per stop is outstanding. Without this a slow
       // response and a fresh poll can settle out of order and show older
       // times than the ones already on screen.
       inFlight.abort();
       inFlight = new AbortController();
-      return load(inFlight.signal);
+      return load(inFlight.signal, fresh);
     };
 
     const startPolling = () => {
@@ -148,7 +150,7 @@ export function useArrivals(stopCode: string, client: TheBusClient = theBus): Ar
 
   const refresh = useCallback(() => {
     setRefreshing(true);
-    void fetchNow.current().finally(() => setRefreshing(false));
+    void fetchNow.current(true).finally(() => setRefreshing(false));
   }, []);
 
   return { board, failure, fetchedAt, loading, refreshing, refresh };

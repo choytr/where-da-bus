@@ -260,6 +260,25 @@ describe('useArrivals', () => {
     expect(client.calls).toBe(2);
   });
 
+  it('tells the client a pull is a pull, so a cache cannot answer it', async () => {
+    // The one gesture that means "I do not believe what is on screen". A
+    // cached client must not serve it from the copy being disbelieved.
+    const asked: (boolean | undefined)[] = [];
+    const client: TheBusClient = {
+      arrivals: async (_stopCode, options) => {
+        asked.push(options?.fresh);
+        return boardResult('45');
+      },
+    };
+    const { result } = await renderHook(() => useArrivals('45', client));
+    await flush();
+
+    await act(async () => { result.current.refresh(); });
+
+    expect(asked[0]).toBe(false);
+    expect(asked[1]).toBe(true);
+  });
+
   it('flags a pull-to-refresh while it runs, but never a background poll', async () => {
     // The distinction the RefreshControl depends on. A spinner that blinked
     // every 60 seconds would be noise, and one that never appeared would make

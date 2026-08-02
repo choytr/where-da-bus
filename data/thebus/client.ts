@@ -36,8 +36,17 @@ export interface TheBusClient {
    * Never rejects. Every outcome, including an outage, comes back as an
    * `ArrivalsResult`, because "couldn't reach the API" is a state the arrival
    * board has to render rather than an exception it has to survive.
+   *
+   * `fresh` means "do not answer me from a cache" — a pull-to-refresh. The
+   * network client itself has no cache and ignores it; `withCache` is what
+   * reads it. It lives on the interface rather than on the wrapper so that a
+   * screen can express the intent without knowing whether it is talking to a
+   * cached client or a bare one.
    */
-  arrivals(stopCode: string, options?: { signal?: AbortSignal }): Promise<ArrivalsResult>;
+  arrivals(
+    stopCode: string,
+    options?: { signal?: AbortSignal; fresh?: boolean },
+  ): Promise<ArrivalsResult>;
 }
 
 export type TheBusClientConfig = {
@@ -66,7 +75,10 @@ const unreachable: ArrivalsResult = { ok: false, failure: { kind: 'unreachable' 
 /**
  * Reads the AppID from the environment. `EXPO_PUBLIC_` means it is inlined
  * into the bundle at build time and is extractable from the `.ipa` — an
- * accepted, documented tradeoff for a personal-use app, not an oversight.
+ * accepted, documented tradeoff, not an oversight.
+ *
+ * The quota it spends is per AppID and shared across every install, which is
+ * why withCache exists. See the comparison spec dated 2026-08-02.
  */
 export function appIdFromEnv(): string {
   return process.env.EXPO_PUBLIC_THEBUS_APP_ID ?? '';
