@@ -83,6 +83,32 @@ export function routesForStopsSql(count: number): string {
 `;
 }
 
+/**
+ * One route's identity. Parameters: (route_id).
+ */
+export const ROUTE_BY_ID = `
+  SELECT route_id, short_name, long_name FROM routes WHERE route_id = ?
+`;
+
+/**
+ * Every stop a route serves, in the order it serves them. Parameters: (route_id).
+ *
+ * `direction_id` and `seq` come back so the caller can split the run into its
+ * two directions and keep each in order. Ordering here rather than in
+ * JavaScript because `seq` is the only thing that makes this list a route
+ * rather than a set — the stop names carry no sequence of their own.
+ *
+ * This is entirely static data. Which stops a route serves does not change
+ * minute to minute, so unlike arrivals it needs no network at all.
+ */
+export const ROUTE_STOPS = `
+  SELECT rs.direction_id, rs.seq, s.stop_id, s.stop_code, s.stop_name, s.lat, s.lon
+  FROM route_stops rs
+  JOIN stops s ON s.stop_id = rs.stop_id
+  WHERE rs.route_id = ?
+  ORDER BY rs.direction_id, rs.seq
+`;
+
 export type BoundingBox = {
   minLat: number;
   maxLat: number;

@@ -7,6 +7,10 @@ export type StopRowProps = {
   meters: number | null;
   isFavorite: boolean;
   onToggleFavorite: (stopId: string) => void;
+  /** Opens this stop's live arrivals. Optional so the row stays renderable alone. */
+  onPress?: (stop: Stop) => void;
+  /** Opens a route's ordered stop list. Optional for the same reason. */
+  onPressRoute?: (route: RouteSummary) => void;
 };
 
 /**
@@ -30,6 +34,8 @@ export function StopRow({
   meters,
   isFavorite,
   onToggleFavorite,
+  onPress,
+  onPressRoute,
 }: StopRowProps) {
   const isDark = useColorScheme() === 'dark';
   const palette = isDark ? dark : light;
@@ -40,7 +46,16 @@ export function StopRow({
 
   return (
     <View style={[styles.row, { borderBottomColor: palette.border }]}>
-      <View style={styles.main}>
+      {/* The stop's own area opens arrivals; the star and the route chips are
+          separate targets inside it, which is why this is not one big button
+          wrapping the whole row. */}
+      <Pressable
+        accessibilityRole={onPress === undefined ? undefined : 'button'}
+        accessibilityLabel={onPress === undefined ? undefined : `Arrivals at ${stop.stop_name}`}
+        disabled={onPress === undefined}
+        onPress={() => onPress?.(stop)}
+        style={styles.main}
+      >
         <Text style={[styles.name, { color: palette.text }]}>{stop.stop_name}</Text>
 
         <View style={styles.metaRow}>
@@ -56,17 +71,24 @@ export function StopRow({
 
         <View style={styles.routes}>
           {routes.map((route) => (
-            <View
+            <Pressable
               key={route.route_id}
+              accessibilityRole={onPressRoute === undefined ? undefined : 'button'}
+              accessibilityLabel={
+                onPressRoute === undefined ? undefined : `Route ${route.short_name}`
+              }
+              disabled={onPressRoute === undefined}
+              onPress={() => onPressRoute?.(route)}
+              hitSlop={6}
               style={[styles.chip, { backgroundColor: palette.chip }]}
             >
               <Text style={[styles.chipText, { color: palette.text }]}>
                 {route.short_name}
               </Text>
-            </View>
+            </Pressable>
           ))}
         </View>
-      </View>
+      </Pressable>
 
       <Pressable
         accessibilityRole="button"

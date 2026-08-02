@@ -3,6 +3,8 @@ import { useCallback } from 'react';
 import {
   FEED_END_DATE,
   NEARBY_IN_BOX,
+  ROUTE_BY_ID,
+  ROUTE_STOPS,
   SEARCH_BY_CODE,
   SEARCH_BY_NAME,
   boundingBox,
@@ -85,6 +87,28 @@ function isRouteForStop(value: unknown): value is RouteForStop {
     typeof value.stop_id === 'string'
   );
 }
+
+/**
+ * One stop on a route's run, carrying where it falls in that run. `seq` is
+ * what makes the list a route rather than a set of stops.
+ */
+type RouteStopRow = Stop & { direction_id: string; seq: number };
+
+function isRouteStopRow(value: unknown): value is RouteStopRow {
+  return (
+    isStop(value) &&
+    'direction_id' in value &&
+    typeof value.direction_id === 'string' &&
+    'seq' in value &&
+    typeof value.seq === 'number'
+  );
+}
+
+/** A route's run in one direction, in order. */
+export type RouteDirection = {
+  directionId: string;
+  stops: Stop[];
+};
 
 /**
  * Typed query functions over the bundled, read-only GTFS database. Must be
@@ -188,5 +212,55 @@ export function useStopQueries() {
     return isFeedEndDateRow(row) ? row.feed_end_date : null;
   }, [db]);
 
-  return { nearby, searchByName, searchByCode, routesForStops, stopsByIds, feedEndDate };
+  /** One route by id, or null when the bundled feed does not carry it. */
+  const routeById = useCallback(
+    async (routeId: string): Promise<RouteSummary | null> => {
+      const row = await db.getFirstAsync(ROUTE_BY_ID, routeId);
+      return isRouteSummary(row) ? row : null;
+    },
+    [db],
+  );
+
+  /**
+   * Every stop a route serves, split by direction and in order within each.
+   *
+   * Grouping happens here rather than in the screen so the ordering guarantee
+   * stays next to the `ORDER BY` that provides it. Directions come back in the
+   * order the feed numbers them, which is stable across builds.
+   */
+  const routeStops = useCallback(
+    async (routeId: string): Promise<RouteDirection[]> => {
+      const rows = await db.getAllAsync(ROUTE_STOPS, routeId);
+
+      const order: string[] = [];
+      const grouped = new Map<string, Stop[]>();
+      for (const row of rows.filter(isRouteStopRow)) {
+        const { direction_id, seq, ...stop } = row;
+        const existing = grouped.get(direction_id);
+        if (existing === undefined) {
+          order.push(direction_id);
+          grouped.set(direction_id, [stop]);
+        } else {
+          existing.push(stop);
+        }
+      }
+
+      return order.map((directionId) => ({
+        directionId,
+        stops: grouped.get(directionId) ?? [],
+      }));
+    },
+    [db],
+  );
+
+  return {
+    nearby,
+    searchByName,
+    searchByCode,
+    routesForStops,
+    stopsByIds,
+    feedEndDate,
+    routeById,
+    routeStops,
+  };
 }

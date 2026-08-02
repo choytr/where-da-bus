@@ -5,6 +5,8 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import {
   FEED_END_DATE,
+  ROUTE_BY_ID,
+  ROUTE_STOPS,
   SEARCH_BY_NAME,
   SEARCH_BY_CODE,
   NEARBY_IN_BOX,
@@ -205,5 +207,87 @@ describe('boundingBox', () => {
     const box = boundingBox({ lat: 21.3, lon: -157.9 }, 500);
     assert.ok(box.minLat < 21.3 && box.maxLat > 21.3);
     assert.ok(box.minLon < -157.9 && box.maxLon > -157.9);
+  });
+});
+
+describe('route detail', () => {
+  let db;
+
+  before(() => {
+    if (!existsSync(DB)) {
+      throw new Error('assets/db/gtfs.db missing — run: npm run build:gtfs');
+    }
+    db = new DatabaseSync(DB, { readOnly: true });
+  });
+
+  /** A route that actually exists in the built asset, so these test the real feed. */
+  const someRouteId = () => db.prepare('SELECT route_id FROM route_stops LIMIT 1').get().route_id;
+
+  test('ROUTE_BY_ID finds a route', () => {
+    const id = someRouteId();
+    const row = db.prepare(ROUTE_BY_ID).get(id);
+    assert.equal(row.route_id, id);
+    assert.equal(typeof row.short_name, 'string');
+    assert.equal(typeof row.long_name, 'string');
+  });
+
+  test('ROUTE_BY_ID returns nothing for a route that is not there', () => {
+    assert.equal(db.prepare(ROUTE_BY_ID).get('no-such-route'), undefined);
+  });
+
+  test('ROUTE_STOPS returns stops joined to their names', () => {
+    const rows = db.prepare(ROUTE_STOPS).all(someRouteId());
+    assert.ok(rows.length > 0, 'a real route should serve at least one stop');
+    for (const row of rows) {
+      assert.equal(typeof row.stop_name, 'string');
+      assert.notEqual(row.stop_name, '');
+      assert.equal(typeof row.lat, 'number');
+      assert.equal(typeof row.seq, 'number');
+      assert.equal(typeof row.direction_id, 'string');
+    }
+  });
+
+  test('ROUTE_STOPS orders by seq within each direction', () => {
+    // The ordering is the whole point: a route is a sequence, and stop names
+    // carry no order of their own to fall back on.
+    const rows = db.prepare(ROUTE_STOPS).all(someRouteId());
+    const seen = new Map();
+    for (const row of rows) {
+      const previous = seen.get(row.direction_id);
+      if (previous !== undefined) {
+        assert.ok(
+          row.seq > previous,
+          `seq went ${previous} -> ${row.seq} within direction ${row.direction_id}`,
+        );
+      }
+      seen.set(row.direction_id, row.seq);
+    }
+    assert.ok(seen.size > 0);
+  });
+
+  test('ROUTE_STOPS groups all of a direction together', () => {
+    // The screen splits on direction by walking the rows once, which is only
+    // correct if each direction arrives as one contiguous run.
+    const rows = db.prepare(ROUTE_STOPS).all(someRouteId());
+    const starts = [];
+    for (const [i, row] of rows.entries()) {
+      if (i === 0 || rows[i - 1].direction_id !== row.direction_id) starts.push(row.direction_id);
+    }
+    assert.equal(starts.length, new Set(starts).size, 'a direction appeared in two runs');
+  });
+
+  test('ROUTE_STOPS returns nothing for a route that is not there', () => {
+    assert.deepEqual(db.prepare(ROUTE_STOPS).all('no-such-route'), []);
+  });
+
+  test('every route_stops row points at a stop that exists', () => {
+    // A dangling stop_id would make the join silently drop stops from a route,
+    // which reads as a short route rather than as a broken build.
+    const orphans = db
+      .prepare(
+        'SELECT COUNT(*) AS n FROM route_stops rs LEFT JOIN stops s ON s.stop_id = rs.stop_id WHERE s.stop_id IS NULL',
+      )
+      .get().n;
+    assert.equal(orphans, 0);
   });
 });

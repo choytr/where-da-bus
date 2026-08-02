@@ -3,7 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View, useColorScheme } from 'react
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
-import { DISCLAIMER } from './features/stops/HomeScreen';
+import { DISCLAIMER } from './lib/legal';
 
 /**
  * Everything that must be true before any screen renders: the safe-area

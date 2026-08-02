@@ -11,6 +11,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { useStopQueries } from '../../data/gtfs/db';
 import { feedValidity, formatFeedDate } from '../../data/gtfs/feedValidity';
 import { useLocation } from './useLocation';
@@ -22,17 +23,11 @@ import {
 } from '../../data/storage/favorites';
 import { StopRow } from './StopRow';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
+import { ATTRIBUTION, DISCLAIMER } from '../../lib/legal';
 
-/**
- * Required by the data provider's terms and kept as constants so neither can
- * be edited away by accident. The attribution text is verbatim, including the
- * missing full stop. The disclaimer's exact wording is still pending
- * verification against the real user agreement.
- */
-export const ATTRIBUTION =
-  'Route and arrival data provided by permission of Oahu Transit Services, Inc';
-export const DISCLAIMER =
-  'This is an unofficial app. Not affiliated with or endorsed by Oahu Transit Services, Inc.';
+// Required by the data provider's terms. Defined in lib/legal so that every
+// screen showing this data can reach them without importing a screen.
+export { ATTRIBUTION, DISCLAIMER } from '../../lib/legal';
 
 /**
  * Every message this screen can end on. They are constants, and deliberately
@@ -141,6 +136,20 @@ export function HomeScreen() {
   const contentInsets = useMemo(() => ({
     paddingBottom: insets.bottom,
   }), [insets.bottom]);
+
+  /**
+   * Navigation by URL rather than by a passed-in callback. The router owns the
+   * back stack, so a row only has to name where it is going — and the stop
+   * code is the number on the physical sign, which makes `/stop/596` a link
+   * that means something on its own.
+   */
+  const openStop = useCallback((stop: Stop) => {
+    router.push(`/stop/${encodeURIComponent(stop.stop_code || stop.stop_id)}`);
+  }, []);
+
+  const openRoute = useCallback((route: RouteSummary) => {
+    router.push(`/route/${encodeURIComponent(route.route_id)}`);
+  }, []);
 
   // Reading a bundled asset does not fail transiently: if it fails once it
   // will keep failing, so the notice stays up rather than flickering away on
@@ -435,6 +444,8 @@ export function HomeScreen() {
             meters={item.meters ?? null}
             isFavorite={isFavorite(favoriteIds, item.stop_id)}
             onToggleFavorite={toggleFavorite}
+            onPress={openStop}
+            onPressRoute={openRoute}
           />
         )}
         // At the head of the list, not the foot: the provider's terms ask for
