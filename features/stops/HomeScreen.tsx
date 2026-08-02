@@ -10,7 +10,7 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-context';
 import { useStopQueries } from '../../data/gtfs/db';
 import { feedValidity, formatFeedDate } from '../../data/gtfs/feedValidity';
 import { useLocation } from './useLocation';
@@ -114,6 +114,11 @@ const NO_STOPS: Listed[] = [];
 const keptStops = (search: SearchState): Listed[] =>
   search.state === 'running' || search.state === 'done' ? search.stops : NO_STOPS;
 
+const KEYBOARD_DISMISS_MODE = Platform.select({
+  ios: "interactive",
+  android: "on-drag",
+} as const);
+
 export function HomeScreen() {
   const isDark = useColorScheme() === 'dark';
   const palette = isDark ? dark : light;
@@ -132,6 +137,13 @@ export function HomeScreen() {
   const [routesByStop, setRoutesByStop] = useState<Map<string, RouteSummary[]>>(
     new Map(),
   );
+
+  const contentInsets = useMemo(() => Platform.select({
+    default: {
+      paddingBottom: insets.bottom,
+    }
+  }), [insets.bottom]);
+
   // Reading a bundled asset does not fail transiently: if it fails once it
   // will keep failing, so the notice stays up rather than flickering away on
   // the next query.
@@ -417,7 +429,7 @@ export function HomeScreen() {
         data={visible}
         keyExtractor={(stop) => stop.stop_id}
         automaticallyAdjustKeyboardInsets
-        keyboardDismissMode={Platform.OS === "ios" ? "interactive": "on-drag"}
+        keyboardDismissMode={KEYBOARD_DISMISS_MODE}
         renderItem={({ item }) => (
           <StopRow
             stop={item}
@@ -438,7 +450,7 @@ export function HomeScreen() {
           </View>
         }
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: insets.bottom }}
+        contentContainerStyle={contentInsets}
       />
     </SafeAreaView>
   );
