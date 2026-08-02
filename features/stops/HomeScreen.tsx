@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -415,6 +416,8 @@ export function HomeScreen() {
       <FlatList
         data={visible}
         keyExtractor={(stop) => stop.stop_id}
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode={Platform.OS === "ios" ? "interactive": "on-drag"}
         renderItem={({ item }) => (
           <StopRow
             stop={item}
