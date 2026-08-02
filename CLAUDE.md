@@ -160,6 +160,11 @@ therefore written twice, and every subagent dispatched to execute one task read
 the whole plan to find its slice. Nine per-task review rounds followed. The
 process cost more than the implementation.
 
+- **Every increment gets a spec and a plan, both kept.** The spec says what is
+  being built and why, and records the decisions already settled so they are not
+  re-argued; the plan breaks it into tasks. Written before the code, updated
+  when reality disagrees. `docs/superpowers/specs/2026-08-02-increment-3-map.md`
+  and its plan are the reference shape.
 - **Plans specify contracts, not code.** Per task: the files touched, the
   exported signature, the test names, and any decision already settled. Ten
   lines, not two hundred. Plans grow to this size to be executable by a cold
@@ -178,6 +183,16 @@ process cost more than the implementation.
   marks which of its claims are vendor quotes and which are readings of a
   single example — re-confirm the readings against the live API, not against
   the PDFs again.
+
+**Increment 2 has no spec and no plan, and that is the correction overshooting
+rather than an oversight worth imitating.** Increment 1's 8,015-word plan was so
+expensive that the next increment was built from a todo list and commit messages
+alone, which left its decisions — expo-router over React Navigation, the
+DaBus-shaped arrival board, the `estimated === "1"` whitelist — recoverable only
+by reading twelve commits. The compromise is the bullets above: a short spec
+plus a contract-level plan, neither of which carries code. Increment 2 is not
+being back-filled; a spec for shipped work is ceremony, and `docs/handoff.md`
+plus those commit messages already hold the reasoning.
 
 **Device verification is not what gets cut.** Nine review rounds, 90 Jest tests
 and a clean typecheck all missed that `SafeAreaView` had no provider and the

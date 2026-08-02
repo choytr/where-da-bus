@@ -256,7 +256,7 @@ still lists the dead URL as the producer URL; do not use it.
 |---|---|---|
 | `stops.txt` | 418 KB (3,847 stops) | yes |
 | `routes.txt` | 5.4 KB (118 routes) | yes |
-| `shapes.txt` | 9.8 MB | Increment 3 only |
+| `shapes.txt` | 9.8 MB | Increment 5 only — see note below |
 | `stop_times.txt` | 73.8 MB | never |
 
 The 424 KB v1 payload against 73.8 MB for `stop_times.txt` confirms the
@@ -269,6 +269,19 @@ exclusion decision quantitatively.
   validity window. Bundled data therefore goes stale by design. This is low-risk
   for v1 because stop names and coordinates rarely change and no schedule data
   ships, but a refresh path is required before Increment 3 uses `shapes.txt`.
+
+  > **Both halves of that last clause were wrong, corrected 2026-08-02.**
+  > Route geometry is *more* stable than the stop list already shipping from
+  > this same expiring feed — roads do not move — so shapes do not make a
+  > refresh path more urgent than it already is. The refresh path is genuinely
+  > needed, on its own merits, and is now Increment 4.
+  >
+  > The size fork was also illusory. The 9.8 MB is CSV overhead: `shape_id`
+  > repeats on every one of 278,384 rows. All 532 shapes, Douglas–Peucker
+  > simplified at 5 m and polyline-encoded, come to **~200 KB** — 152 KB at
+  > 10 m, and 814 KB with no simplification at all. 5 m is sub-pixel at any
+  > zoom where a whole route fits on screen, and every `shape_id` referenced by
+  > `trips.txt` resolves. Nothing needs to be dropped.
 - **`route_color` and `route_text_color` are empty for every route.** Route
   colouring cannot come from the agency, so the app needs its own palette. This
   is a design opportunity rather than a gap, given the project's UX motivation.
@@ -326,7 +339,9 @@ development build, which on the free-sideload path forces the slow `.ipa` loop
 for every native change; `react-native-maps` has historically shipped inside
 Expo Go, preserving the fast iteration loop.
 
-Expo Go's current bundled-module list must be confirmed before committing.
+**Confirmed 2026-08-02.** `react-native-maps@1.20.1` is in Expo Go SDK 54's
+bundled native modules, as are `react-native-reanimated ~4.1.1` and
+`react-native-gesture-handler ~2.28.0`. The map preserves the fast loop.
 
 ## Increment roadmap
 
@@ -335,7 +350,9 @@ Expo Go's current bundled-module list must be confirmed before committing.
 | **0** | Prove Windows -> Actions -> .ipa -> SideStore -> iPhone. Trivial app. **Done.** | no |
 | **1** | GTFS build script -> SQLite. Nearby stops by distance, search by name and stop number, favorites, and the routes serving each stop. | **no** |
 | **2** | Live arrivals per stop with the §4 state model. Route detail with ordered stop list. | yes |
-| **3** | Map: nearby stops, route polylines from `shapes.txt`, live vehicle positions. | yes |
+| **3** | Map of nearby stops with tap-to-search, three-tab structure, and the light/dark/automatic theme control. **Re-scoped 2026-08-02** — see `2026-08-02-increment-3-map.md`, which supersedes this row. | yes |
+| **4** | On-device GTFS feed refresh, living in the Settings tab. | no |
+| **5** | Route polylines from `shapes.txt`; live vehicle positions from the fleet endpoint. | yes |
 
 Increment 1 requires **no API access at all** — it runs entirely on bundled
 static data. The unresolved JSON field types therefore block nothing until

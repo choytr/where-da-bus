@@ -128,7 +128,9 @@ The consequence is narrow, because **Increment 2's arrival board does not need
 the vehicle endpoint at all** — `arrivalsJSON` already carries route, headsign,
 direction, predicted time, and the bus's own position. `adherence` is the only
 field unique to the vehicle endpoint, and reaching it means parsing XML. Do not
-add an XML parser for it without deciding the field earns one.
+add an XML parser for it without deciding the field earns one. **A map does earn
+one** — see the fleet-wide finding in the Vehicle section below, which is the
+only route to positions for buses not approaching a chosen stop.
 
 ### Arrivals
 
@@ -216,6 +218,35 @@ https://api.thebus.org/vehicle/?key=<AppID>&num=<vehicle_num>
 
 **There is no working JSON form** — see the endpoint table above. The XML is
 flat and shallow:
+
+> **Omit `num` and it returns the entire fleet.** Verified live 2026-08-02:
+> `https://api.thebus.org/vehicle/?key=<AppID>` with **no parameters** answers
+> with 1,184 `<vehicle>` elements, 333 KB of XML — 29 KB gzipped — in one
+> request. `route=` does *not* filter: `?route=1` returns the identical 1,184.
+> Any unrecognised parameter behaves the same way. Only `num=` narrows it, and
+> an unknown `num` gives `<errorMessage>Could not find vehicle "…"`.
+>
+> **This overturns the advice below about not adding an XML parser.** That
+> advice assumed the endpoint only did one-bus-at-a-time lookups, which would
+> have made it useless for a map. It doesn't. This is the *only* way to get
+> fleet-wide positions — `arrivalsJSON` gives positions only for buses
+> approaching one specific stop.
+>
+> **Most of the fleet response is stale, and it is dangerous.** Of the 1,184
+> vehicles, **46** had a `last_message` within 15 minutes. The rest had a median
+> `last_message` age of roughly **four years**. But 1,144 of them carry real,
+> plausible Oahu coordinates — so unlike the `"0","0"` sentinel, which lands
+> visibly in the Gulf of Guinea, these plot as buses sitting on real streets.
+> A consumer that does not filter on `last_message` freshness renders about
+> 1,138 ghost buses that have not moved since 2022.
+>
+> `route_short_name` is **not** a usable filter: it is the literal string
+> `"null"` for 1,143 of them, including at least one live vehicle.
+>
+> The 46 live vehicles at 01:07 HST Sunday corroborates the 41 `estimated="1"`
+> arrivals sampled independently at 22:00 the night before. **The rush-hour
+> count is still unmeasured** and is what decides whether a live-vehicle map is
+> worth building; it needs a 17:00 UTC or later window.
 
 ```xml
 <vehicles>

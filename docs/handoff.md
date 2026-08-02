@@ -4,7 +4,7 @@
 session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
-Last updated: **2026-08-02**, at the close of Increment 2.
+Last updated: **2026-08-02**, after the Increment 3 design session.
 
 **Everything durable is already in the repo.** This document exists only to
 carry what a transcript would otherwise lose. Read the repo docs first; they are
@@ -13,12 +13,17 @@ the source of truth.
 ## Read these, in this order
 
 1. `CLAUDE.md` — the traps. Updated this session.
-2. `docs/superpowers/specs/2026-07-29-wheredabus-design.md` — scope and sequencing.
-3. `docs/api/README.md` — the live API, verified against the vendor PDFs *and*
-   against the live API on 2026-08-01. It marks which claims are vendor quotes
-   and which are readings of a single example. Do not re-read the PDFs to
-   re-derive what the README already records; that was done once, deliberately.
-4. `docs/backlog.md` — triaged defects, including an "Increment 2 — deferred"
+2. `docs/superpowers/specs/2026-08-02-increment-3-map.md` — **what to build
+   next**, and its plan under `docs/superpowers/plans/`.
+3. `docs/superpowers/specs/2026-07-29-wheredabus-design.md` — scope and
+   sequencing. Its Increment 3 row is superseded by the spec above; three of
+   its claims were corrected on 2026-08-02 and carry inline notes saying so.
+4. `docs/api/README.md` — the live API, verified against the vendor PDFs *and*
+   against the live API on 2026-08-01, plus the fleet-endpoint finding of
+   2026-08-02. It marks which claims are vendor quotes and which are readings
+   of a single example. Do not re-read the PDFs to re-derive what the README
+   already records; that was done once, deliberately.
+5. `docs/backlog.md` — triaged defects, including an "Increment 2 — deferred"
    section written at this increment's boundary.
 
 ## Where things stand
@@ -85,32 +90,42 @@ red, invisible locally because `npm install` tolerates what `npm ci` refuses.
 
 ## What to pick up next
 
-1. **Palette cleanup** — six files (`AppShell`, `HomeScreen`, `StopRow`,
-   `ArrivalRow`, `ArrivalsScreen`, `RouteScreen`) each carry their own
-   `useColorScheme` and their own copy of the same hex. Increment 2 doubled it.
-   The top structural item in the backlog, and cheaper before a seventh screen
-   exists — the map will want those colours too.
-2. **Increment 3, the map.** Two things need settling before code:
-   `shapes.txt` is not in the bundled asset and the build never reads it (it is
-   9.8 MB raw against a ~1.2 MB asset, so how much survives is a design fork);
-   and the design spec requires a feed-refresh path before shapes are used,
-   because shapes go stale in a way stop names do not. Today a rebuild is
-   `npm run build:gtfs` plus a commit of the regenerated asset.
-   `react-native-maps@1.20.1` **is** bundled in Expo Go SDK 54 — confirmed in
-   `node_modules/expo/bundledNativeModules.json`, no longer an open question.
+**Increment 3 is specified and planned. Execute the plan** —
+`docs/superpowers/plans/2026-08-02-increment-3-map.md`, inline and in order.
+It is the theme provider, then a three-tab restructure, then the map. Task 7 is
+a deliberate stop-and-device-verify: it is the first thing that can fail
+natively, and nothing after it is worth building if the map does not render.
 
-Truman also raised running `/grill-me` to flesh out the project's remaining
-unknown specs. If that has happened, its output supersedes the sequencing above.
+Nothing about Increment 3 is still open. The design session on 2026-08-02
+settled it end to end, including two reversals worth knowing about because the
+losing option looks reasonable on paper:
+
+- **The map does not re-query on pan or zoom.** Stops are anchored to a point —
+  your location, or wherever you tap. Viewport querying was chosen first and
+  then rejected: the SQL is free (0.5 ms for 480 rows over the existing index)
+  but re-rendering up to 150 native markers on every drag settle is not, and a
+  list that reshuffles under your thumb is unpleasant however fast it is.
+- **Search is not in the bottom sheet.** It is its own tab, with favorites as
+  its empty state. A text field inside a sheet over a map fights the sheet's
+  gestures through the keyboard, and this is the wrong loop to debug that on.
+
+**Deferred with the numbers already taken**, so none of it needs re-deriving:
+feed refresh (Increment 4), route polylines (~200 KB for all 532 shapes, not
+the budget fork the design spec feared), live vehicles (the whole fleet arrives
+in one 29 KB request, but 1,138 of 1,184 vehicles are years stale while still
+carrying real Oahu coordinates — filter on `last_message` or plot ghosts).
+
+**One dated chore:** `feed_end_date` is `20260822`. Run `npm run build:gtfs` and
+commit the regenerated asset before then, or the app starts calling itself
+stale. Increment 4 is what ends this being manual.
 
 ## Suggested skills
 
-- **`superpowers:brainstorming`** — before any Increment 3 design work. The
-  `shapes.txt` budget question is a genuine design fork, not an implementation
-  detail.
-- **`superpowers:writing-plans`** — after brainstorming, and note `CLAUDE.md`'s
-  rule: plans specify contracts, not code. Ten lines per task.
-- **`superpowers:test-driven-development`** — the parsing and geometry work in
-  Increment 3 is exactly the pure logic this project TDDs.
+- **`superpowers:executing-plans`** — Increment 3's design and plan are both
+  written. Brainstorming and planning are *done*; do not redo them.
+- **`superpowers:test-driven-development`** — `useAnchoredStops`, the theme
+  resolution and the preference storage are exactly the pure logic this project
+  TDDs. The map view itself is not.
 - **`superpowers:systematic-debugging`** — if anything about the *appearance*
   of the app comes up. This project has repeatedly produced confident wrong
   claims by reasoning from source instead of observing a device.
