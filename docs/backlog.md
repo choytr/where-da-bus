@@ -124,9 +124,24 @@ was consciously left:
   `interactive` on iOS rather than `on-drag`, so the keyboard tracks the finger
   the way Messages and Mail do.
 - ~~`contentContainerStyle` allocates a new object per render~~ — memoised on
-  `insets.bottom` in `037c7c0`. **`scrollIndicatorInsets` is still unset**, so
-  the scroll indicator still runs under the home indicator. That half remains
-  open.
+  `insets.bottom` in `037c7c0`.
+- ~~`scrollIndicatorInsets` is unset, so the scroll indicator runs under the
+  home indicator.~~ **This was never true.** It was reasoned from the code and
+  never observed; on device the indicator clears the home indicator fine.
+  `automaticallyAdjustsScrollIndicatorInsets` defaults to `true`
+  (`ScrollView.js:191`), and iOS syncs the indicator insets to the adjusted
+  content inset by itself. Needing the companion prop is pre-iOS-13 folklore.
+  Note for anyone who does want manual control: while that flag is `true` iOS
+  overwrites `scrollIndicatorInsets`, so it must be set to `false` in the same
+  breath or the values silently do nothing.
+- **The scroll indicator's top is inset by roughly half the legal block**, so it
+  starts below the top of the list rather than level with it. Observed on
+  device, 2026-08-02. Unexplained: `contentInsetAdjustmentBehavior` defaults to
+  `"never"` in React Native (unlike UIKit's `automatic`), and nothing in
+  `HomeScreen` sets a top inset. Prime suspect is a residual `contentInset` left
+  by `automaticallyAdjustKeyboardInsets` after the keyboard dismisses; not yet
+  confirmed against `911c39e`, which would establish whether it predates the
+  keyboard fix.
 - Two leftovers from those two commits, neither caught by `tsc`
   (`noUnusedLocals` is off): `EdgeInsets` is imported into `HomeScreen.tsx` and
   never used, and the memo wraps its value in `Platform.select({ default: … })`,

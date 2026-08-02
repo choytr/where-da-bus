@@ -129,7 +129,13 @@ keyboard handling on the stops list. Do not silently rewrite his work or hand
 him finished code for something he has said he wants to do himself. Review it
 like anyone's, say what you find, and leave the fix to him unless he asks.
 
-Three small things from that review are open and recorded in `docs/backlog.md`:
-an unused `EdgeInsets` import, a `Platform.select({ default: … })` that returns
-its argument on every platform, and `scrollIndicatorInsets` still being unset.
-None of them block Increment 2. Ask before fixing them.
+Open from that review and recorded in `docs/backlog.md`: an unused `EdgeInsets`
+import, and a `Platform.select({ default: … })` that returns its argument on
+every platform. He is taking both. Neither blocks Increment 2.
+
+**A caution that generalises.** That review also produced a finding that was
+simply wrong — that the scroll indicator ran under the home indicator. It had
+been reasoned from the code, never observed, and one look at the device
+disproved it. There is no simulator here and no device; anything about how the
+app *looks* is inference until Truman confirms it. Say which of the two you are
+doing, and do not launder a reading of the source into a claim about the screen.
