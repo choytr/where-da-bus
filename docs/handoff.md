@@ -30,8 +30,11 @@ the source of truth.
 ## Where things stand
 
 **Increment 2 is complete, verified on a physical iPhone, and merged.**
-`origin/main` and `dev` are both at `67dd266`. Live arrivals per stop with the
-§4 state model, and route detail with an ordered stop list.
+`origin/main` is at `67dd266`. Live arrivals per stop with the §4 state model,
+and route detail with an ordered stop list.
+
+`dev` has moved past it with the Increment 3 work below and is **not** device-
+verified yet — task 7 is where that happens.
 
 Green: 179 Jest, 70 `node --test`, clean typecheck, expo-doctor 18/18.
 
@@ -121,15 +124,19 @@ natively; nothing after it is worth building if the map does not render. Run
   `accent` and `separator`, which nothing uses, and omitted six that six screens
   do. The real list is in `lib/theme.tsx`.
 
-Nothing about Increment 3 is still open. The design session on 2026-08-02
-settled it end to end, including two reversals worth knowing about because the
-losing option looks reasonable on paper:
+**No *design* question about Increment 3 is open** — the session on 2026-08-02
+settled it end to end. Two of its reversals are worth knowing about, because the
+losing option looks reasonable on paper and one of them has since been seen
+losing in someone else's shipped app:
 
 - **The map does not re-query on pan or zoom.** Stops are anchored to a point —
   your location, or wherever you tap. Viewport querying was chosen first and
   then rejected: the SQL is free (0.5 ms for 480 rows over the existing index)
   but re-rendering up to 150 native markers on every drag settle is not, and a
   list that reshuffles under your thumb is unpleasant however fast it is.
+  TheBusLive took the other fork and needed three mitigations to make it
+  bearable — a 120 ms debounce, grid-thinning to 150 pins, and refusing to draw
+  pins at all when zoomed out. See the comparison spec.
 - **Search is not in the bottom sheet.** It is its own tab, with favorites as
   its empty state. A text field inside a sheet over a map fights the sheet's
   gestures through the keyboard, and this is the wrong loop to debug that on.
