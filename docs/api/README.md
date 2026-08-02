@@ -244,9 +244,29 @@ flat and shallow:
 > `"null"` for 1,143 of them, including at least one live vehicle.
 >
 > The 46 live vehicles at 01:07 HST Sunday corroborates the 41 `estimated="1"`
-> arrivals sampled independently at 22:00 the night before. **The rush-hour
-> count is still unmeasured** and is what decides whether a live-vehicle map is
-> worth building; it needs a 17:00 UTC or later window.
+> arrivals sampled independently at 22:00 the night before.
+>
+> **Daytime, measured 2026-08-02 at 11:43 HST (Sunday): 235 of 1,204 vehicles
+> had a `last_message` within 15 minutes** — 232 of them within *five*. That is
+> five times the night figure, and it settles the question the night samples
+> could not: a live-vehicle map has something to show. The 15-minute window is
+> barely doing any work at daytime; freshness is bimodal, with 232 vehicles
+> reporting inside five minutes and the next-freshest more than ten hours old.
+>
+> Two things this sample corrects about the fleet response:
+>
+> - **`route_short_name` is usable for live vehicles.** It is `"null"` across
+>   the stale bulk, which is where the "not a usable filter" reading came from,
+>   but 218 of the 235 fresh vehicles carry a real route — 64 distinct routes,
+>   including `1L`, `A LINE`, `C`, `E` and `W LINE`. The remaining 17 report
+>   `"null"` while otherwise live, so a consumer still must tolerate it.
+> - **The ghost problem is smaller but not gone:** 929 stale vehicles still
+>   carry plausible Oahu coordinates. Filtering on `last_message` remains
+>   mandatory.
+>
+> Still unmeasured: a **weekday** peak. 2026-08-02 was a Sunday, and Sunday
+> service is thinner than a weekday, so 235 is a floor for the weekday PM peak
+> rather than an estimate of it.
 
 ```xml
 <vehicles>

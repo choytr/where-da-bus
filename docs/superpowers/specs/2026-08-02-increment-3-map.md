@@ -130,5 +130,8 @@ stable than the stop list already shipping from the same expiring feed.
 
 **Live vehicle positions → after that.** See `docs/api/README.md` — the vehicle
 endpoint answers with the entire fleet for a parameterless request, which
-overturns the standing advice not to add an XML parser. The rush-hour live count
-is still unmeasured and should be taken before committing to the feature.
+overturns the standing advice not to add an XML parser. The daytime live count
+was taken on 2026-08-02 at 11:43 HST: **235 vehicles reporting within 15
+minutes**, against 46 at 01:07 the night before. That is enough to draw a map
+with, so the feature is worth building; a weekday peak, which will be higher
+still, has not been measured and does not need to be before starting.

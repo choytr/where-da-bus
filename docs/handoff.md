@@ -112,21 +112,20 @@ losing option looks reasonable on paper:
 **Deferred with the numbers already taken**, so none of it needs re-deriving:
 feed refresh (Increment 4), route polylines (~200 KB for all 532 shapes, not
 the budget fork the design spec feared), live vehicles (the whole fleet arrives
-in one 29 KB request, but 1,138 of 1,184 vehicles are years stale while still
-carrying real Oahu coordinates — filter on `last_message` or plot ghosts).
+in one 29 KB request, but most of it is years stale while still carrying real
+Oahu coordinates — filter on `last_message` or plot ghosts).
 
 **One dated chore:** `feed_end_date` is `20260822`. Run `npm run build:gtfs` and
 commit the regenerated asset before then, or the app starts calling itself
 stale. Increment 4 is what ends this being manual.
 
-**One measurement owed, and Truman asked to be reminded of it.** How many buses
-carry a live position at *rush hour*. Both samples so far were taken at night —
-41 real-time arrivals at 22:00, 46 fresh vehicles at 01:07 — and those are the
-floor, not the number. Take it in an Oahu daytime window (07:00–18:00 HST =
-17:00–04:00 UTC) with `/vehicle/?key=<AppID>` and no other parameters, counting
-vehicles whose `last_message` is within 15 minutes. It decides whether the live
-vehicle map in Increment 5 is worth building at all. **Raise this rather than
-waiting to be asked.**
+**The measurement that was owed has been taken.** 2026-08-02, 11:43 HST
+(Sunday): **235 of 1,204 vehicles reporting within 15 minutes**, 232 of them
+within five — against 46 at 01:07 the night before. The live-vehicle map has
+something to show, so Increment 5 is worth building. Details and the two
+corrections it forced on `route_short_name` and the ghost count are in
+`docs/api/README.md`. What is *not* measured is a **weekday** peak; Sunday
+service is thinner, so 235 is a floor for it. Not a blocker for anything.
 
 ## Suggested skills
 
