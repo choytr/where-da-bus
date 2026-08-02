@@ -8,8 +8,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.choytr.wheredabus",
-      "deploymentTarget": "18.0"
+      "bundleIdentifier": "com.choytr.wheredabus"
     },
     "android": {
       "adaptiveIcon": {
@@ -32,7 +31,17 @@
       ],
       [
         "expo-sqlite",
-        { "enableFTS": true }
+        {
+          "enableFTS": true
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "18.0"
+          }
+        }
       ]
     ]
   }

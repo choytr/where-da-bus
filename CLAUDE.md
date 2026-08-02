@@ -52,6 +52,13 @@ account.** Consequences that are not obvious from reading the code:
   set forces every subsequent change through the slow CI loop. This is why maps
   are deferred to Increment 3 rather than being built early. Adding such a
   dependency is a real architectural decision, not a routine install.
+- **The SDK is pinned to 54 by Expo Go, not by preference.** The current App
+  Store build of Expo Go on iOS 18 supports SDK 54 at most, so the project was
+  downgraded from 57 on 2026-08-01 to keep the fast loop working at all. React
+  is `19.1.0` and React Native `0.81.5` as a consequence. Install with
+  `npx expo install`, never bare `npm install <pkg>` — bare installs pick the
+  latest version and quietly break the ceiling. `npm audit fix --force` does
+  the same thing and must not be run.
 - **CI builds unsigned.** Signing happens on-device via SideStore with a free
   Apple ID. Never add signing steps or provisioning profiles to the workflow.
 - `/ios` and `/android` are gitignored — they are `expo prebuild` output and

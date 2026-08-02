@@ -20,9 +20,12 @@ concurrency:
 
 jobs:
   build:
-    # Expo SDK 57's ExpoModulesJSI requires Swift tools 6.2, which means Xcode 26+.
-    # macos-15 ships Xcode 16.4 (Swift 6.1) and fails package resolution.
-    runs-on: macos-26
+    # SDK 54 / React Native 0.81 builds on Xcode 16.x, which macos-15 ships
+    # (16.4). The previous macos-26 pin existed only because Expo SDK 57's
+    # ExpoModulesJSI required Swift tools 6.2; the downgrade to 54 on
+    # 2026-08-01 removed that constraint, and 16.4 is the better-trodden
+    # toolchain for RN 0.81 than Xcode 26 is.
+    runs-on: macos-15
     timeout-minutes: 45
 
     steps:
