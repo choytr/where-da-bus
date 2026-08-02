@@ -1,6 +1,6 @@
 # Where Da Bus
 
-A real-time bus tracking app for Oahu, replacing the recently deprecated Da Bus app.
+An unofficial real-time bus tracking app for Oahu, replacing the recently deprecated Da Bus app.
 
 ## Purpose
 
