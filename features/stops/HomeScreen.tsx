@@ -10,7 +10,7 @@ import {
   View,
   useColorScheme,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets, type EdgeInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStopQueries } from '../../data/gtfs/db';
 import { feedValidity, formatFeedDate } from '../../data/gtfs/feedValidity';
 import { useLocation } from './useLocation';
@@ -138,10 +138,8 @@ export function HomeScreen() {
     new Map(),
   );
 
-  const contentInsets = useMemo(() => Platform.select({
-    default: {
-      paddingBottom: insets.bottom,
-    }
+  const contentInsets = useMemo(() => ({
+    paddingBottom: insets.bottom,
   }), [insets.bottom]);
 
   // Reading a bundled asset does not fail transiently: if it fails once it
