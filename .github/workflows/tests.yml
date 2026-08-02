@@ -5,11 +5,15 @@ name: Tests
 # green. Deliberately ubuntu-latest and deliberately separate: none of this
 # needs a Mac, and macOS runner minutes bill at 10x on private repos.
 
+# `dev` is here but deliberately absent from ios-ipa.yml. Day-to-day work lands
+# on `dev`, and the point of that branch is to reach GitHub without spending
+# macOS runner minutes — but "no .ipa build" must not mean "no tests", or `dev`
+# becomes a place where breakage accumulates unseen until it merges.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 concurrency:
   group: tests-${{ github.ref }}

@@ -75,24 +75,34 @@ oversight to fix.
   explicit age. "No buses coming" and "couldn't reach TheBus" must never render
   alike. `HomeScreen`'s existing notice constants are the pattern to follow.
 
-### Open, and blocking
+### Was blocking — all settled 2026-08-01
 
-Both need settling empirically against the live API before the arrival board is
-designed. Neither can be answered from the PDFs — they have already been read.
+Probed live against the API, ~200 requests against a 250,000/day quota. Full
+detail with sample sizes is in `docs/api/README.md`; do not re-probe.
 
-1. **The documented base URL is `http://`, with no HTTPS endpoint anywhere.**
-   iOS App Transport Security blocks cleartext, so a plain `fetch` works in Node
-   and fails on device. Try `https://` first. If that fails, a host-scoped
-   `NSExceptionDomains` entry is a native config change through `app.json`, and
-   it rides the slow CI loop.
-2. **Error and empty-result shapes are undocumented.** Only the field name
-   `errorMessage` is specified — no example, no HTTP status contract, and no
-   statement of what a stop with no upcoming buses returns. The app must tell
-   those apart, so this is a real blocker rather than a detail.
+1. **HTTPS works.** `https://api.thebus.org` serves every endpoint, valid
+   GoDaddy wildcard cert. **No `NSExceptionDomains` entry, no native config
+   change, no CI loop.** The cert expires 2026-10-25 — if it lapses un-renewed,
+   this reopens with no code change on our side.
+2. **Errors are HTTP 200 with `{"errorMessage": "…"}`** and no `stop`/`timestamp`
+   key. An empty stop is `arrivals: []` *with* both keys. Cleanly separable,
+   which is what the §4 state model needed. Never branch on `res.ok`.
+3. **`adherence` is in minutes.** 30 live values, all integers, −19…+4.
 
-Also worth confirming while you are there: **`adherence`'s unit is a guess.**
-Minutes is the obvious reading of `"-5"` and is nowhere stated. Rendering
-seconds as "5 minutes late" is wrong in a way a rider notices.
+Two things the probe turned up that nobody had thought to ask, and both change
+the implementation:
+
+- **`estimated` emits an undocumented `"2"` — 96% of all arrivals.** The vendor
+  sheets document only `0` and `1`. Real-time is `estimated === "1"`;
+  everything else is schedule-only. Testing `=== "0"` would render 1,225 of
+  1,269 sampled schedule guesses as live GPS estimates.
+- **`vehicleJSON` does not exist** — 404s with an HTML page, in every form. The
+  vehicle endpoint is XML-only. Increment 2 does not need it: `arrivalsJSON`
+  already carries route, headsign, direction, time and position. `adherence` is
+  the only field unique to it, and it is not worth an XML parser yet.
+
+Also: one request in ~63 timed out with no error. The client needs an explicit
+timeout and a retry — this host drops requests.
 
 ## How to work here
 
