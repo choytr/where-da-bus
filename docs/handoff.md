@@ -36,10 +36,20 @@ was done once, deliberately, and the README exists so it is not done again.
 ## Where the project is
 
 Increment 1 shipped nearby stops, search, favorites and the routes serving each
-stop, all offline. **Increment 2 is built and its code is on `dev`**: live
-arrivals per stop with the §4 state model, and route detail with an ordered
-stop list. What remains is device verification — see the top of the next
-section.
+stop, all offline. **Increment 2 is done, verified on a physical iPhone on
+2026-08-02, and sitting on `dev` unmerged**: live arrivals per stop with the §4
+state model, and route detail with an ordered stop list.
+
+Device verification found three things no other check could, and one of them is
+worth remembering as a class. `.env` is gitignored and `ios-ipa.yml` supplied
+no AppID, so every `.ipa` inlined an empty `EXPO_PUBLIC_THEBUS_APP_ID` and
+answered every arrivals request with "Invalid or unspecified API key". **Expo
+Go could not show this**, because it reads the developer's local `.env` — so
+the fast loop was green while the artifact was dead. 179 tests, a clean
+typecheck, expo-doctor and a successful build all agreed it was fine. The
+workflow now takes the value from a repository secret and fails in five seconds
+if it is missing. The other two: the native header ignored dark mode, and the
+back button read "Index" — the route filename leaking into the interface.
 
 Run all three — `npm test`, `npm run test:scripts`, `npm run typecheck` —
 before claiming anything works. A change to the database layer needs both test
@@ -56,25 +66,29 @@ triaged — do not "fix" them.
 
 ## What to pick up first
 
-**Verify Increment 2 on the phone.** This is the one thing not done, and it is
-the thing this project does not cut. `gh workflow run ios-ipa.yml --ref dev`
-builds without merging. What to look at, in rough order of risk:
+**`dev` is eleven commits ahead of `main` and unmerged.** Merging is Truman's
+call and needs asking. Nothing depends on it — `dev` builds `.ipa`s on demand
+via `gh workflow run ios-ipa.yml --ref dev`.
 
-1. **The safe area on the two new screens.** They are the first screens with
-   the stack's native header, and the header is what handles the top inset now
-   — `index` keeps `headerShown: false` because HomeScreen draws its own. This
-   is exactly the class of bug that nine review rounds and 90 tests missed last
-   time, and it cannot be seen anywhere but on a device.
-2. **Tapping a stop, then a route, then back.** The back swipe comes from the
-   native stack; nothing under Jest exercises it.
-3. **An arrival board at a real stop.** Whether "Scheduled — no bus tracking
-   yet" reads right when it is 23 of 25 rows, which is the normal case.
-4. **Backgrounding and returning.** The poll stops and refetches immediately;
-   the age line should jump.
+Then Increment 3, the map. Two things to settle before writing any of it:
 
-Then review the whole diff at the increment boundary, per CLAUDE.md, and put
-what is not worth fixing into `docs/backlog.md` — Increment 2's deferrals are
-already there under "Increment 2 — deferred".
+1. **`shapes.txt` is not in the bundled asset.** The build reads stops, routes,
+   trips, stop_times and feed_info; there is no shapes table. Route polylines
+   need one, and `shapes.txt` is 9.8 MB raw, so how much of it survives into
+   the ~1.2 MB asset is a real design question rather than a detail.
+2. **The feed refresh path.** The design spec says a refresh is *required*
+   before Increment 3 uses `shapes.txt`, because shapes go stale in a way stop
+   names do not. Today a rebuild is `npm run build:gtfs` plus a commit.
+
+`react-native-maps@1.20.1` **is** bundled in Expo Go SDK 54 — confirmed in
+`node_modules/expo/bundledNativeModules.json` — so the map preserves the fast
+loop, exactly as the design spec hoped. That is no longer an open question.
+
+**Worth doing first, and cheap:** the palette is duplicated across six files
+(`AppShell`, `HomeScreen`, `StopRow`, `ArrivalRow`, `ArrivalsScreen`,
+`RouteScreen`), each with its own `useColorScheme` and its own copy of the same
+hex. Increment 2 doubled it. A map screen makes it seven, and the map will want
+those colours too, so the cleanup is cheaper now than it will ever be again.
 
 ## What Increment 2 built
 
