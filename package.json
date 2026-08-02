@@ -35,10 +35,10 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/scripts/",
-      "/.claude/"
+      "/\\.claude/"
     ],
     "modulePathIgnorePatterns": [
-      "/.claude/"
+      "/\\.claude/"
     ]
   },
   "private": true

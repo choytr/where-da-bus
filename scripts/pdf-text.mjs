@@ -21,6 +21,12 @@
  *
  * Output is plain text with layout approximated from the text operators, so
  * two-column pages interleave. It is meant to be read, not parsed.
+ *
+ * In particular, every `Td` starts a new output line, including the purely
+ * horizontal ones a typesetter emits mid-sentence — so words split across
+ * lines (`pr` / `ominently`). Grep for a phrase and you will find nothing.
+ * Pipe through `tr -d '\n'` first when you need to match exact wording, which
+ * is how the attribution legend in docs/api/README.md was confirmed.
  */
 
 import { readFileSync } from 'node:fs';
@@ -48,8 +54,17 @@ function streamOf(num) {
   const start = objectAt.get(num);
   if (start === undefined) return null;
 
+  // Bounded by this object's own `endobj`. `indexOf` is otherwise unbounded,
+  // so an object with no stream of its own — a /Page dict, a /Font dict —
+  // would find the *next* object's `stream` keyword and hand back its body.
+  // That duplicated four of the seven files in docs/api/ (each page emitted
+  // twice), which was merely ugly; the latent form is not. This function also
+  // fetches /ToUnicode CMaps, and a CMap silently taken from the wrong object
+  // parses to a wrong-but-non-empty glyph map — wrong characters, no error.
+  const endobj = latin.indexOf('endobj', start);
   const keyword = latin.indexOf('stream', start);
   if (keyword === -1) return null;
+  if (endobj !== -1 && keyword > endobj) return null;
 
   // The spec allows CRLF or LF after the `stream` keyword, and neither byte
   // belongs to the data.
@@ -179,4 +194,29 @@ for (const [num] of objectAt) {
   }
 }
 
-console.log(pieces.join('').replace(/\n{3,}/g, '\n\n'));
+const text = pieces.join('').replace(/\n{3,}/g, '\n\n');
+
+/**
+ * Failing loudly is the whole point of this script.
+ *
+ * The misreading it exists to prevent — "these PDFs are scanned images" — came
+ * from an extractor that returned nothing and said nothing about it. An empty
+ * result here means this program could not read the file, not that the file
+ * holds no text, and the two must never look alike.
+ *
+ * Two known ways to get there, neither triggered by the files in docs/api/:
+ * `/Encrypt`, which makes every stream fail to inflate; and objects packed
+ * into a `/ObjStm`, which the `N 0 obj` scan cannot see at all.
+ */
+if (text.trim() === '') {
+  console.error(`pdf-text: extracted no text from ${path}.`);
+  if (/\/Encrypt\b/.test(latin)) {
+    console.error('  The document is encrypted; its streams cannot be inflated.');
+  }
+  if (/\/ObjStm\b/.test(latin)) {
+    console.error('  It uses object streams, which this script does not unpack.');
+  }
+  process.exit(1);
+}
+
+console.log(text);

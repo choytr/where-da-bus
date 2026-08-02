@@ -8,5 +8,10 @@
     // win over React Native's (returning number). Type RN timer handles as `number`, never
     // `NodeJS.Timeout` — see CLAUDE.md.
     "types": ["jest", "node"]
-  }
+  },
+  // Subagent worktrees are full checkouts of this repo living under .claude/,
+  // and expo/tsconfig.base excludes only node_modules and the native folders.
+  // Without this, `npm run typecheck` compiles a WIP branch's App.tsx into the
+  // same program as the real one and reports its errors as the root's.
+  "exclude": ["node_modules", ".claude"]
 }

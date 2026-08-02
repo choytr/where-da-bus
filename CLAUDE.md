@@ -120,6 +120,41 @@ the asset's `meta` table, and the home screen says so once that day is past.
 Refreshing the feed on-device is Increment 3; until then a rebuild is
 `npm run build:gtfs` plus a commit of the regenerated asset.
 
+## How work gets done here, from Increment 2 on
+
+Increment 1's plan ran 8,015 words against 6,250 words of shipped source,
+because it carried near-complete code for each of its nine tasks. The code was
+therefore written twice, and every subagent dispatched to execute one task read
+the whole plan to find its slice. Nine per-task review rounds followed. The
+process cost more than the implementation.
+
+- **Plans specify contracts, not code.** Per task: the files touched, the
+  exported signature, the test names, and any decision already settled. Ten
+  lines, not two hundred. Plans grow to this size to be executable by a cold
+  subagent — so don't write for one.
+- **Execute inline by default.** Subagents earn their cost when work is
+  genuinely independent and the deliverable is a *conclusion* rather than a
+  file — reading the six API PDFs and reporting their field tables was a good
+  use. The sequential tasks of one increment share a data model, and each cold
+  spawn re-derives it.
+- **Review once at the increment boundary, on the whole diff.** That is where
+  the cross-cutting findings live; per-task review structurally cannot see
+  them. `docs/backlog.md` takes everything not worth fixing now, and that
+  triage is the point rather than a failure of the review.
+- **Trust what is already written down.** This file and `docs/api/README.md`
+  exist so the traps are not re-derived from source each session. The README
+  marks which of its claims are vendor quotes and which are readings of a
+  single example — re-confirm the readings against the live API, not against
+  the PDFs again.
+
+**Device verification is not what gets cut.** Nine review rounds, 90 Jest tests
+and a clean typecheck all missed that `SafeAreaView` had no provider and the
+search field rendered under the Dynamic Island. Sideloading it caught that in
+under a minute. It is the cheapest bug-per-token check this project has, and
+trimming review makes it more load-bearing, not less. `ios-ipa.yml` declares
+`workflow_dispatch`, so a branch can be built without merging:
+`gh workflow run ios-ipa.yml --ref <branch>`.
+
 ## Error handling is a feature here
 
 Transit APIs fail constantly. Arrival views distinguish **loading**, **data with
@@ -138,15 +173,28 @@ through to `return self` and every inset comes back zero. It reads no React
 context, so nothing warns you — the app just renders under the Dynamic Island.
 `App.tsx` mounts `SafeAreaProvider` for this reason. Do not remove it.
 
-Nothing in Jest can catch that regression directly, since the mechanism is
-Objective-C walking a view tree that does not exist under test. What guards it
-instead: `HomeScreen` calls `useSafeAreaInsets`, which *throws* without a
-provider, so `__tests__/App.test.tsx` fails if the provider is ever removed.
+Jest cannot exercise the native inset resolution — that mechanism is
+Objective-C walking a view tree that does not exist under test — but it does
+catch the removal. `HomeScreen` calls `useSafeAreaInsets`, which *throws*
+without a provider, so `__tests__/App.test.tsx` fails if the provider ever
+goes. `DatabaseGate` swallows the throw, though, so the failure surfaces as a
+`waitFor` timeout that looks exactly like the cold-cache flake in
+`docs/backlog.md`; the "rather than the database-failure screen" test exists to
+name the real cause.
 
-Both test files pass `initialMetrics` explicitly. `initialWindowMetrics` is
-`null` off-device, and a provider seeded with `null` renders nothing at all
-under Jest — a bare provider blanks the entire tree and every assertion fails
-for an unrelated-looking reason.
+**Never wire in `react-native-safe-area-context/jest/mock`.** It looks like the
+obvious cleanup for the two test files below. It replaces `useSafeAreaInsets`
+with a stub returning zero insets instead of throwing, which deletes the only
+guard this project has against the bug above.
+
+The two test files seed metrics by different routes, and have to.
+`initialWindowMetrics` is read from the native module at import time and is
+`null` off-device; a provider seeded with `null` renders nothing at all under
+Jest, blanking the tree so every assertion fails for an unrelated-looking
+reason. `HomeScreen.test.tsx` wraps the screen in its own `SafeAreaProvider`
+with explicit `initialMetrics`. `App.test.tsx` cannot — `App` owns the provider
+— so it mocks the module's `initialWindowMetrics` instead, substituting the
+provider's *input*.
 
 ## Timer handles are `number`, never `NodeJS.Timeout`
 

@@ -42,6 +42,13 @@ decodes properly. Do not conclude these files are unreadable.
 requests/day per active stop — the limit is not a design constraint at
 Increment 2's scale.
 
+**The quota is per AppID, not per device**, so it is shared across every
+install: roughly 170 stops being polled at once anywhere in the world would
+exhaust it. That is comfortably beyond personal sideloading, which is the only
+use this project is licensed for, but it is not headroom that scales. The PDF
+also says OTS throttles "by tracking the AppID **and the ip address of
+clients**", so a single misbehaving device can be cut off on its own.
+
 ### The base URL is `http://`, and that is a real problem
 
 No HTTPS endpoint is documented anywhere in the PDFs. iOS App Transport
@@ -140,9 +147,15 @@ Returns `timestamp` and a `vehicle` **array** with `number`, `trip`, `driver`,
 `latitude`, `longitude`, `adherence`, `last_message`, `route_short_name`,
 `headsign`.
 
-`adherence` is schedule adherence in minutes: **positive means early, negative
-means late.** That sign convention is the opposite of most people's intuition
-and is stated explicitly in the docs.
+`adherence` is schedule adherence, **positive means early, negative means
+late** — a sign convention that is the opposite of most people's intuition and
+is the part the vendor does state explicitly.
+
+> **The unit is not documented.** Neither vehicle sheet names one; the only
+> datum is the example value `"adherence":"-5"`. Minutes is the obvious
+> reading, and it is still a guess. Rendering seconds as "5 minutes late" is
+> wrong in a way a rider notices, so confirm this against the live API before
+> the arrival board displays it. See "Still open" below.
 
 > **`driver` is an employee number.** The vendor doc confirms it verbatim:
 > "vehicle:driver — Employee number of driver". It must never be displayed,
@@ -190,6 +203,19 @@ examples. The examples are the more trustworthy of the two.
    local (HST, UTC−10, no DST). `Date.parse` on `"12/20/2022 11:29:59 AM"`
    will interpret it in the *device's* timezone, which is wrong for anyone not
    in Hawaii. Parse the components explicitly.
+9. **Every container the tables call an "object" is an array in the examples.**
+   The tables read `arrival — Bus arrival information object`, `vehicle —
+   Vehicle Information object`, `route — Route Information Object`; all three
+   examples emit arrays. This is the third and widest of the table/example
+   disagreements, alongside 2 and 3.
+
+> **Which of these are quotes and which are readings.** Items 1, 2, 3, 7 and 9
+> are things the PDFs say, or direct comparisons between two things they say.
+> Items 4, 5 and the timezone half of 8 are inferences from a single example
+> each — very likely right, and not stated by the vendor. Item 6 is the
+> vendor's wording plus this project's decision about what to do with it.
+> Re-confirm the inferences against the live API rather than treating them as
+> contract.
 
 ## Legal — now verified
 
@@ -221,6 +247,8 @@ license is **revocable**.
   request settles it.
 - **What does an error response actually look like?** Only the field name
   `errorMessage` is documented — no example, no HTTP status contract.
+- **What unit is `adherence` in?** Minutes is the obvious reading of `"-5"` and
+  is nowhere stated. Settle it before the arrival board renders it.
 - **What happens at a stop with no upcoming buses?** Empty `arrivals` array
   versus absent key versus an `errorMessage` is undocumented, and the app has
   to tell "no buses coming" apart from "request failed."

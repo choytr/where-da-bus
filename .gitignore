@@ -43,3 +43,10 @@ yarn-error.*
 
 # GTFS download cache — inputs to scripts/build-gtfs, not app assets
 .gtfs-cache/
+
+# Subagent worktrees. These are checkouts of this repo living inside it, so
+# every tool that crawls the tree finds a second copy of the whole project:
+# `git add -A` sees an embedded repository, Jest collected each suite twice
+# (see the jest config in package.json), and tsc pulled a WIP branch into the
+# root program (see tsconfig.json's exclude).
+.claude/worktrees/

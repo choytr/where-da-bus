@@ -56,6 +56,23 @@ describe('App', () => {
     await waitFor(() => screen.getByPlaceholderText(/stop number or name/i));
   });
 
+  /**
+   * The guard on the safe-area provider (see CLAUDE.md). `HomeScreen` calls
+   * `useSafeAreaInsets`, which throws without a provider, so removing
+   * `SafeAreaProvider` from `App` fails the suite.
+   *
+   * This assertion exists because of *how* it would otherwise fail. The throw
+   * is swallowed by `DatabaseGate`, so the test above just times out in
+   * `waitFor` — the same test name and the same failure shape as the
+   * cold-cache flake in docs/backlog.md, which trains a reader to dismiss it.
+   * Naming the wrong screen makes the real cause legible.
+   */
+  it('renders the stop list rather than the database-failure screen', async () => {
+    await render(<App />);
+    await waitFor(() => screen.getByPlaceholderText(/stop number or name/i));
+    expect(screen.queryByText(/stop data unavailable/i)).toBeNull();
+  });
+
   it('opens the bundled database read-only', async () => {
     await render(<App />);
 

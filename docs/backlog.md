@@ -111,6 +111,45 @@ future feed with an id-format change would lose rows invisibly.
 - No test for the transient `'loading'` location state, nor for CSV headers in
   a different order or with columns missing.
 
+## Deferred from the post-Increment-1 review (2026-07-31)
+
+The four commits that landed after the branch review were reviewed separately.
+What was fixed there: the `streamOf` stream-attribution bug and silent-failure
+exit in `scripts/pdf-text.mjs`, the undocumented `adherence` unit, the
+`.claude/` exclusions for git and tsc, and the safe-area guard assertion. What
+was consciously left:
+
+- **The keyboard covers the search results.** `HomeScreen`'s `FlatList` sets
+  neither `automaticallyAdjustKeyboardInsets` (RN defaults it to `false`) nor
+  `keyboardDismissMode`, on a screen whose primary interaction is typing into a
+  field and reading the list beneath it. Two props. Not a regression — it has
+  always been this way — which is why it is here rather than in the fix batch.
+- `contentContainerStyle={{ paddingBottom: insets.bottom }}` allocates a new
+  object per render, in a file that keeps `NO_STOPS` around specifically to
+  avoid that. `scrollIndicatorInsets` is the usual companion prop and is unset,
+  so the scroll indicator runs under the home indicator.
+- `App.tsx`'s `Waiting` and `Unavailable` consume no insets. Safe today only
+  because their content is vertically centred, and `Unavailable` is the screen
+  every render error currently lands on.
+- The device-metrics literal is duplicated across `App.test.tsx` and
+  `HomeScreen.test.tsx`, and only the latter is annotated `Metrics` — the
+  former sits inside a `jest.mock` factory where a wrong shape would not be
+  caught by `tsc`.
+- `pdf-text.mjs` cannot see objects packed into a `/ObjStm`, which is why
+  `fontByName` is empty for `Web_Services_API.pdf` (harmless: that file uses
+  WinAnsi literals). It now says so on stderr instead of returning quietly.
+  Also unhandled and unused by these inputs: the `beginbfrange` array form, and
+  `/Font` dicts containing a nested `>>`.
+- `docs/api/README.md` reads `stop_ID` as `stops.stop_code`. Not stated by the
+  vendor, and moot — `stop_id === stop_code` for all 3,830 rows in this feed.
+- **`pdf-text.mjs` breaks lines mid-word.** It emits a newline for every `Td`,
+  but generators use `Td` for horizontal moves within a line too (`ty=0`), so
+  `prominently` comes out as `pr` + `ominently` and no phrase greps. The
+  attribution legend does round-trip exactly through `tr -d '\n'`. The real fix
+  is to break only when `Td`/`TD`'s vertical operand is non-zero; deferred
+  because it changes the output of all seven files, and the README's verified
+  claims were checked against the current shape.
+
 ## Structure
 
 - **Legal constants are exported from a screen module.** `App.tsx` imports
