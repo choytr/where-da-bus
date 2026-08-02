@@ -337,6 +337,18 @@ Working text, **pending verification against the actual user agreement**:
 Personal / open-source use only. A commercial release would require reading the
 full user agreement.
 
+> **Corrected 2026-08-02, having read the full user agreement.** It imposes no
+> personal-use or non-commercial restriction; the grant is "a limited, revocable
+> license to use, reproduce, and redistribute the Data," and the words
+> *personal*, *non-commercial* and *commercial* do not appear in it. The actual
+> conditions are the verbatim attribution legend, the marks clause, "AS IS" with
+> no warranty, and an indemnity running to OTS. The licence being **revocable**
+> is the real exposure — not the scope of permitted use.
+>
+> Note also that the attribution above is misquoted here: the required wording
+> has **no trailing full stop** after "Inc". `lib/legal.ts` carries the correct
+> form, and it is the one that ships.
+
 ## Maps — deferred to Increment 3
 
 Recommendation: **`react-native-maps`** over `expo-maps`. Both render Apple Maps

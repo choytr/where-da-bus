@@ -51,7 +51,7 @@ I develop on Windows with no Mac, so iOS builds happen on a GitHub Actions macOS
 
 The source code is MIT licensed — see `LICENSE`. Do what you like with it.
 
-The transit data is a different matter, and its terms are not mine to relax. Route and arrival data is used by permission of Oahu Transit Services and is licensed **as is**, for personal and open-source use only, under a permission that they can revoke. A commercial release would require reading their full user agreement, which I have not done. The app carries this attribution wherever it displays their data, as the terms require:
+The transit data is a different matter, and its terms are not mine to relax. Route and arrival data is used by permission of Oahu Transit Services, under a limited licence they can **revoke at any time**, and is provided **as is** with no warranty of any kind. If you build this yourself you register for your own key and take those terms on directly. The app carries this attribution wherever it displays their data, as the terms require:
 
 > Route and arrival data provided by permission of Oahu Transit Services, Inc
 

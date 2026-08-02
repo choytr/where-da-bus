@@ -26,10 +26,11 @@ SOFTWARE.
 The licence above covers the source code of this project. It does not cover:
 
 **The transit data.** Route and arrival data is used by permission of Oahu
-Transit Services, Inc, is licensed "AS IS" and "AS AVAILABLE" without warranty,
-is restricted to personal and open-source use, and that permission is revocable.
-Redistributing this source conveys no right to their data — anyone building this
-app registers for their own API key and accepts those terms directly.
+Transit Services, Inc, under a limited licence that they may revoke, and is
+provided "AS IS" and "AS AVAILABLE" without warranty of any kind. Redistributing
+this source conveys no right to their data — anyone building this app registers
+for their own API key and accepts those terms directly, including the required
+attribution and an indemnity running to OTS.
 
 **`assets/db/gtfs.db`**, which is built from Oahu Transit Services' published
 GTFS feed rather than written here.

@@ -321,5 +321,16 @@ Introducing any of them makes the legend mandatory.
 **`vehicle:driver` is an employee number**, confirmed by the vendor
 documentation. It must never be displayed, logged, or persisted.
 
-The data is licensed "AS IS", and the license is revocable. Personal /
-open-source use only.
+The data is licensed "AS IS", and the license is **revocable**.
+
+**It is not restricted to personal use.** Verified against the full Terms of Use
+on 2026-08-02: the grant is "a limited, revocable license to use, reproduce, and
+redistribute the Data," and the words *personal*, *non-commercial* and
+*commercial* appear nowhere in the document. Earlier revisions of this file and
+the design spec said "personal / open-source use only" — that was a reading
+someone hardened into a rule, and it is wrong. The real constraints are the four
+the terms actually impose: the verbatim attribution, the marks clause, "AS IS"
+with no warranty, and an indemnity running to OTS.
+
+Revocability is the live risk, not scope of use. Nothing here is a promise that
+the API keeps answering.
