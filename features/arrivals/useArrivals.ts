@@ -65,6 +65,8 @@ export function useArrivals(stopCode: string, client: TheBusClient = theBus): Ar
     setFailure(null);
     setFetchedAt(null);
     setLoading(true);
+    // A pull that was still in flight belongs to the stop being left.
+    setRefreshing(false);
   }
 
   const load = useCallback(

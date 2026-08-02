@@ -34,6 +34,10 @@ export function ArrivalRow({ arrival, now }: ArrivalRowProps) {
 
   return (
     <View
+      // `accessible` is what makes the label below replace the children rather
+      // than sit alongside them: without it VoiceOver reads the countdown, the
+      // clock, the route and the status as four separate unlabelled items.
+      accessible
       accessibilityRole="text"
       accessibilityLabel={
         `Route ${arrival.route} to ${arrival.headsign}, ` +
