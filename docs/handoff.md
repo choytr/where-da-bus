@@ -5,6 +5,8 @@ session picks up. Update it at the end of a session rather than writing fresh
 instructions each time — that is the whole point of it existing.
 
 Last updated: **2026-08-02**, end of the post-Increment-1 cleanup session.
+Everything below was true at commit `b01cf14`, with all three suites green:
+90 Jest, 63 `node --test`, clean typecheck, expo-doctor 18/18.
 
 ---
 
@@ -129,9 +131,10 @@ keyboard handling on the stops list. Do not silently rewrite his work or hand
 him finished code for something he has said he wants to do himself. Review it
 like anyone's, say what you find, and leave the fix to him unless he asks.
 
-Open from that review and recorded in `docs/backlog.md`: an unused `EdgeInsets`
-import, and a `Platform.select({ default: … })` that returns its argument on
-every platform. He is taking both. Neither blocks Increment 2.
+That review's two findings are fixed in `ecc84ed`. A third — the scroll
+indicator's top offset — is **parked deliberately** in `docs/backlog.md` with a
+full record of what was eliminated. It is cosmetic, it predates the keyboard
+work, and it may not exist outside Expo Go. Do not reopen it unasked.
 
 **A caution that generalises.** That review also produced a finding that was
 simply wrong — that the scroll indicator ran under the home indicator. It had
