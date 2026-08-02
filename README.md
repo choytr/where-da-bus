@@ -8,7 +8,7 @@ This is a personal project that serves a few of my own interests:
 - Replace the old Da Bus app with a new version catered to my own UI/UX preferences.
 - Pick up Expo and React Native, which I've been meaning to do for a while.
 - Learn ~~vibe-coding~~, er, I mean, *agentic engineering* with Claude Code.
-  - I don't believe one should use AI to entirely replace coding, but I *do* believe that it is possible to do real engineering work with AI, and that it takes real skill to do so. I do not claim to understand every line of code in this project, though I have personally overseen every major architectural decision and tried to make each one as informed as I could.
+  - I don't believe one should use AI to entirely replace coding, but I *do* believe that it is possible to do real engineering work with AI, and that it takes real skill to do so. I do not claim to understand every line of code in this project, though I have personally overseen every major architectural/design decision and tried to make each one as informed as I could.
 
 I will not be officially publishing this app, but if you would like to build it for yourself, register for an API key at `api.thebus.org`, build the application, and sideload it using a sideloader like SideStore. Keep in mind I built this project with a minimum iOS version of 18 in mind (this is the last iOS my iPhone XR supports).
 
@@ -49,7 +49,7 @@ I develop on Windows with no Mac, so iOS builds happen on a GitHub Actions macOS
 
 ## License
 
-The code is mine and unlicensed for now — I'll pick something before this repo goes anywhere.
+The source code is MIT licensed — see `LICENSE`. Do what you like with it.
 
 The transit data is a different matter, and its terms are not mine to relax. Route and arrival data is used by permission of Oahu Transit Services and is licensed **as is**, for personal and open-source use only, under a permission that they can revoke. A commercial release would require reading their full user agreement, which I have not done. The app carries this attribution wherever it displays their data, as the terms require:
 

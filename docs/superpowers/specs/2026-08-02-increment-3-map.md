@@ -48,6 +48,13 @@ Tap-to-search is also a capability the app does not otherwise have: checking
 service near an unfamiliar destination *before leaving the house*. The
 discontinued DaBus app did this and it is the reason the pattern was chosen.
 
+Its nearby-stops map is at `docs/reference/dabus2-screenshots.jpg`, and the
+middle panel is worth looking at before drawing pins: that is the Mānoa campus
+at close zoom, and the stop icons already overlap into an unreadable mass. It is
+the clearest argument available for an anchored ~25 rather than everything in
+view. `docs/reference/README.md` reads the rest of it, including where this
+design deliberately departs — DaBus2 used four tabs and no bottom sheet.
+
 **Pins and rows are the same set by construction**, which is what makes
 selection well defined. An earlier design paired a viewport pin set against a
 user-anchored list, where a pin the user panned to had no row to select.

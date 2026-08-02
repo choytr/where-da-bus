@@ -1,6 +1,6 @@
-The MIT License (MIT)
+MIT License
 
-Copyright (c) 2015-present 650 Industries, Inc. (aka Expo)
+Copyright (c) 2026 Truman Choy
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,19 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+---
+
+The licence above covers the source code of this project. It does not cover:
+
+**The transit data.** Route and arrival data is used by permission of Oahu
+Transit Services, Inc, is licensed "AS IS" and "AS AVAILABLE" without warranty,
+is restricted to personal and open-source use, and that permission is revocable.
+Redistributing this source conveys no right to their data — anyone building this
+app registers for their own API key and accepts those terms directly.
+
+**`assets/db/gtfs.db`**, which is built from Oahu Transit Services' published
+GTFS feed rather than written here.
+
+**`docs/reference/`**, which holds third-party material kept for comparison.

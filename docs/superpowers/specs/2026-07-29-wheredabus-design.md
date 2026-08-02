@@ -20,6 +20,12 @@ the interaction model.
 The specific DaBus affordances to recover: **favorite individual stops**, **see
 scheduled buses per stop**, **see route shapes**, **see live vehicle positions**.
 
+Screenshots of the app being replaced are kept at
+`docs/reference/dabus2-screenshots.jpg`, with a written reading of what they
+settled in `docs/reference/README.md`. Its arrival board is the direct source of
+this project's — one chronological list sectioned by direction, with schedule
+guesses marked as such.
+
 Above all: **browse the network directly.** DaBus was barebones and did no route
 planning, but it showed every stop, every route serving each stop, and every stop
 on a route. That made it possible to reject a suggested stop and find a better
