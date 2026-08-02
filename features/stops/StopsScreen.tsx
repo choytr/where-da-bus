@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -93,6 +93,30 @@ const NO_STOPS: Stop[] = [];
 
 const keptStops = (search: SearchState): Stop[] =>
   search.state === 'running' || search.state === 'done' ? search.stops : NO_STOPS;
+
+/**
+ * Whether a saved stop is one the rider could have meant by what they typed.
+ *
+ * Deliberately looser than the database's own matching and run against the
+ * favorites already in memory, for two reasons. A favorite has to surface even
+ * when it falls outside `searchByName`'s result limit — being pushed off the
+ * end of a list by strangers is exactly what "my saved stop is lost in there"
+ * means. And a numeric query is an exact code lookup in SQL, which returns at
+ * most one stop, so a favorite whose code merely *starts* with those digits
+ * would otherwise never appear at all.
+ *
+ * The gap this leaves: the database uses FTS, so `"lagoon iolana"` matches a
+ * stop that a plain substring test does not. Such a favorite still appears —
+ * it just appears in the search results rather than pinned above them.
+ */
+function favoriteMatches(stop: Stop, query: string): boolean {
+  const trimmed = query.trim().toLowerCase();
+  if (trimmed === '') return false;
+  if (isNumericQuery(trimmed)) {
+    return stop.stop_code.startsWith(trimmed) || stop.stop_id.startsWith(trimmed);
+  }
+  return stop.stop_name.toLowerCase().includes(trimmed);
+}
 
 /**
  * `interactive` lets the keyboard follow a downward drag on iOS, which is what
@@ -247,7 +271,25 @@ export function StopsScreen() {
   // Search replaces the list rather than adding to it. With the field empty,
   // favorites are the list.
   const searching = search.state !== 'off';
-  const visible: Stop[] = searching ? keptStops(search) : favoriteStops;
+  const searchStops = keptStops(search);
+
+  /**
+   * Matching favorites are pinned above the rest of the results, in the order
+   * they were saved. Searching for a stop you have already starred is one of
+   * the two things this tab is for, and leaving it to sort in among strangers
+   * — or off the end of the result limit entirely — makes the star pointless.
+   *
+   * A favorite that is also a result appears once, at the top, not twice.
+   */
+  const visible: Stop[] = useMemo(() => {
+    if (!searching) return favoriteStops;
+
+    const pinned = favoriteStops.filter((stop) => favoriteMatches(stop, query));
+    if (pinned.length === 0) return searchStops;
+
+    const pinnedIds = new Set(pinned.map((stop) => stop.stop_id));
+    return [...pinned, ...searchStops.filter((stop) => !pinnedIds.has(stop.stop_id))];
+  }, [searching, searchStops, favoriteStops, query]);
 
   // Holds a committed list, and is read by the search effect above — which runs
   // first in the same commit and therefore still sees the previous render's
@@ -325,7 +367,12 @@ export function StopsScreen() {
 
       {search.state === 'running' ? <Busy label={SEARCH_RUNNING} color={palette.muted} /> : null}
 
-      {search.state === 'done' && search.stops.length === 0 ? (
+      {/*
+        Keyed on what is actually on screen, not on what the database returned:
+        a saved stop pinned above the results is a match, and "No stops match
+        that" over a visible row would be a plain contradiction.
+      */}
+      {search.state === 'done' && visible.length === 0 ? (
         <Text style={[styles.notice, { color: palette.muted }]}>{SEARCH_EMPTY}</Text>
       ) : null}
 

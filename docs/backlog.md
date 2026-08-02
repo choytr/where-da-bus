@@ -137,10 +137,27 @@ was consciously left:
   take effect; verified on device 2026-08-02. Two wrong claims in one entry,
   from the same habit of reading Apple's semantics off the docs and reporting
   the reading as behaviour.
-- **The scroll indicator's top is inset by roughly half the legal block**, so it
-  starts below the top of the list rather than level with it. Observed on
-  device, 2026-08-02. **Still unexplained after a full pass through React
-  Native's native scroll code.** Ruled out, with sources:
+- ~~**The scroll indicator's top is inset by roughly half the legal block**~~ —
+  **resolved, observed on device 2026-08-02 (Truman)**, after the Increment 3
+  tab restructure. His words: "the top of the scrollbar matches the top of the
+  text at the top, and the bottom sits right at the top of the bottom bar."
+
+  **The cause was never established, and nobody should pretend otherwise.** The
+  list moved from `HomeScreen` under a root `Stack` to `StopsScreen` under a
+  `Tabs` scene, and lost its `contentContainerStyle={{ paddingBottom }}` memo,
+  in the same change. Any of those could have done it, and the investigation
+  below had already ruled out every mechanism inside this codebase and inside
+  React Native's scroll code — so the remaining candidate was always the host,
+  which is exactly what changed.
+
+  It is recorded as closed rather than explained. If it ever comes back, the
+  next step is still measurement and not more reading: log `contentInset` from
+  the `onScroll` payload (`CoreEventTypes.js:291`) against the list's `onLayout`
+  frame. **This entry has now misled four investigations. Do not reopen it on
+  reasoning alone.**
+
+  The full ruled-out list is kept below because it is a real map of where the
+  inset does *not* come from:
 
   - safe-area folding into the content inset — `contentInsetAdjustmentBehavior`
     is hard-set to `Never` in both architectures
@@ -154,27 +171,11 @@ was consciously left:
   - the list not filling its space — `ScrollView.js:1861` applies
     `flexGrow: 1, flexShrink: 1`
 
-  So nothing in this codebase or in RN applies a top inset, and the list's frame
-  should begin level with the legal header. Next step is measurement rather than
-  more reading: log `contentInset` from the `onScroll` event (it is in the
-  native payload, `CoreEventTypes.js:291`) and compare against the list's
-  `onLayout` frame. A negative `scrollIndicatorInsets.top` is the one-prop probe
-  for whether the gap is inset-driven at all. Untested hypothesis worth ruling
-  out early: Expo Go hosts the app inside its own view hierarchy, so this may
-  not reproduce in the standalone `.ipa`.
-
   **Correction, 2026-08-02 (Truman).** The legal block is **four** lines, not
   two: at `fontSize: 11` inside 361pt of usable width, the attribution (75
-  chars) and the disclaimer (89) each wrap, under any plausible per-character
-  width from 5.4 to 6.0pt. So the block is ~78pt tall, not ~48pt, and any
-  arithmetic in the investigation above that leaned on "roughly half the legal
-  block" was measured against the wrong number.
-
-  It does not change the mechanism, and nobody should let it look like it does:
-  the legal block lives inside `ListHeaderComponent`, which makes it *content*,
-  and content height does not inset a scroll indicator's track. The correction
-  is worth recording because the size estimate was wrong, not because it
-  explains the gap.
+  chars) and the disclaimer (89) each wrap. So the block is ~78pt tall, not
+  ~48pt, and any arithmetic above that leaned on "roughly half the legal block"
+  was measured against the wrong number. It never changed the mechanism.
 - Two leftovers from those two commits, neither caught by `tsc`
   (`noUnusedLocals` is off): `EdgeInsets` is imported into `HomeScreen.tsx` and
   never used, and the memo wraps its value in `Platform.select({ default: … })`,

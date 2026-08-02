@@ -241,6 +241,83 @@ describe('StopsScreen', () => {
     screen.getByText(/unofficial app/i);
   });
 
+  it('pins a matching favorite above the rest of the results', async () => {
+    mockFavorites.loadFavorites.mockResolvedValue(['6']);
+    mockQueries.stopsByIds.mockResolvedValue([stopB]);
+    // The database returns the favorite last; it must still come out first.
+    mockQueries.searchByName.mockResolvedValue([stopA, stopB]);
+
+    await renderScreen();
+    await typeSearch('lagoon');
+
+    await waitFor(() => {
+      screen.getByText('LAGOON DR + IOLANA PL');
+    });
+    const names = screen.getAllByText(/^LAGOON DR/).map((node) => node.props.children);
+    expect(names).toEqual(['LAGOON DR + KAPALULU PL', 'LAGOON DR + IOLANA PL']);
+  });
+
+  it('shows a matching favorite the search itself missed', async () => {
+    // Past searchByName's result limit, or matched by a code prefix that the
+    // exact-code lookup cannot return. Either way the rider starred it, so it
+    // has to be findable.
+    mockFavorites.loadFavorites.mockResolvedValue(['6']);
+    mockQueries.stopsByIds.mockResolvedValue([stopB]);
+    mockQueries.searchByName.mockResolvedValue([]);
+
+    await renderScreen();
+    await typeSearch('kapalulu');
+
+    await waitFor(() => {
+      screen.getByText('LAGOON DR + KAPALULU PL');
+    });
+    // A pinned favorite is a match, so the empty notice must not appear.
+    expect(screen.queryByText('No stops match that.')).toBeNull();
+  });
+
+  it('lists a favorite that is also a result exactly once', async () => {
+    mockFavorites.loadFavorites.mockResolvedValue(['6']);
+    mockQueries.stopsByIds.mockResolvedValue([stopB]);
+    mockQueries.searchByName.mockResolvedValue([stopB]);
+
+    await renderScreen();
+    await typeSearch('kapalulu');
+
+    await waitFor(() => {
+      screen.getByText('LAGOON DR + KAPALULU PL');
+    });
+    expect(screen.getAllByText('LAGOON DR + KAPALULU PL')).toHaveLength(1);
+  });
+
+  it('pins a favorite whose code starts with a numeric query', async () => {
+    // searchByCode is an exact lookup and returns nothing for a prefix, so
+    // without the local match this favorite would be unreachable by number.
+    mockFavorites.loadFavorites.mockResolvedValue(['6']);
+    mockQueries.stopsByIds.mockResolvedValue([{ ...stopB, stop_code: '6123' }]);
+    mockQueries.searchByCode.mockResolvedValue(null);
+
+    await renderScreen();
+    await typeSearch('61');
+
+    await waitFor(() => {
+      screen.getByText('LAGOON DR + KAPALULU PL');
+    });
+  });
+
+  it('does not pin a favorite that has nothing to do with the query', async () => {
+    mockFavorites.loadFavorites.mockResolvedValue(['6']);
+    mockQueries.stopsByIds.mockResolvedValue([stopB]);
+    mockQueries.searchByName.mockResolvedValue([stopA]);
+
+    await renderScreen();
+    await typeSearch('iolana');
+
+    await waitFor(() => {
+      screen.getByText('LAGOON DR + IOLANA PL');
+    });
+    expect(screen.queryByText('LAGOON DR + KAPALULU PL')).toBeNull();
+  });
+
   it('never asks for location', async () => {
     // The whole reason the nearby list moved to the map tab: this screen works
     // identically with location switched off, and must not prompt for it.
