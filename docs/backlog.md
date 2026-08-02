@@ -162,6 +162,19 @@ was consciously left:
   for whether the gap is inset-driven at all. Untested hypothesis worth ruling
   out early: Expo Go hosts the app inside its own view hierarchy, so this may
   not reproduce in the standalone `.ipa`.
+
+  **Correction, 2026-08-02 (Truman).** The legal block is **four** lines, not
+  two: at `fontSize: 11` inside 361pt of usable width, the attribution (75
+  chars) and the disclaimer (89) each wrap, under any plausible per-character
+  width from 5.4 to 6.0pt. So the block is ~78pt tall, not ~48pt, and any
+  arithmetic in the investigation above that leaned on "roughly half the legal
+  block" was measured against the wrong number.
+
+  It does not change the mechanism, and nobody should let it look like it does:
+  the legal block lives inside `ListHeaderComponent`, which makes it *content*,
+  and content height does not inset a scroll indicator's track. The correction
+  is worth recording because the size estimate was wrong, not because it
+  explains the gap.
 - Two leftovers from those two commits, neither caught by `tsc`
   (`noUnusedLocals` is off): `EdgeInsets` is imported into `HomeScreen.tsx` and
   never used, and the memo wraps its value in `Platform.select({ default: … })`,

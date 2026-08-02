@@ -26,11 +26,18 @@ export function ArrivalRow({ arrival, now }: ArrivalRowProps) {
   const palette = useColorScheme() === 'dark' ? dark : light;
   const isLive = arrival.estimate === 'live';
 
+  /**
+   * Deliberately short and parallel with the live case, because this is the
+   * text on roughly 23 rows out of 25 — the normal state of the screen, not an
+   * exception on it. "No GPS" is the discontinued DaBus app's wording and the
+   * one riders here already know; "Scheduled" is what it *means*, and dropping
+   * either leaves the row saying less than it should.
+   */
   const status = isLive
     ? arrival.vehicle === null
       ? 'Live'
       : `Live · Bus ${arrival.vehicle}`
-    : 'Scheduled — no bus tracking yet';
+    : 'Scheduled · no GPS';
 
   return (
     <View

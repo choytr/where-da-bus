@@ -130,7 +130,7 @@ describe('ArrivalsScreen', () => {
     // 96% of arrivals are this. It is the common case, not an edge case, and
     // a rider deciding whether to leave the house needs to know.
     await show(clientOf(boardOf(arrival({ estimate: 'scheduled', vehicle: null }))));
-    screen.getByText(/Scheduled — no bus tracking yet/);
+    screen.getByText(/Scheduled · no GPS/);
     expect(screen.queryByText(/Live/)).toBeNull();
   });
 
