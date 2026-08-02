@@ -47,6 +47,28 @@ jest.mock('react-native-safe-area-context', () => ({
   },
 }));
 
+/**
+ * `GestureHandlerRootView` calls into a native module at render — off-device
+ * that throws `RNGestureHandlerModule.default.install is not a function`, which
+ * takes the whole shell down before any assertion runs.
+ *
+ * It is substituted with a labelled `View` rather than silenced, so the guard
+ * below can assert the root is actually there. Gesture handling is the same
+ * class of problem as safe-area insets: resolved through a *native* container,
+ * silent when the container is missing, and only visible on a device — where
+ * the symptom is a bottom sheet that simply will not drag.
+ */
+jest.mock('react-native-gesture-handler', () => {
+  const { View } = require('react-native');
+  return {
+    GestureHandlerRootView: ({ children, style }: { children: unknown; style: unknown }) => (
+      <View accessibilityLabel="gesture root" style={style}>
+        {children}
+      </View>
+    ),
+  };
+});
+
 const sqlite = () => jest.requireMock('expo-sqlite');
 
 describe('AppShell', () => {
@@ -79,6 +101,18 @@ describe('AppShell', () => {
     await render(<AppShell><HomeScreen /></AppShell>);
     await waitFor(() => screen.getByPlaceholderText(/stop number or name/i));
     expect(screen.queryByText(/stop data unavailable/i)).toBeNull();
+  });
+
+  /**
+   * The companion to the safe-area guard above, and it has to be an explicit
+   * assertion for the opposite reason: a missing gesture root does not throw
+   * under Jest at all once the module is mocked, so nothing else in this file
+   * would notice its removal. On a device the cost is a sheet that does not
+   * respond to a drag, with no error anywhere.
+   */
+  it('wraps the app in a gesture root, which the map sheet cannot drag without', async () => {
+    await render(<AppShell><HomeScreen /></AppShell>);
+    screen.getByLabelText('gesture root');
   });
 
   it('opens the bundled database read-only', async () => {

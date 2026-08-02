@@ -3,6 +3,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DISCLAIMER } from './lib/legal';
 import { ThemeProvider, useTheme } from './lib/theme';
 import { themeStorage } from './data/storage/preferences';
@@ -59,28 +60,39 @@ async function openReadOnly(db: SQLiteDatabase): Promise<void> {
  */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
-      <ThemeProvider storage={themeStorage}>
-        <DatabaseGate>
-          <Suspense fallback={<Waiting />}>
-            <SQLiteProvider
-              databaseName="gtfs.db"
-              // Re-copied from the bundle on every launch. The file on disk is a
-              // disposable copy of reference data — never user state, which lives
-              // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
-              // (npm run build:gtfs) from being shadowed by a stale first-launch
-              // copy for the entire life of the install.
-              assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
-              onInit={openReadOnly}
-              useSuspense
-            >
-              {children}
-            </SQLiteProvider>
-          </Suspense>
-          <ThemedStatusBar />
-        </DatabaseGate>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    /*
+      Gestures need a root the same way insets need a provider: react-native-
+      gesture-handler resolves touches through a native container, and without
+      one the map's bottom sheet simply will not drag. Expo Router mounts its
+      own, but this project does not depend on a transitive detail of a library
+      it does not control for something whose failure mode is silent and only
+      visible on a device — the same call, for the same reason, as the
+      SafeAreaProvider below. Nesting is supported and costs nothing.
+    */
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <ThemeProvider storage={themeStorage}>
+          <DatabaseGate>
+            <Suspense fallback={<Waiting />}>
+              <SQLiteProvider
+                databaseName="gtfs.db"
+                // Re-copied from the bundle on every launch. The file on disk is a
+                // disposable copy of reference data — never user state, which lives
+                // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
+                // (npm run build:gtfs) from being shadowed by a stale first-launch
+                // copy for the entire life of the install.
+                assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
+                onInit={openReadOnly}
+                useSuspense
+              >
+                {children}
+              </SQLiteProvider>
+            </Suspense>
+            <ThemedStatusBar />
+          </DatabaseGate>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -142,6 +154,7 @@ function Unavailable() {
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   waitingText: { fontSize: 14 },
   title: { fontSize: 20, fontWeight: '600', textAlign: 'center' },
