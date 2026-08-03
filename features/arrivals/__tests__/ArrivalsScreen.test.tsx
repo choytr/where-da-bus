@@ -38,7 +38,7 @@ jest.mock('../../../data/gtfs/db', () => ({
 /**
  * `initialWindowMetrics` is null off-device and a provider seeded with null
  * renders nothing at all, so the metrics of a real phone are supplied here.
- * The same reasoning as HomeScreen.test.tsx — and note this file wraps the
+ * The same reasoning as StopsScreen.test.tsx — and note this file wraps the
  * screen itself rather than mocking the module, because it does not own the
  * provider the way App does.
  */

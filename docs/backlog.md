@@ -278,3 +278,61 @@ Recorded at the increment boundary. None of these block Increment 3.
   a lockfile peer conflict; `npm install` and the whole test suite stay green
   through one. CI covers it now that `dev` runs tests, which is how the
   `react-dom` break was found — three pushes late.
+
+## Increment 3 — deferred
+
+Found on a physical iPhone in Expo Go on 2026-08-02 by Truman, after tasks 1–10
+landed. His summary: "UX in general needs a lot of work, but it's fine for now."
+None of these are blocking; all of them are real.
+
+**The sheet fights the selection.**
+
+- **Expanding a row while the sheet is full-height drops it back to half.**
+  `MapScreen`'s `select` calls `snapToIndex(MEDIUM_DETENT)` unconditionally, so
+  raising the sheet to read a long list and then tapping a row throws away the
+  height the rider just asked for. It should only raise the sheet when the sheet
+  is *below* medium, never lower it.
+- **Selecting a stop does not feel like selecting a stop.** The row expands in
+  place and nothing else marks it. Truman's suggestions, both worth considering
+  and neither decided: expand the row on a pin tap as well, or lift the selected
+  stop into its own "Selected stop" section at the top of the sheet.
+  (Note for whoever picks this up: he described the selected row as coming "up
+  to the top of the list". Nothing in `StopSheet` reorders anything — the list
+  is distance-sorted, so a tapped pin is often near the top already. Do not go
+  looking for reordering code; there is none.)
+- **The expanded row's tap target is not discoverable.** Reaching the full
+  arrival board means tapping the little list of arrivals, which does not look
+  tappable. It needs a visible affordance — a chevron, or an explicit
+  "All arrivals" row.
+
+**The camera.**
+
+- **Tapping a pin resets the zoom.** Selecting a stop should not move the
+  camera at all, but it does, which means a marker press is also reaching
+  `MapView`'s `onPress` and moving the anchor. Worth confirming against
+  `react-native-maps` before assuming the fix: if marker presses do propagate,
+  `select` and `onMapPress` both fire for one tap.
+- **Centring ignores the sheet.** The camera centres on the whole screen while
+  the sheet covers the bottom half, so the anchor sits behind the sheet.
+  `MapView`'s `mapPadding` prop is the mechanism; it is currently unset.
+- **The map does not open on the rider's location.** By design — `useLocation`
+  never prompts until something asks it to, so the anchor is the Honolulu
+  fallback until ⌖ is tapped. Truman did not expect that, which is the useful
+  signal. The open question is whether opening the Map tab should count as the
+  deliberate action that triggers the permission prompt.
+
+**Unexplained.**
+
+- **Occasional crash after interacting with a lot of things.** No reproduction
+  and no stack yet, and it is not yet known whether it is Expo Go only — the
+  `.ipa` is the next test. Record what was being touched when it happens; the
+  sheet, the map and three arrivals polls are all in play at once, so "a bunch
+  of things" is genuinely the useful detail here.
+
+**Still open from the review itself.**
+
+- **`ExpandedStopRow` takes no client argument.** `ArrivalsScreen` accepts a
+  `TheBusClient` and defaults to `theBus`; this one only ever uses the default,
+  so its suite has to mock the module rather than pass a double. A small
+  inconsistency in an otherwise deliberate seam.
+

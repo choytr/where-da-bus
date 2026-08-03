@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react-native';
 import { AppShell } from '../AppShell';
-import { HomeScreen } from '../features/stops/HomeScreen';
+import { Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
  * What this file owns is the gate in front of the stop list: the bundled
@@ -8,12 +9,18 @@ import { HomeScreen } from '../features/stops/HomeScreen';
  * running, opened, failed — each reach the user as something different. The
  * screen behind the gate has its own tests.
  *
- * `HomeScreen` is passed in as the child rather than being reached through
- * the router. `AppShell` takes children precisely so this suite does not have
- * to stand up Expo Router to test a database gate — and passing the real
- * screen is what keeps the safe-area guard below meaningful, since a stub
- * child would not call `useSafeAreaInsets` and the missing provider would go
- * unnoticed.
+ * A child is passed in rather than reached through the router. `AppShell`
+ * takes children precisely so this suite does not have to stand up Expo Router
+ * to test a database gate.
+ *
+ * That child used to be `HomeScreen`, on the grounds that a real screen calls
+ * `useSafeAreaInsets` where a stub would not — which is what makes the
+ * safe-area guard below bite. `HomeScreen` was retired at the end of Increment
+ * 3, and its successor `StopsScreen` reads the safe area through `SafeAreaView`
+ * instead, which does **not** throw without a provider. So the guard is stated
+ * directly now: `InsetReader` exists to call the one hook whose missing
+ * provider is a real, silent, device-only bug. That is more honest than relying
+ * on a screen to keep calling it by accident.
  *
  * `expo-sqlite` is a native module, so `SQLiteProvider` is doubled and driven
  * through each outcome by hand. Its props are read back through
@@ -69,6 +76,16 @@ jest.mock('react-native-gesture-handler', () => {
   };
 });
 
+/**
+ * The whole child. It calls `useSafeAreaInsets`, which throws without a
+ * provider — see CLAUDE.md — and renders a marker the gate's tests can look
+ * for. Do not replace this with something that does not call that hook.
+ */
+function InsetReader() {
+  useSafeAreaInsets();
+  return <Text>inside the shell</Text>;
+}
+
 const sqlite = () => jest.requireMock('expo-sqlite');
 
 describe('AppShell', () => {
@@ -81,15 +98,15 @@ describe('AppShell', () => {
     });
   });
 
-  it('shows the stop list once the database is open', async () => {
-    await render(<AppShell><HomeScreen /></AppShell>);
-    await waitFor(() => screen.getByPlaceholderText(/stop number or name/i));
+  it('renders its children once the database is open', async () => {
+    await render(<AppShell><InsetReader /></AppShell>);
+    await waitFor(() => screen.getByText('inside the shell'));
   });
 
   /**
-   * The guard on the safe-area provider (see CLAUDE.md). `HomeScreen` calls
+   * The guard on the safe-area provider (see CLAUDE.md). `InsetReader` calls
    * `useSafeAreaInsets`, which throws without a provider, so removing
-   * `SafeAreaProvider` from `App` fails the suite.
+   * `SafeAreaProvider` from `AppShell` fails the suite.
    *
    * This assertion exists because of *how* it would otherwise fail. The throw
    * is swallowed by `DatabaseGate`, so the test above just times out in
@@ -97,9 +114,9 @@ describe('AppShell', () => {
    * cold-cache flake in docs/backlog.md, which trains a reader to dismiss it.
    * Naming the wrong screen makes the real cause legible.
    */
-  it('renders the stop list rather than the database-failure screen', async () => {
-    await render(<AppShell><HomeScreen /></AppShell>);
-    await waitFor(() => screen.getByPlaceholderText(/stop number or name/i));
+  it('renders its children rather than the database-failure screen', async () => {
+    await render(<AppShell><InsetReader /></AppShell>);
+    await waitFor(() => screen.getByText('inside the shell'));
     expect(screen.queryByText(/stop data unavailable/i)).toBeNull();
   });
 
@@ -111,12 +128,12 @@ describe('AppShell', () => {
    * respond to a drag, with no error anywhere.
    */
   it('wraps the app in a gesture root, which the map sheet cannot drag without', async () => {
-    await render(<AppShell><HomeScreen /></AppShell>);
+    await render(<AppShell><InsetReader /></AppShell>);
     screen.getByLabelText('gesture root');
   });
 
   it('opens the bundled database read-only', async () => {
-    await render(<AppShell><HomeScreen /></AppShell>);
+    await render(<AppShell><InsetReader /></AppShell>);
 
     const props = sqlite().SQLiteProvider.mock.calls[0][0];
     const db = { execAsync: jest.fn(async () => {}) };
@@ -126,7 +143,7 @@ describe('AppShell', () => {
   });
 
   it('re-copies the bundled asset rather than trusting an older copy on disk', async () => {
-    await render(<AppShell><HomeScreen /></AppShell>);
+    await render(<AppShell><InsetReader /></AppShell>);
 
     const props = sqlite().SQLiteProvider.mock.calls[0][0];
     expect(props.assetSource.forceOverwrite).toBe(true);
@@ -140,7 +157,7 @@ describe('AppShell', () => {
       throw pending;
     });
 
-    await render(<AppShell><HomeScreen /></AppShell>);
+    await render(<AppShell><InsetReader /></AppShell>);
     screen.getByText(/opening stop data/i);
     expect(screen.queryByText(/could not be opened/i)).toBeNull();
   });
@@ -153,7 +170,7 @@ describe('AppShell', () => {
       throw new Error('file is not a database');
     });
 
-    await render(<AppShell><HomeScreen /></AppShell>);
+    await render(<AppShell><InsetReader /></AppShell>);
 
     screen.getByText(/stop data unavailable/i);
     screen.getByText(/could not be opened/i);
@@ -168,7 +185,7 @@ describe('AppShell', () => {
       throw new Error('file is not a database');
     });
 
-    await render(<AppShell><HomeScreen /></AppShell>);
+    await render(<AppShell><InsetReader /></AppShell>);
 
     screen.getByText(/not affiliated with or endorsed by/i);
     reported.mockRestore();

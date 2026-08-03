@@ -4,8 +4,9 @@
 session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
-Last updated: **2026-08-02**, mid-Increment-3. Tasks 1–7 are done, pushed to
-`dev`, and **verified on Truman's phone in Expo Go**; tasks 8–10 are not built.
+Last updated: **2026-08-02**. **Increment 3's code is complete** — all ten
+tasks, plus an unplanned 6a — reviewed at the boundary, and driven by hand on
+Truman's phone in Expo Go. Not yet verified from an `.ipa`, and not merged.
 
 **Everything durable is already in the repo.** This document exists only to
 carry what a transcript would otherwise lose. Read the repo docs first; they are
@@ -103,73 +104,66 @@ red, invisible locally because `npm install` tolerates what `npm ci` refuses.
 
 ## What to pick up next
 
-**Increment 3 is part-built.** The plan
-(`docs/superpowers/plans/2026-08-02-increment-3-map.md`) is annotated with what
-is done and where reality disagreed with it.
+**Increment 3 is built and reviewed. What is left is verification and polish,
+not construction.** 248 Jest, 70 `node --test`, clean typecheck, expo-doctor
+18/18. The plan (`docs/superpowers/plans/2026-08-02-increment-3-map.md`) is
+annotated with what was done and where reality disagreed with it.
 
-Landed on `dev`: the theme preference and provider (tasks 1–2), the seven call
-sites migrated (3), the three-tab restructure (4), the Settings screen (6), and
-an arrivals request cache that was not in the plan (6a, see below). 217 Jest, 70
-`node --test`, clean typecheck.
+In order:
 
-**Next is task 8** — `useAnchoredStops` — then 9 and 10, the pins and the sheet.
-Everything before them is built and looked at on a real phone.
+1. **Build an `.ipa` off `dev` and drive it on the phone.**
+   `gh workflow run ios-ipa.yml --ref dev`. The last one predates tasks 9 and
+   10, so no build yet has contained the sheet — and this is the first one where
+   reanimated and gesture-handler actually ship. There is an unexplained crash
+   in `docs/backlog.md` that may or may not be Expo-Go-only; this is the test.
+2. **The UX pass.** `docs/backlog.md`'s "Increment 3 — deferred" section has six
+   issues Truman found on the device, each with the mechanism already traced.
+   Two are near-trivial (the sheet dropping to half-height on selection; the
+   camera ignoring the sheet via `mapPadding`), and one needs a fact checked
+   before it can be fixed (whether a marker press also reaches `MapView`'s
+   `onPress`).
+3. **Merging `dev` into `main`** — Truman's explicit permission, every time.
 
-**Task 7's gate is passed.** The map renders, the three tabs are labelled
-correctly, search and the empty state behave, and the theme carries through to
-the status bar. Two things that gate did *not* cover: reanimated and
-gesture-handler are installed but nothing imports them yet, so they are not even
-in the bundle — task 9's sheet is their first real exercise.
+**Nothing about Increment 3 is under construction.** If a session starts by
+writing a new map component, it has misread this file.
 
-**Three things this session decided that the diff does not explain:**
+### What the boundary review found
+
+One real bug, fixed in `81c98fa`: `withCache` let a caller arriving in the
+window between the last caller aborting and the promise settling join a dead
+request and receive its failure. On the map that window is one tap wide — select
+a pin, select another, select the first again. It lived in the seam between the
+cache (task 6a) and selection (task 10), which is precisely the kind of finding
+per-task review structurally cannot see. It was confirmed with a throwaway probe
+before being fixed, not reasoned about.
+
+`HomeScreen` was retired at the same time. Note what that cost: it was the last
+thing calling `useSafeAreaInsets` under `__tests__/App.test.tsx`, and
+`StopsScreen` reads the safe area through `SafeAreaView`, which does **not**
+throw without a provider. The guard is now stated directly — `InsetReader` in
+that file exists solely to call that hook. **Do not replace it with a component
+that does not.**
+
+### Decisions from this increment that the diff does not explain
 
 - **`ThemeProvider` takes its storage as a prop.** Importing the preference
   module from `lib/theme.tsx` put AsyncStorage in the module graph of every
   screen that reads a colour, and four suites failed at import before a single
-  assertion ran. That is the same coupling `lib/legal.ts` exists to break,
-  arriving by a different route. The edge runs storage -> theme, never back.
-- **`useTheme` throws without a provider, deliberately.** A default palette
-  would make a missing provider invisible in Jest and wrong on the device —
-  what `SafeAreaProvider` already cost this project once. The price is that
-  every screen suite needs `TestTheme` from `lib/testing/theme.tsx`.
-- **The plan's palette keys were a guess and were wrong.** It named `surface`,
-  `accent` and `separator`, which nothing uses, and omitted six that six screens
-  do. The real list is in `lib/theme.tsx`.
-
-**No *design* question about Increment 3 is open** — the session on 2026-08-02
-settled it end to end. Two of its reversals are worth knowing about, because the
-losing option looks reasonable on paper and one of them has since been seen
-losing in someone else's shipped app:
-
-- **The map does not re-query on pan or zoom.** Stops are anchored to a point —
-  your location, or wherever you tap. Viewport querying was chosen first and
-  then rejected: the SQL is free (0.5 ms for 480 rows over the existing index)
-  but re-rendering up to 150 native markers on every drag settle is not, and a
-  list that reshuffles under your thumb is unpleasant however fast it is.
-  TheBusLive took the other fork and needed three mitigations to make it
-  bearable — a 120 ms debounce, grid-thinning to 150 pins, and refusing to draw
-  pins at all when zoomed out. See the comparison spec.
-- **Search is not in the bottom sheet.** It is its own tab, with favorites as
-  its empty state. A text field inside a sheet over a map fights the sheet's
-  gestures through the keyboard, and this is the wrong loop to debug that on.
-
-**Deferred with the numbers already taken**, so none of it needs re-deriving:
-feed refresh (Increment 4), route polylines (~200 KB for all 532 shapes, not
-the budget fork the design spec feared), live vehicles (the whole fleet arrives
-in one 29 KB request, but most of it is years stale while still carrying real
-Oahu coordinates — filter on `last_message` or plot ghosts).
-
-**One dated chore:** `feed_end_date` is `20260822`. Run `npm run build:gtfs` and
-commit the regenerated asset before then, or the app starts calling itself
-stale. Increment 4 is what ends this being manual.
-
-**The measurement that was owed has been taken.** 2026-08-02, 11:43 HST
-(Sunday): **235 of 1,204 vehicles reporting within 15 minutes**, 232 of them
-within five — against 46 at 01:07 the night before. The live-vehicle map has
-something to show, so Increment 5 is worth building. Details and the two
-corrections it forced on `route_short_name` and the ghost count are in
-`docs/api/README.md`. What is *not* measured is a **weekday** peak; Sunday
-service is thinner, so 235 is a floor for it. Not a blocker for anything.
+  assertion ran. Same coupling `lib/legal.ts` exists to break, by another route.
+  The edge runs storage -> theme, never back.
+- **`useTheme` throws without a provider, deliberately**, as does the gesture
+  root's absence show up only on a device. Both are guarded by explicit
+  assertions in `App.test.tsx` rather than by hope.
+- **`@gorhom/bottom-sheet` is a new dependency, and it was not in the plan.**
+  Pure JS over reanimated and gesture-handler — no native module of its own — so
+  the Expo Go loop is untouched. Hand-rolling three detents plus the scroll/pan
+  coordination is the part that would have gone wrong.
+- **The map's camera moves only when the anchor moves.** Not on a poll, not on a
+  refresh. TheBusLive needed a flag for this; here it falls out of the effect
+  depending on a memoised region.
+- **The default zoom is derived, not chosen.** `regionAround` frames exactly
+  `NEARBY_RADIUS_METERS`, so the camera and the query cannot disagree about what
+  "nearby" means.
 
 ## The TheBusLive comparison, and what came of it
 
