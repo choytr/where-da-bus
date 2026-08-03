@@ -10,6 +10,11 @@ Truman's phone in Expo Go, and **verified from a sideloaded `.ipa`** (run
 `30775481303` off `dev`). His words: "the app looks good." **Not merged to
 `main`** — that needs his explicit permission.
 
+**Still Increment 3.** Using it produced a UX pass big enough to need its own
+plan but not its own increment: the map's shape survived the device, its
+interactions did not. Specified and planned, **not started** — see *What to
+pick up next*.
+
 **Everything durable is already in the repo.** This document exists only to
 carry what a transcript would otherwise lose. Read the repo docs first; they are
 the source of truth.
@@ -106,28 +111,59 @@ red, invisible locally because `npm install` tolerates what `npm ci` refuses.
 
 ## What to pick up next
 
-**Increment 3 is built and reviewed. What is left is verification and polish,
-not construction.** 248 Jest, 70 `node --test`, clean typecheck, expo-doctor
-18/18. The plan (`docs/superpowers/plans/2026-08-02-increment-3-map.md`) is
-annotated with what was done and where reality disagreed with it.
+**Execute `docs/superpowers/plans/2026-08-02-map-sheet-ux.md`, task 1 onward.**
+Eight tasks, contract-level, inline, on `dev`. Its decisions were settled with
+Truman on 2026-08-02 and are written up in the **Revision** section of
+`docs/superpowers/specs/2026-08-02-increment-3-map.md`. **Do not re-argue
+them** — read the Revision, not this summary, and note that it records what was
+traded away as well as what was chosen.
 
-In order:
+The one-line version: the sheet becomes two modes rather than one list, the
+detail card is the *full* arrival board (so `ExpandedStopRow` goes), tapping the
+map no longer moves the anchor, the camera moves only on ⌖ and the first
+location fix, and the map asks for location on `onMapReady`.
 
-1. **The UX pass.** `docs/backlog.md`'s "Increment 3 — deferred" section has six
-   issues Truman found on the device, each with the mechanism already traced.
-   Two are near-trivial (the sheet dropping to half-height on selection; the
-   camera ignoring the sheet via `mapPadding`), and one needs a fact checked
-   before it can be fixed (whether a marker press also reaches `MapView`'s
-   `onPress`).
+Then, in order:
+
+1. **Device-verify it.** The plan ends with three questions only a device can
+   answer, and they are the reason for the build rather than a formality.
 2. **Merging `dev` into `main`** — Truman's explicit permission, every time.
+
+Increment 3's own plan (`2026-08-02-increment-3-map.md`) is annotated with what
+was done and where reality disagreed with it. 248 Jest, 70 `node --test`, clean
+typecheck, expo-doctor 18/18 as of the increment boundary.
 
 The `.ipa` check is **done**: the build containing the sheet, reanimated and
 gesture-handler was installed and driven, and it looks right. The crash recorded
 in the backlog was not reproduced on it, so that entry is now "seen once in Expo
 Go, not reproduced on device" rather than an open device bug.
 
-**Nothing about Increment 3 is under construction.** If a session starts by
-writing a new map component, it has misread this file.
+**The map itself is not under construction.** New components appear in the UX
+plan — `StopCard`, `BoardHeader` — but they are named there with contracts. A
+session that starts by designing a map screen from scratch has misread this
+file; a session that starts at task 1 of the UX plan has read it correctly.
+
+### What the UX session settled that the spec does not say outright
+
+- **Truman does not want the camera to move.** He rejected two separate
+  proposals for it — sliding the map when the rising sheet would cover the pin
+  just tapped, and reframing the query radius after a *Search this area*. He
+  accepted the cost both times after it was stated plainly. This is a settled
+  preference, not a gap: **do not propose camera movement again** beyond ⌖ and
+  the first location fix.
+- **`mapPadding` is not the centring mechanism on Apple Maps**, contrary to
+  `docs/backlog.md`. `AIRMap.m:645` assigns it to `layoutMargins`; the Google
+  branch (`AIRGoogleMap.m:443`) sets `padding`, which does move the camera, and
+  the backlog entry looks written from that. **This is a reading of the native
+  source, not an observation** — the same move that produced two wrong claims in
+  the scroll-indicator entry. It is why task 6 centres by arithmetic in
+  `region.ts` instead, which cannot be wrong about MapKit because it never asks.
+- **`6e27094` and `5822083` are Truman's.** The marker `stopPropagation` and the
+  90% detent cap. Tasks 4 and 5 rewrite both lines — he asked for that work
+  directly, so the waiver covers these; it does not extend further.
+- **The Increment 4 AppID prerequisite is already met.** He registered his own
+  at the start, which is where the `.env` key came from. Nothing is blocked on a
+  signup.
 
 ### What the boundary review found
 
