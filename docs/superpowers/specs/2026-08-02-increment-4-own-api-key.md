@@ -1,7 +1,15 @@
 # Spec — Increment 4: each user brings their own API key
 
-**Date:** 2026-08-02
-**Status:** decided, not started. Increment 3 finishes first.
+**Date:** 2026-08-02, **amended 2026-08-03** — see *Settled on 2026-08-03* at
+the end, which closes both of the open questions below and kills one of this
+spec's premises.
+**Status:** decided, not started. Increment 3 is finished and merged.
+
+**This is now the first of two increments**, not one. Increment 5
+(`2026-08-03-increment-5-self-refreshing-data.md`) removes the bundled GTFS
+asset and teaches the app to fetch its own. **The order is load-bearing and one
+step of it is manual** — see that spec's *Why this order* section before
+starting either.
 
 ## The decision
 
@@ -90,6 +98,15 @@ key. TheBusLive uses a `SecureField` with a reveal toggle; worth copying.
 
 ## Sequencing note
 
+> **Resolved 2026-08-03.** This goes first, feed refresh becomes Increment 5,
+> and they are no longer "unrelated" — the ordering constraint in *Settled on
+> 2026-08-03* above is real and one step of it is manual.
+>
+> The "dated forcing function" below was also overstated and Truman said so.
+> `feed_end_date` passing means a banner appears, for an audience of one who
+> knows why. It is not a deadline. The real fix is Increment 5, and if that
+> lands the manual rebuild never happens again.
+
 The design spec has Increment 4 as **feed refresh**. This does not replace that;
 it is a second candidate for the slot and they are unrelated. Which goes first is
 open. Feed refresh has a dated forcing function — `feed_end_date` is `20260822`,
@@ -97,14 +114,62 @@ after which the app starts calling itself stale — and this one does not.
 
 ## Not settled
 
-- Whether the key lives in `AsyncStorage` alongside the other preferences or in
-  the keychain. It is a personal API credential, not a secret protecting anyone
-  else, and it is currently shipped in a bundle anyone can read — so this is a
-  smaller question than it looks, but it should be asked once rather than
-  defaulted into.
-- What the app does on first launch. A blocking setup screen and a Settings
-  deep-link from an empty state are both defensible; the Stops tab already
-  works entirely offline against the bundled GTFS asset, which means **search
-  and favorites could keep working without a key** while only arrivals are
-  gated. That is a genuinely nice property and worth designing around rather
-  than blocking the whole app on launch.
+> **Both settled on 2026-08-03.** Kept here with their answers rather than
+> deleted, because the second one was answered by *destroying its premise* and
+> that is worth seeing.
+
+- ~~Whether the key lives in `AsyncStorage` alongside the other preferences or
+  in the keychain.~~ **`expo-secure-store`.** The argument for not caring —
+  "it is currently shipped in a bundle anyone can read" — was an argument about
+  the world *before* this increment. Storing a credential in plaintext
+  immediately after removing it from the binary undoes part of what the
+  increment buys. The usual objection, a new dependency, does not apply:
+  `expo-secure-store` is in the SDK 54 bundled set, so the Expo Go fast loop is
+  untouched. Default accessibility is "unlocked device" and prompts for
+  nothing; `requireAuthentication` stays off.
+
+- ~~What the app does on first launch … **search and favorites could keep
+  working without a key** while only arrivals are gated. That is a genuinely
+  nice property and worth designing around.~~ **That property no longer
+  exists.** It rested on the bundled GTFS asset, and Increment 5 deletes it. A
+  first launch after that has no key *and* no database, so there is nothing for
+  search to search.
+
+  **Onboarding is therefore a hard gate, designed for the end state:** paste
+  key → confirm → (Increment 5 adds: download the database) → the app works. No
+  key, no app. Truman's call, 2026-08-03.
+
+  It is built as *a list of unmet prerequisites*, not as a key-shaped screen.
+  In Increment 4 the list is `[key]`; in Increment 5 it becomes
+  `[key, database]`. That is an item added to a list rather than a rebuild,
+  which is what makes designing for the end state cheap now rather than
+  expensive later.
+
+  **Do not rebuild the soft gate.** A future reader will notice that search and
+  favorites *could* work without a key and that this would be nicer. It was
+  noticed, and it is only true while an asset ships in the binary. Building it
+  in Increment 4 would mean deleting it in Increment 5.
+
+## Settled on 2026-08-03
+
+From a grilling session with Truman that also produced Increment 5. The
+decisions there that reach back into this one:
+
+- **This increment goes first**, before the repo is made public and before any
+  of the data work. The reason is not preference. Every `.ipa` this project
+  builds contains the AppID, because `EXPO_PUBLIC_` inlines it — so a public
+  repo with CI attached republishes the key on every build. Removing the key
+  from the bundle is what makes the repo safe to open. **Sixteen `.ipa`
+  artifacts carrying the key were deleted on 2026-08-03**, and the git history
+  was checked and is clean: `.env` was never committed and the key appears in
+  no commit.
+- **The onboarding download in Increment 5 does not need the key.** GitHub does
+  not care about an AppID. The two setup steps therefore fail for entirely
+  unrelated reasons and must not render alike — "your key was rejected" and
+  "could not fetch the stop data" have different fixes. This is the same §4
+  discipline the arrival board already carries, on a new surface.
+- **The six-month inactivity deletion has a consequence for the fourth state.**
+  The vendor deletes an AppID after six months of inactivity, so "no key" must
+  be able to explain a key that *used to work*, not only one that was never
+  set. A returning user meets a working install that has stopped working, and
+  the wording has to reach them.

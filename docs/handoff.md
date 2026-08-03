@@ -119,12 +119,40 @@ sideloaded, and driven by Truman on 2026-08-03. All three of the plan's
 questions are answered, in the plan's *What the device said* section; two
 produced work and both of those are now done.
 
-Next, in order:
+**Increment 3 is merged.** `origin/main` is at `094d7f3`, fast-forwarded from
+`dev` with his explicit permission on 2026-08-03, after a second device round
+caught the zoom reset on *Search here*.
 
-1. **Re-verify the three follow-up changes on a device** — the sticky *Search
-   this area*, the camera centring on *Search here*, and nothing else moving the
-   camera. They were made after the build above, so no device has run them.
-2. **Merging `dev` into `main`** — Truman's explicit permission, every time.
+## What to pick up next
+
+**Increments 4 and 5, in that order, with a manual step between them.** Both
+are specced; the decisions were settled with Truman in a grilling session on
+2026-08-03 and are written down. **Do not re-argue them** — read the specs.
+
+1. **Increment 4 — each user brings their own API key.**
+   `docs/superpowers/specs/2026-08-02-increment-4-own-api-key.md`, amended
+   2026-08-03. Both of its previously-open questions are now settled, and one
+   of its premises is dead; the amendment says which and why.
+2. **Make `choytr/where-da-bus` public — by hand.** This is not code, no test
+   will notice it being skipped, and it cannot be undone once indexed. It must
+   happen *after* Increment 4, because `EXPO_PUBLIC_` puts the AppID in every
+   `.ipa` and a public repo with CI republishes it on every build. History is
+   already verified clean and the 16 key-bearing artifacts are already deleted.
+3. **Increment 5 — the data refreshes itself.**
+   `docs/superpowers/specs/2026-08-03-increment-5-self-refreshing-data.md`. A
+   weekly GitHub Action builds and publishes the SQLite asset; the app fetches
+   it; nothing is bundled. Carries the measured feed numbers so nobody
+   re-downloads 12 MB to re-derive them.
+
+**Truman wants a broader architecture discussion before this is built.** He
+approved the plan "tentatively" and asked for that conversation in a fresh
+session. Treat the specs as settled decisions and the architecture as still
+open for discussion — not the reverse.
+
+**The bundled `assets/db/gtfs.db` is not being refreshed by hand.** It expires
+2026-08-22 and that is deliberately not a deadline: he is the only user, he
+knows why the banner appears, and Increment 5 deletes the file entirely. Do not
+"helpfully" run `npm run build:gtfs` and commit the result.
 
 Two cosmetic findings are deferred in `docs/backlog.md`, on his instruction —
 "functionality first": the callout's text is not centred on its pin, and the
@@ -260,6 +288,12 @@ roughly 170 concurrent open arrival boards at a 60-second poll. That is a bet,
 not an oversight, and it is now written down as one.
 
 ## Increment 4 is decided, and it is not what the design spec says
+
+> **Superseded 2026-08-03 in one respect:** the "order between them is open"
+> below is closed. The key goes first, feed refresh becomes **Increment 5**,
+> and the two are no longer unrelated — see *What to pick up next*. The
+> "dated forcing function" is also overstated; Truman pushed back on it and
+> was right.
 
 `docs/superpowers/specs/2026-08-02-increment-4-own-api-key.md`. **Every install
 registers its own AppID and pastes it into Settings; the bundled key goes
