@@ -105,7 +105,16 @@ export function withCache(inner: TheBusClient, options: CacheOptions = {}): TheB
       if (released) return;
       released = true;
       entry.waiting -= 1;
-      if (entry.waiting === 0) entry.controller.abort();
+      if (entry.waiting > 0) return;
+
+      // Nobody is left waiting, so this request is abandoned. It has to leave
+      // the in-flight map *before* being aborted, or a caller arriving in the
+      // window between the abort and the promise settling would join a request
+      // that is already dead and be handed its failure as if it were an answer.
+      // That window is one tap wide: select a pin, select another, select the
+      // first again.
+      if (inFlight.get(stopCode) === entry) inFlight.delete(stopCode);
+      entry.controller.abort();
     };
 
     signal?.addEventListener('abort', release);

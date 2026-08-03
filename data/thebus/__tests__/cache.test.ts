@@ -160,6 +160,30 @@ describe('withCache', () => {
     expect(calls[0].signal?.aborted).toBe(true);
   });
 
+  it('does not hand a new caller the failure of a request everyone else abandoned', async () => {
+    // Found at Increment 3's boundary review. The abort guard above protects
+    // callers already waiting, but a caller arriving in the window between the
+    // abort and the promise settling used to join the dead request and receive
+    // its `unreachable` as though it were an answer. On the map that window is
+    // one tap wide: select a pin, select another, select the first again.
+    const { client, calls } = controllable();
+    const cached = withCache(client);
+
+    const leaving = new AbortController();
+    const abandoned = cached.arrivals('596', { signal: leaving.signal });
+    leaving.abort();
+    expect(calls[0].signal?.aborted).toBe(true);
+
+    const arriving = cached.arrivals('596');
+    expect(calls).toHaveLength(2);
+
+    calls[0].settle(unreachable);
+    calls[1].settle(board('596'));
+
+    expect(await arriving).toEqual(board('596'));
+    await abandoned;
+  });
+
   it('starts a new request after the previous one has settled', async () => {
     const { client, calls } = controllable();
     const cached = withCache(client, { ttlMs: 0, now: () => 1_000 });
