@@ -12,8 +12,11 @@ Truman's phone in Expo Go, and **verified from a sideloaded `.ipa`** (run
 
 **Still Increment 3.** Using it produced a UX pass big enough to need its own
 plan but not its own increment: the map's shape survived the device, its
-interactions did not. Specified and planned, **not started** — see *What to
-pick up next*.
+interactions did not. **All eight tasks of
+`docs/superpowers/plans/2026-08-02-map-sheet-ux.md` are now built**, green on
+`npm test` / `npm run test:scripts` / `npm run typecheck`, and **not yet driven
+on a device** — which is the next thing, and the reason the plan ends with three
+questions rather than a checklist.
 
 **Everything durable is already in the repo.** This document exists only to
 carry what a transcript would otherwise lose. Read the repo docs first; they are
@@ -41,10 +44,10 @@ the source of truth.
 `origin/main` is at `67dd266`. Live arrivals per stop with the §4 state model,
 and route detail with an ordered stop list.
 
-`dev` has moved past it with the Increment 3 work below and is **not** device-
-verified yet — task 7 is where that happens.
+`dev` has moved past it with Increment 3 — which *was* device-verified from an
+`.ipa` — and now with the UX pass on top, which has **not** been.
 
-Green: 179 Jest, 70 `node --test`, clean typecheck, expo-doctor 18/18.
+Green: 277 Jest, 70 `node --test`, clean typecheck.
 
 The twelve commits from `ffa69e9` to `67dd266` carry full reasoning in their
 messages. Read those rather than asking for a summary of what changed.
@@ -111,37 +114,58 @@ red, invisible locally because `npm install` tolerates what `npm ci` refuses.
 
 ## What to pick up next
 
-**Execute `docs/superpowers/plans/2026-08-02-map-sheet-ux.md`, task 1 onward.**
-Eight tasks, contract-level, inline, on `dev`. Its decisions were settled with
-Truman on 2026-08-02 and are written up in the **Revision** section of
+**Device-verify the UX pass, then ask about merging.** In order:
+
+1. **Build and drive it.** `gh workflow run ios-ipa.yml --ref dev`. The plan
+   ends with three questions only a device can answer, and they are the reason
+   for the build rather than a formality: does the 45% detent show five arrival
+   rows or two; does a long-press callout appear where the finger was; is 25%
+   of the visible width the right drift threshold for *Search this area*
+   (`DRIFT_FRACTION` in `MapScreen.tsx`, one line to change).
+2. **Merging `dev` into `main`** — Truman's explicit permission, every time.
+
+### What the UX pass built
+
+All eight tasks of `docs/superpowers/plans/2026-08-02-map-sheet-ux.md`, inline
+on `dev`. Its decisions were settled with Truman on 2026-08-02 and are written
+up in the **Revision** section of
 `docs/superpowers/specs/2026-08-02-increment-3-map.md`. **Do not re-argue
 them** — read the Revision, not this summary, and note that it records what was
 traded away as well as what was chosen.
 
-The one-line version: the sheet becomes two modes rather than one list, the
-detail card is the *full* arrival board (so `ExpandedStopRow` goes), tapping the
-map no longer moves the anchor, the camera moves only on ⌖ and the first
-location fix, and the map asks for location on `onMapReady`.
+The one-line version: the sheet is two modes rather than one list, the detail
+card is the *full* arrival board (so `ExpandedStopRow` is gone), tapping the map
+no longer moves the anchor, the camera moves only on ⌖ and the first location
+fix, and the map asks for location on `onMapReady`.
 
-Then, in order:
+Three things the diff does not explain:
 
-1. **Device-verify it.** The plan ends with three questions only a device can
-   answer, and they are the reason for the build rather than a formality.
-2. **Merging `dev` into `main`** — Truman's explicit permission, every time.
+- **`board.ts` holds the hook and `BoardHeader.tsx` the header, but neither
+  holds the list.** Both hosts render their own. A shared component taking
+  `List: ComponentType<SectionListProps<…>>` cannot accept
+  `BottomSheetSectionList` without a type assertion, which this project
+  forbids, so composition sidesteps the problem rather than fighting it.
+- **`useArrivalBoard` returns two clocks.** `now` is shifted onto the server's
+  for the countdowns; `tick` is the device's, and the age line uses it because
+  `fetchedAt` is a device timestamp — measuring the age against the shifted
+  clock counts the offset twice.
+- **`region.ts` does the sheet-aware centring, and `mapPadding` does not.**
+  See the corrected backlog entry: on Apple Maps that prop becomes
+  `layoutMargins`. It is set only to keep Apple's legal label off the sheet.
 
 Increment 3's own plan (`2026-08-02-increment-3-map.md`) is annotated with what
 was done and where reality disagreed with it. 248 Jest, 70 `node --test`, clean
-typecheck, expo-doctor 18/18 as of the increment boundary.
+typecheck, expo-doctor 18/18 as of the increment boundary; **277 Jest and 70
+`node --test` after the UX pass**, typecheck clean.
 
 The `.ipa` check is **done**: the build containing the sheet, reanimated and
 gesture-handler was installed and driven, and it looks right. The crash recorded
 in the backlog was not reproduced on it, so that entry is now "seen once in Expo
 Go, not reproduced on device" rather than an open device bug.
 
-**The map itself is not under construction.** New components appear in the UX
-plan — `StopCard`, `BoardHeader` — but they are named there with contracts. A
-session that starts by designing a map screen from scratch has misread this
-file; a session that starts at task 1 of the UX plan has read it correctly.
+**The map itself is not under construction**, and now less so than ever. The UX
+plan's `StopCard` and `BoardHeader` exist. A session that starts by designing a
+map screen from scratch has misread this file.
 
 ### What the UX session settled that the spec does not say outright
 
@@ -214,7 +238,8 @@ Two things were acted on. The arrivals cache (task 6a) is done: `withCache`
 coalesces in-flight requests by stop and caches successes for 30 s, never
 failures, with callers reference-counted so one abort cannot cancel another's
 request. The second, *do not recentre the map camera on a poll the user did not
-ask for*, is noted on task 9 and not yet built.
+ask for*, is now built and then some: the camera moves on ⌖ and the first
+location fix, and on nothing else at all.
 
 The rest is recorded and not acted on. The one worth knowing: they make each
 user register their own AppID because the 250,000/day quota is per key. We ship

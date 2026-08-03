@@ -153,3 +153,40 @@ Three things only a device can answer, and they are the reason for the build:
    pan under it first?
 3. **Is 25% of the visible width the right drift threshold** for *Search this
    area* — does it appear too eagerly while reading, or too late to be found?
+
+---
+
+## What was built, and where it departed from the above
+
+All eight tasks landed inline on `dev`, 2026-08-02. 277 Jest, 70 `node --test`,
+clean typecheck. **Not device-verified** — that is the three questions above.
+
+Six departures, each because writing it revealed something the contract did not
+know:
+
+1. **`useArrivalBoard` returns a ninth field, `tick`.** The contract listed
+   `now`, and `now` is the *server-shifted* clock the countdowns need. The age
+   line cannot use it: `fetchedAt` is a device timestamp, so `now - fetchedAt`
+   counts the clock offset twice and a device four minutes fast reports every
+   board as four minutes stale. `BoardHeader`'s `now` prop is therefore passed
+   `tick` by both hosts, and says so.
+2. **`BoardHeader` renders its stale banner only when `fetchedAt !== null`.**
+   Without the guard, the card's "could not reach the service, nothing ever
+   arrived" state also claims to be "showing the last times received" — there
+   are none. `ArrivalsScreen` never hit this because it early-returns first.
+3. **The drift arithmetic went into `region.ts`, not `MapScreen.tsx`.**
+   `hasDriftedFrom` and `visibleWidthMetres` are pure and are unit-tested;
+   `MapScreen` keeps only `DRIFT_FRACTION`. Same reasoning task 6 gives for
+   centring by arithmetic.
+4. **`useLocation`'s `request()` now returns the fix**, and `useAnchoredStops`
+   gained `requestLocation` alongside `recentre`. ⌖ has to move the camera
+   onto *this* fix; watching state for a change and guessing whether it was
+   yours is the version that goes wrong when two things ask at once.
+5. **`StopCard` has a *Try again* button.** No `refreshControl`, as specified —
+   the gesture conflict is real — but a button has no gesture to conflict with,
+   and 60 seconds is a long time to look at a failure you cannot retry.
+6. **`StopSheet.test.tsx` is new, and `MapScreen.test.tsx`'s two doubles were
+   rewritten.** The sheet's height and the camera are now behaviour, and the
+   shipped `@gorhom/bottom-sheet/mock` swallows `onChange` and `snapToIndex`
+   while `react-native-maps` was doubled as a function component with no ref.
+   Both doubles now expose what they are asked to do.

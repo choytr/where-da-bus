@@ -21,9 +21,10 @@ lot of new code under that boundary, which is what makes this urgent now.
 load → mutate → save, so two stars tapped inside one AsyncStorage round-trip
 silently lose one. No test covers interleaved `addFavorite`/`removeFavorite`.
 
-**`location.status === 'error'` is terminal.** The "Show stops near you" button
-renders only for `'idle'`, so a transient GPS failure can only be cleared by
-restarting the app.
+~~**`location.status === 'error'` is terminal.**~~ **Fixed in the map sheet's UX
+pass, 2026-08-02.** ⌖ now retries from `'error'` and opens Settings from
+`'denied'` — iOS shows its permission dialog once per install, so a refusal was
+the other half of the same dead end and is closed with it.
 
 **The error notice never clears.** `problem` is a single sticky slot that is
 never reset. `FAVORITES_PROBLEM` comes from AsyncStorage and can fail
@@ -285,54 +286,67 @@ Found on a physical iPhone in Expo Go on 2026-08-02 by Truman, after tasks 1–1
 landed. His summary: "UX in general needs a lot of work, but it's fine for now."
 None of these are blocking; all of them are real.
 
-**The sheet fights the selection.**
+**The sheet fights the selection.** All three closed by the UX pass of
+2026-08-02, which made the sheet two modes rather than one list in two states.
+The middle level of detail is gone entirely, and with it the affordance
+question: there is nothing left to invite a second tap towards.
 
-- **Expanding a row while the sheet is full-height drops it back to half.**
-  `MapScreen`'s `select` calls `snapToIndex(MEDIUM_DETENT)` unconditionally, so
-  raising the sheet to read a long list and then tapping a row throws away the
-  height the rider just asked for. It should only raise the sheet when the sheet
-  is *below* medium, never lower it.
-- **Selecting a stop does not feel like selecting a stop.** The row expands in
-  place and nothing else marks it. Truman's suggestions, both worth considering
-  and neither decided: expand the row on a pin tap as well, or lift the selected
-  stop into its own "Selected stop" section at the top of the sheet.
-  (Note for whoever picks this up: he described the selected row as coming "up
-  to the top of the list". Nothing in `StopSheet` reorders anything — the list
-  is distance-sorted, so a tapped pin is often near the top already. Do not go
-  looking for reordering code; there is none.)
-- **The expanded row's tap target is not discoverable.** Reaching the full
-  arrival board means tapping the little list of arrivals, which does not look
-  tappable. It needs a visible affordance — a chevron, or an explicit
-  "All arrivals" row.
+- ~~**Expanding a row while the sheet is full-height drops it back to half.**~~
+  **Fixed.** `select` raises only from *below* medium, and never lowers.
+- ~~**Selecting a stop does not feel like selecting a stop.**~~ **Fixed** — a
+  selection now replaces the list with the stop's own card, which is what both
+  Apple Maps and Google Maps do. Neither of the two suggestions recorded here
+  was taken; the mode split answers the complaint underneath them.
+- ~~**The expanded row's tap target is not discoverable.**~~ **Fixed by
+  deletion.** `ExpandedStopRow` is gone and the card *is* the full board, so
+  there is no third level to reach.
 
 **The camera.**
 
-- **Tapping a pin resets the zoom.** Selecting a stop should not move the
-  camera at all, but it does, which means a marker press is also reaching
-  `MapView`'s `onPress` and moving the anchor. Worth confirming against
-  `react-native-maps` before assuming the fix: if marker presses do propagate,
-  `select` and `onMapPress` both fire for one tap.
-- **Centring ignores the sheet.** The camera centres on the whole screen while
-  the sheet covers the bottom half, so the anchor sits behind the sheet.
-  `MapView`'s `mapPadding` prop is the mechanism; it is currently unset.
-- **The map does not open on the rider's location.** By design — `useLocation`
-  never prompts until something asks it to, so the anchor is the Honolulu
-  fallback until ⌖ is tapped. Truman did not expect that, which is the useful
-  signal. The open question is whether opening the Map tab should count as the
-  deliberate action that triggers the permission prompt.
+- ~~**Tapping a pin resets the zoom.**~~ **Fixed** — `6e27094` stopped the
+  marker press propagating to `MapView`'s `onPress`, and the UX pass then
+  removed camera movement on anchor change altogether. Selection cannot move
+  the camera now; a test asserts it.
+- **Centring ignores the sheet** — but `mapPadding` is **not** the mechanism,
+  contrary to what this entry said. On Apple Maps `AIRMap.m:645` assigns that
+  prop to the view's `layoutMargins`, which positions the compass and the legal
+  label; MapKit's own inset path is `setVisibleMapRect:edgePadding:`, which the
+  prop never reaches. The Google branch (`AIRGoogleMap.m:443`) sets `padding`,
+  which *does* move the camera, and this entry looks written from that.
+  **This is a reading of the native source, not an observation** — the same
+  move that produced two wrong claims in the scroll-indicator entry. The UX
+  pass centres by arithmetic in `region.ts` instead, which cannot be wrong
+  about MapKit because it never asks, and sets `mapPadding` only to keep
+  Apple's legal label out from under the sheet.
+- ~~**The map does not open on the rider's location.**~~ **Fixed** — the map
+  calls `request()` from `onMapReady`, so the prompt is tied to opening the map
+  and fires over a drawn map rather than a grey rectangle. The answer to the
+  open question was yes.
 
 **Unexplained.**
 
 - **Occasional crash after interacting with a lot of things.** No reproduction
-  and no stack yet, and it is not yet known whether it is Expo Go only — the
-  `.ipa` is the next test. Record what was being touched when it happens; the
+  and no stack yet. **Still open, and untouched by the UX pass.** The `.ipa`
+  test has since been run and did not reproduce it, so this is "seen once in
+  Expo Go, not reproduced on device" rather than a known device bug — which is
+  weaker evidence than it sounds, given there is no reproduction to run either
+  way. Record what was being touched when it happens; the
   sheet, the map and three arrivals polls are all in play at once, so "a bunch
   of things" is genuinely the useful detail here.
 
 **Still open from the review itself.**
 
-- **`ExpandedStopRow` takes no client argument.** `ArrivalsScreen` accepts a
-  `TheBusClient` and defaults to `theBus`; this one only ever uses the default,
-  so its suite has to mock the module rather than pass a double. A small
-  inconsistency in an otherwise deliberate seam.
+- ~~**`ExpandedStopRow` takes no client argument.**~~ **Fixed in the UX pass**
+  — the component is gone, and its replacement `StopCard` takes an optional
+  `client` the way `ArrivalsScreen` does. Both now run over the same
+  `useArrivalBoard(stopCode, client?)`, so the seam is one hook rather than two
+  components that had to agree.
+
+**Still open after the UX pass of 2026-08-02.** Three questions only a device
+can answer, all recorded on the plan rather than here because they are
+verification steps and not defects yet: whether the 45% detent shows five
+arrival rows or two, whether a long-press callout appears where the finger was,
+and whether 25% of the visible width is the right drift threshold for *Search
+this area*. `DRIFT_FRACTION` in `MapScreen.tsx` is a named constant so the
+third is a one-line change.
 

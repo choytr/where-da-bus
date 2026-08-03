@@ -1,6 +1,7 @@
 # Increment 3 — the map, tabs, and theme
 
-**Status:** specified 2026-08-02, not started.
+**Status:** built 2026-08-02, device-verified from an `.ipa`, then revised —
+see **Revision** below, which is also built and is **not** device-verified yet.
 **Supersedes** the Increment 3 row of the roadmap in
 `2026-07-29-wheredabus-design.md`, which bundled the map with route polylines
 and live vehicle positions. Those move out; see *Deferred* below.
