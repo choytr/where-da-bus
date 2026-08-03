@@ -5,8 +5,10 @@ session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
 Last updated: **2026-08-02**. **Increment 3's code is complete** — all ten
-tasks, plus an unplanned 6a — reviewed at the boundary, and driven by hand on
-Truman's phone in Expo Go. Not yet verified from an `.ipa`, and not merged.
+tasks, plus an unplanned 6a — reviewed at the boundary, driven by hand on
+Truman's phone in Expo Go, and **verified from a sideloaded `.ipa`** (run
+`30775481303` off `dev`). His words: "the app looks good." **Not merged to
+`main`** — that needs his explicit permission.
 
 **Everything durable is already in the repo.** This document exists only to
 carry what a transcript would otherwise lose. Read the repo docs first; they are
@@ -111,18 +113,18 @@ annotated with what was done and where reality disagreed with it.
 
 In order:
 
-1. **Build an `.ipa` off `dev` and drive it on the phone.**
-   `gh workflow run ios-ipa.yml --ref dev`. The last one predates tasks 9 and
-   10, so no build yet has contained the sheet — and this is the first one where
-   reanimated and gesture-handler actually ship. There is an unexplained crash
-   in `docs/backlog.md` that may or may not be Expo-Go-only; this is the test.
-2. **The UX pass.** `docs/backlog.md`'s "Increment 3 — deferred" section has six
+1. **The UX pass.** `docs/backlog.md`'s "Increment 3 — deferred" section has six
    issues Truman found on the device, each with the mechanism already traced.
    Two are near-trivial (the sheet dropping to half-height on selection; the
    camera ignoring the sheet via `mapPadding`), and one needs a fact checked
    before it can be fixed (whether a marker press also reaches `MapView`'s
    `onPress`).
-3. **Merging `dev` into `main`** — Truman's explicit permission, every time.
+2. **Merging `dev` into `main`** — Truman's explicit permission, every time.
+
+The `.ipa` check is **done**: the build containing the sheet, reanimated and
+gesture-handler was installed and driven, and it looks right. The crash recorded
+in the backlog was not reproduced on it, so that entry is now "seen once in Expo
+Go, not reproduced on device" rather than an open device bug.
 
 **Nothing about Increment 3 is under construction.** If a session starts by
 writing a new map component, it has misread this file.
