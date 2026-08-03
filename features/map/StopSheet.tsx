@@ -89,6 +89,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     <BottomSheet
       ref={ref}
       index={0}
+      enableDynamicSizing={false}
       snapPoints={detents}
       enablePanDownToClose={false}
       backgroundStyle={{ backgroundColor: palette.background }}
