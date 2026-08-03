@@ -1,11 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { MapScreen } from '../MapScreen';
+import { MEDIUM_DETENT } from '../StopSheet';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
+import { NOTICES } from '../../arrivals/board';
 import type { RouteSummary, StopWithDistance } from '../../../data/gtfs/types';
 import type { ArrivalsResult } from '../../../data/thebus/types';
 import type { LocationState } from '../../stops/useLocation';
+import type { Coords } from '../../../lib/distance';
 
 /**
  * `react-native-maps` and `@gorhom/bottom-sheet` are both doubled, for opposite
@@ -18,25 +21,86 @@ import type { LocationState } from '../../stops/useLocation';
  * Both doubles keep the props visible as rendered output, so a test can read
  * what a user would see or touch.
  */
+/** Every camera move the screen asks for. The rule under test is mostly that
+ *  this stays empty — the camera moves on ⌖ and the first fix, and nowhere. */
+const mockCameraMoves: unknown[] = [];
+
 jest.mock('react-native-maps', () => {
+  const React = require('react');
   const { View, Text, Pressable } = require('react-native');
-  const MockMapView = ({ children, onPress }: any) => (
-    <View>
-      <Pressable
-        accessibilityLabel="map surface"
-        onPress={() =>
-          onPress?.({ nativeEvent: { coordinate: { latitude: 21.4, longitude: -157.9 } } })
-        }
-      />
+  const press = { stopPropagation: () => {} };
+
+  const MockMapView = React.forwardRef((props: any, ref: any) => {
+    const { children, onPress, onLongPress, onRegionChangeComplete } = props;
+    React.useImperativeHandle(ref, () => ({
+      animateToRegion: (region: unknown) => mockCameraMoves.push(region),
+    }));
+
+    return (
+      <View>
+        <Pressable
+          accessibilityLabel="map surface"
+          onPress={() =>
+            onPress?.({
+              ...press,
+              nativeEvent: {
+                coordinate: { latitude: 21.4, longitude: -157.9 },
+              },
+            })
+          }
+        />
+        <Pressable
+          accessibilityLabel="long press the map"
+          onPress={() =>
+            onLongPress?.({
+              ...press,
+              nativeEvent: {
+                coordinate: { latitude: 21.45, longitude: -157.95 },
+              },
+            })
+          }
+        />
+        <Pressable
+          accessibilityLabel="the map finished drawing"
+          onPress={() => props.onMapReady?.()}
+        />
+        {/* A camera settling a long way from the fallback anchor: about 16 km
+              north, on a window roughly 3 km wide. */}
+        <Pressable
+          accessibilityLabel="pan the camera away"
+          onPress={() =>
+            onRegionChangeComplete?.({
+              latitude: 21.45,
+              longitude: -157.8583,
+              latitudeDelta: 0.03,
+              longitudeDelta: 0.03,
+            })
+          }
+        />
+        {children}
+      </View>
+    );
+  });
+
+  const MockMarker = ({ title, onPress, identifier, children }: any) => (
+    <Pressable accessibilityLabel={`pin ${identifier}`} onPress={() => onPress?.(press)}>
+      {title === undefined ? null : <Text>{title}</Text>}
       {children}
-    </View>
-  );
-  const MockMarker = ({ title, onPress, identifier }: any) => (
-    <Pressable accessibilityLabel={`pin ${identifier}`} onPress={onPress}>
-      <Text>{title}</Text>
     </Pressable>
   );
-  return { __esModule: true, default: MockMapView, Marker: MockMarker };
+
+  const MockCallout = ({ onPress, children }: any) => (
+    <Pressable accessibilityLabel="callout" onPress={onPress}>
+      {children}
+    </Pressable>
+  );
+
+  return {
+    __esModule: true,
+    default: MockMapView,
+    Marker: MockMarker,
+    Callout: MockCallout,
+  };
 });
 
 /**
@@ -45,11 +109,53 @@ jest.mock('react-native-maps', () => {
  * module object as the default export — and `<BottomSheet>` renders as
  * "element type is invalid ... got: object", which points nowhere near the
  * cause.
+ *
+ * The sheet itself is replaced rather than reused. Its *height* is now part of
+ * the screen's behaviour — selection must never lower it, and the map stops
+ * taking touches at the top detent — and the shipped double renders children
+ * while swallowing `onChange` and `snapToIndex` both. This one adds the two
+ * things a test needs: a way to settle the sheet on a detent, and a record of
+ * what the screen asked it to snap to.
  */
-jest.mock('@gorhom/bottom-sheet', () => ({
-  __esModule: true,
-  ...require('@gorhom/bottom-sheet/mock'),
-}));
+const mockSnapCalls: number[] = [];
+
+jest.mock('@gorhom/bottom-sheet', () => {
+  const React = require('react');
+  const { View, Pressable } = require('react-native');
+
+  const MockBottomSheet = React.forwardRef(({ children, onChange }: any, ref: any) => {
+    React.useImperativeHandle(ref, () => ({
+      snapToIndex: (index: number) => {
+        mockSnapCalls.push(index);
+        onChange?.(index);
+      },
+      snapToPosition: () => {},
+      expand: () => {},
+      collapse: () => {},
+      close: () => {},
+      forceClose: () => {},
+    }));
+
+    return (
+      <View>
+        {[0, 1, 2].map((index) => (
+          <Pressable
+            key={index}
+            accessibilityLabel={`settle the sheet at ${index}`}
+            onPress={() => onChange?.(index)}
+          />
+        ))}
+        {children}
+      </View>
+    );
+  });
+
+  return {
+    __esModule: true,
+    ...require('@gorhom/bottom-sheet/mock'),
+    default: MockBottomSheet,
+  };
+});
 
 const mockNearby = jest.fn(async (): Promise<StopWithDistance[]> => []);
 const mockRoutesForStops = jest.fn(
@@ -68,15 +174,22 @@ jest.mock('../../../data/gtfs/db', () => ({
   NEARBY_RADIUS_METERS: 1500,
 }));
 
+const mockRequest = jest.fn(async (): Promise<Coords | null> => null);
+
 const mockLocation: LocationState = {
   status: 'idle',
   coords: null,
-  request: jest.fn(async () => {}),
+  request: mockRequest,
 };
 
 jest.mock('../../stops/useLocation', () => ({
   useLocation: () => mockLocation,
 }));
+
+/** The only route back from a denial, so a test has to be able to see it taken. */
+const mockOpenSettings = jest.fn(async () => {});
+
+jest.mock('expo-linking', () => ({ openSettings: () => mockOpenSettings() }));
 
 jest.mock('../../../data/storage/favorites', () => ({
   loadFavorites: jest.fn(async () => []),
@@ -85,7 +198,7 @@ jest.mock('../../../data/storage/favorites', () => ({
   isFavorite: (ids: string[], id: string) => ids.includes(id),
 }));
 
-/** Every arrivals request the expanded row makes, so aborts can be observed. */
+/** Every arrivals request the selected stop's card makes, so aborts can be observed. */
 const mockArrivalCalls: { stopCode: string; signal: AbortSignal | undefined }[] = [];
 let mockArrivalsResult: ArrivalsResult = {
   ok: true,
@@ -129,13 +242,20 @@ describe('MapScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockArrivalCalls.length = 0;
+    mockSnapCalls.length = 0;
+    mockCameraMoves.length = 0;
+    mockRequest.mockResolvedValue(null);
     mockNearby.mockResolvedValue([]);
     mockRoutesForStops.mockResolvedValue(new Map());
     mockLocation.status = 'idle';
     mockLocation.coords = null;
     mockArrivalsResult = {
       ok: true,
-      board: { stopCode: '5', serverTime: new Date('2026-08-02T22:00:00Z'), arrivals: [] },
+      board: {
+        stopCode: '5',
+        serverTime: new Date('2026-08-02T22:00:00Z'),
+        arrivals: [],
+      },
     };
   });
 
@@ -158,7 +278,9 @@ describe('MapScreen', () => {
     screen.getByText(ATTRIBUTION);
   });
 
-  it('moves the anchor when the map is tapped', async () => {
+  it('does not move the anchor when the map is tapped', async () => {
+    // The reversal this pass exists for. A tap an inch wide of a pin used to
+    // throw away the stop set and the card being read, together.
     await show();
     await waitFor(() => {
       expect(mockNearby).toHaveBeenCalledTimes(1);
@@ -166,10 +288,129 @@ describe('MapScreen', () => {
 
     await fireEvent.press(screen.getByLabelText('map surface'));
 
+    expect(mockNearby).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the selection when the map is tapped', async () => {
+    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+    await show();
+    await waitFor(() => {
+      screen.getByLabelText('pin 5');
+    });
+    await fireEvent.press(screen.getByLabelText('pin 5'));
+    await waitFor(() => {
+      screen.getByLabelText('Back to nearby stops');
+    });
+
+    await fireEvent.press(screen.getByLabelText('map surface'));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Back to nearby stops')).toBeNull();
+    });
+  });
+
+  it('does not query on a long press until the callout is pressed', async () => {
+    await show();
+    await waitFor(() => {
+      expect(mockNearby).toHaveBeenCalledTimes(1);
+    });
+
+    await fireEvent.press(screen.getByLabelText('long press the map'));
+
+    // A marker offering to search, and nothing asked for yet.
+    screen.getByLabelText('pin pending-anchor');
+    expect(mockNearby).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByLabelText('callout'));
+
     await waitFor(() => {
       expect(mockNearby).toHaveBeenCalledTimes(2);
     });
-    expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.4, lon: -157.9 });
+    expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.45, lon: -157.95 });
+    // The offer is taken up and gone, not left standing on the map.
+    expect(screen.queryByLabelText('pin pending-anchor')).toBeNull();
+  });
+
+  it('offers to search this area once the camera has moved away', async () => {
+    await show();
+    await waitFor(() => {
+      expect(mockNearby).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByLabelText('Search this area')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('pan the camera away'));
+
+    await fireEvent.press(screen.getByLabelText('Search this area'));
+
+    await waitFor(() => {
+      expect(mockNearby).toHaveBeenCalledTimes(2);
+    });
+    // The middle of what the rider can *see*, which at the peek detent is a
+    // little north of the window's own 21.45 — the sheet covers the bottom.
+    expect(mockNearby).toHaveBeenLastCalledWith({
+      lat: expect.closeTo(21.4521, 4),
+      lon: -157.8583,
+    });
+    // Re-anchored to the screen centre, so there is no drift left to offer.
+    expect(screen.queryByLabelText('Search this area')).toBeNull();
+  });
+
+  it('stops the map receiving touches at full height', async () => {
+    await show();
+    await waitFor(() => {
+      expect(mockNearby).toHaveBeenCalledTimes(1);
+    });
+
+    await fireEvent.press(screen.getByLabelText('settle the sheet at 2'));
+    await fireEvent.press(screen.getByLabelText('map surface'));
+
+    // The strip of map above a full-height sheet is all misses, so nothing
+    // reaches it — no anchor move, no pin.
+    expect(mockNearby).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks for location once the map is ready', async () => {
+    await show();
+    expect(mockRequest).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByLabelText('the map finished drawing'));
+
+    // Over a drawn map, not over a grey rectangle, and not on mount.
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not ask again after a denial', async () => {
+    // iOS shows its dialog once per install; asking again returns `denied`
+    // silently, so the only thing a second request buys is a pointless call.
+    mockLocation.status = 'denied';
+
+    await show();
+    await fireEvent.press(screen.getByLabelText('the map finished drawing'));
+
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('opens Settings when location was denied', async () => {
+    mockLocation.status = 'denied';
+
+    await show();
+    await fireEvent.press(screen.getByLabelText('Turn on location in Settings'));
+
+    expect(mockOpenSettings).toHaveBeenCalledTimes(1);
+    // Asking again would do nothing at all, which is the bug being closed.
+    expect(mockRequest).not.toHaveBeenCalled();
+    screen.getByText(/turn it on in Settings/);
+  });
+
+  it('retries after a location error', async () => {
+    // Nothing was refused here, so there is a prompt still to be had.
+    mockLocation.status = 'error';
+
+    await show();
+    await fireEvent.press(screen.getByLabelText('Centre on my location'));
+
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+    expect(mockOpenSettings).not.toHaveBeenCalled();
   });
 
   it('prompts for location while it is showing the fallback', async () => {
@@ -186,12 +427,49 @@ describe('MapScreen', () => {
     expect(screen.queryByText(/Tap ⌖ to use your location/)).toBeNull();
   });
 
-  it('asks for location when recentre is tapped', async () => {
+  it('asks for location when recentre is tapped, and goes there', async () => {
+    mockRequest.mockResolvedValue({ lat: 21.28, lon: -157.83 });
     await show();
 
     await fireEvent.press(screen.getByLabelText('Centre on my location'));
 
-    expect(mockLocation.request).toHaveBeenCalledTimes(1);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(mockCameraMoves).toHaveLength(1);
+    });
+  });
+
+  it('does not move the camera when a stop is selected', async () => {
+    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+    await show();
+    await waitFor(() => {
+      screen.getByLabelText('pin 5');
+    });
+
+    await fireEvent.press(screen.getByLabelText('pin 5'));
+
+    await waitFor(() => {
+      screen.getByLabelText('Back to nearby stops');
+    });
+    expect(mockCameraMoves).toEqual([]);
+  });
+
+  it('does not move the camera when the anchor moves', async () => {
+    // The rule this pass exists to state. A camera that travels under a rider
+    // who did not ask was judged the worse failure than a map and a list that
+    // disagree about how far "nearby" reaches.
+    await show();
+    await waitFor(() => {
+      expect(mockNearby).toHaveBeenCalledTimes(1);
+    });
+
+    await fireEvent.press(screen.getByLabelText('long press the map'));
+    await fireEvent.press(screen.getByLabelText('callout'));
+
+    await waitFor(() => {
+      expect(mockNearby).toHaveBeenCalledTimes(2);
+    });
+    expect(mockCameraMoves).toEqual([]);
   });
 
   it('says nothing is nearby without saying something failed', async () => {
@@ -230,7 +508,7 @@ describe('MapScreen', () => {
       await fireEvent.press(screen.getByLabelText('pin 5'));
 
       await waitFor(() => {
-        screen.getByLabelText('Open arrivals for LAGOON DR');
+        screen.getByLabelText('Back to nearby stops');
       });
       expect(mockArrivalCalls.map((c) => c.stopCode)).toContain('5');
     });
@@ -245,8 +523,9 @@ describe('MapScreen', () => {
       await fireEvent.press(screen.getByLabelText('Arrivals at LAGOON DR'));
 
       await waitFor(() => {
-        screen.getByLabelText('Open arrivals for LAGOON DR');
+        screen.getByLabelText('Back to nearby stops');
       });
+      expect(mockArrivalCalls.map((c) => c.stopCode)).toContain('5');
     });
 
     it('polls only the selected stop, and stops when selection moves', async () => {
@@ -265,28 +544,60 @@ describe('MapScreen', () => {
       await waitFor(() => {
         expect(mockArrivalCalls.some((c) => c.stopCode === '6')).toBe(true);
       });
-      // The previous stop's row is gone, which is what tears its poll down.
-      expect(screen.queryByLabelText('Open arrivals for LAGOON DR')).toBeNull();
-      // And its in-flight request was abandoned rather than left running.
+      // The card is about the new stop, so the old stop's poll is gone with it.
+      screen.getByLabelText('Back to nearby stops');
+      // And the in-flight request it left behind was abandoned, not left running.
       const first = mockArrivalCalls.find((c) => c.stopCode === '5');
       expect(first?.signal?.aborted).toBe(true);
     });
 
-    it('clears the selection when the anchor moves', async () => {
+    it('returns to the nearby list from the card', async () => {
       await show();
       await waitFor(() => {
         screen.getByLabelText('pin 5');
       });
       await fireEvent.press(screen.getByLabelText('pin 5'));
       await waitFor(() => {
-        screen.getByLabelText('Open arrivals for LAGOON DR');
+        screen.getByLabelText('Back to nearby stops');
       });
 
-      await fireEvent.press(screen.getByLabelText('map surface'));
+      await fireEvent.press(screen.getByLabelText('Back to nearby stops'));
 
       await waitFor(() => {
-        expect(screen.queryByLabelText('Open arrivals for LAGOON DR')).toBeNull();
+        expect(screen.queryByLabelText('Back to nearby stops')).toBeNull();
       });
+      // Both stops are rows again, not just the one that was open. Two matches
+      // apiece: the pin's title renders the name as well as the row does.
+      expect(screen.getAllByText('LAGOON DR').length).toBeGreaterThan(1);
+      expect(screen.getAllByText('KAPALULU PL').length).toBeGreaterThan(1);
+    });
+
+    it('raises the sheet to medium when a stop is selected from peek', async () => {
+      await show();
+      await waitFor(() => {
+        screen.getByLabelText('pin 5');
+      });
+
+      await fireEvent.press(screen.getByLabelText('pin 5'));
+
+      expect(mockSnapCalls).toEqual([MEDIUM_DETENT]);
+    });
+
+    it('does not lower the sheet when a stop is selected at full height', async () => {
+      await show();
+      await waitFor(() => {
+        screen.getByLabelText('pin 5');
+      });
+      await fireEvent.press(screen.getByLabelText('settle the sheet at 2'));
+
+      // From the row: at full height the map is not taking touches at all.
+      await fireEvent.press(screen.getByLabelText('Arrivals at LAGOON DR'));
+
+      await waitFor(() => {
+        screen.getByLabelText('Back to nearby stops');
+      });
+      // Selecting took back none of the height the rider had asked for.
+      expect(mockSnapCalls).toEqual([]);
     });
 
     it('says no buses are due rather than looking like a failure', async () => {
@@ -298,9 +609,9 @@ describe('MapScreen', () => {
       await fireEvent.press(screen.getByLabelText('pin 5'));
 
       await waitFor(() => {
-        screen.getByText('No buses due here right now.');
+        screen.getByText(NOTICES.empty);
       });
-      expect(screen.queryByText(/Could not reach the service/)).toBeNull();
+      expect(screen.queryByText(NOTICES.unreachable)).toBeNull();
     });
 
     it('says it could not reach the service rather than looking empty', async () => {
@@ -314,9 +625,9 @@ describe('MapScreen', () => {
       await fireEvent.press(screen.getByLabelText('pin 5'));
 
       await waitFor(() => {
-        screen.getByText(/Could not reach the service/);
+        screen.getByText(NOTICES.unreachable);
       });
-      expect(screen.queryByText('No buses due here right now.')).toBeNull();
+      expect(screen.queryByText(NOTICES.empty)).toBeNull();
     });
   });
 });

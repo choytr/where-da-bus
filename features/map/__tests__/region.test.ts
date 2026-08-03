@@ -1,4 +1,4 @@
-import { regionAround } from '../region';
+import { hasDriftedFrom, regionAround, visibleCentre, visibleWidthMetres } from '../region';
 import { metersBetween } from '../../../lib/distance';
 
 const HONOLULU = { lat: 21.3069, lon: -157.8583 };
@@ -53,5 +53,95 @@ describe('regionAround', () => {
   it('does not divide by zero at the pole', () => {
     const region = regionAround({ lat: 90, lon: 0 }, 1500);
     expect(Number.isFinite(region.longitudeDelta)).toBe(true);
+  });
+
+  it('is unchanged when nothing is covered', () => {
+    // The default, and the mount case: a fraction of 1 must be the same window
+    // the map framed before a sheet existed.
+    expect(regionAround(HONOLULU, 1500, 1)).toEqual(regionAround(HONOLULU, 1500));
+  });
+
+  it('frames the radius above the sheet when part of the screen is covered', () => {
+    // The medium detent: 45% of the screen is sheet, 55% is map.
+    const covered = regionAround(HONOLULU, 1500, 0.55);
+
+    // The centre goes south, because the visible strip is the top of the window.
+    expect(covered.latitude).toBeLessThan(HONOLULU.lat);
+
+    // And the anchor comes out in the middle of that strip, not the window.
+    const stripNorth = covered.latitude + covered.latitudeDelta / 2;
+    const stripSouth = stripNorth - 0.55 * covered.latitudeDelta;
+    expect((stripNorth + stripSouth) / 2).toBeCloseTo(HONOLULU.lat, 9);
+
+    // With the whole 1.5 km radius inside it.
+    expect(metersBetween(HONOLULU, { lat: stripSouth, lon: HONOLULU.lon })).toBeGreaterThan(1500);
+    expect(metersBetween(HONOLULU, { lat: stripNorth, lon: HONOLULU.lon })).toBeGreaterThan(1500);
+  });
+
+  it('does not open an infinite window when the sheet covers everything', () => {
+    const region = regionAround(HONOLULU, 1500, 0);
+    expect(Number.isFinite(region.latitudeDelta)).toBe(true);
+  });
+});
+
+describe('hasDriftedFrom', () => {
+  /** A window framing the 1.5 km query, which is what the map opens on. */
+  const framing = regionAround(HONOLULU, 1500);
+
+  const north = (metres: number) => ({
+    ...framing,
+    latitude: HONOLULU.lat + metres / 111_320,
+  });
+
+  it('is false while the camera is still over its anchor', () => {
+    expect(hasDriftedFrom(HONOLULU, framing, 0.25)).toBe(false);
+  });
+
+  it('is false for a nudge', () => {
+    // Well inside a quarter of a ~3.4 km window.
+    expect(hasDriftedFrom(HONOLULU, north(200), 0.25)).toBe(false);
+  });
+
+  it('is true once the centre passes the fraction of the visible width', () => {
+    const quarter = visibleWidthMetres(framing) * 0.25;
+
+    expect(hasDriftedFrom(HONOLULU, north(quarter * 0.9), 0.25)).toBe(false);
+    expect(hasDriftedFrom(HONOLULU, north(quarter * 1.1), 0.25)).toBe(true);
+  });
+
+  it('is false for the very window regionAround just produced', () => {
+    // The one that catches the off-by-a-sheet. `regionAround` centres the
+    // *window* well south of the anchor so the radius lands above the sheet,
+    // so measuring drift from `camera.latitude` marks a map as drifted the
+    // instant it is framed — and offers to re-search what it is already
+    // showing. At the medium detent that offset is about 1.4 km.
+    const framed = regionAround(HONOLULU, 1500, 0.55);
+
+    expect(hasDriftedFrom(HONOLULU, framed, 0.25, 0.55)).toBe(false);
+    expect(metersBetween(HONOLULU, visibleCentre(framed, 0.55))).toBeCloseTo(0, 6);
+  });
+
+  it('means the same thing at every zoom', () => {
+    // The reason this is a fraction and not a distance: 400 m is most of a
+    // street-level screen and a rounding error on a city-wide one.
+    const street = regionAround(HONOLULU, 300);
+    const city = regionAround(HONOLULU, 6000);
+    const moved = { lat: HONOLULU.lat + 400 / 111_320, lon: HONOLULU.lon };
+
+    expect(hasDriftedFrom(HONOLULU, { ...street, ...{ latitude: moved.lat } }, 0.25)).toBe(true);
+    expect(hasDriftedFrom(HONOLULU, { ...city, ...{ latitude: moved.lat } }, 0.25)).toBe(false);
+  });
+});
+
+describe('visibleWidthMetres', () => {
+  it('is the ground distance between the left and right edges', () => {
+    const region = regionAround(HONOLULU, 1500);
+    const west = { lat: HONOLULU.lat, lon: HONOLULU.lon - region.longitudeDelta / 2 };
+    const east = { lat: HONOLULU.lat, lon: HONOLULU.lon + region.longitudeDelta / 2 };
+
+    // Within 1%: this is flat-earth arithmetic against a great circle, and the
+    // gap between them at a 3 km span is four metres.
+    const great = metersBetween(west, east);
+    expect(Math.abs(visibleWidthMetres(region) - great) / great).toBeLessThan(0.01);
   });
 });

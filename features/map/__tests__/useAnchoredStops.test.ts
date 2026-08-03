@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { useAnchoredStops, FALLBACK_ANCHOR } from '../useAnchoredStops';
 import type { LocationState } from '../../stops/useLocation';
 import type { StopWithDistance } from '../../../data/gtfs/types';
-import { metersBetween } from '../../../lib/distance';
+import { metersBetween, type Coords } from '../../../lib/distance';
 
 const mockQueries = {
   nearby: jest.fn(async (_center: { lat: number; lon: number }): Promise<StopWithDistance[]> => []),
@@ -23,11 +23,13 @@ jest.mock('../../../data/gtfs/db', () => ({
  * requested until `request()` is called. This double keeps that contract, and
  * lets a test decide what granting produces.
  */
-const mockLocation: LocationState & { granted: { lat: number; lon: number } | null } = {
+const mockRequest = jest.fn(async (): Promise<Coords | null> => null);
+
+const mockLocation: LocationState & { granted: Coords | null } = {
   status: 'idle',
   coords: null,
   granted: null,
-  request: jest.fn(async () => {}),
+  request: mockRequest,
 };
 
 jest.mock('../../stops/useLocation', () => ({
@@ -49,6 +51,7 @@ describe('useAnchoredStops', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockQueries.nearby.mockResolvedValue([]);
+    mockRequest.mockResolvedValue(null);
     mockLocation.status = 'idle';
     mockLocation.coords = null;
   });
@@ -207,16 +210,34 @@ describe('useAnchoredStops', () => {
     expect(mockLocation.request).toHaveBeenCalledTimes(1);
   });
 
-  it('recentre does not re-prompt when the location is already known', async () => {
+  it('takes a fresh fix on every recentre', async () => {
+    // Not "asks only if it has to". The hook used to skip the request when it
+    // already held a position, so recentring after a bus ride put the rider
+    // back where they boarded — on a transit app, the one moment ⌖ exists for.
     mockLocation.status = 'granted';
     mockLocation.coords = WAIKIKI;
     const { result } = await renderHook(() => useAnchoredStops());
 
     await act(async () => {
-      result.current.recentre();
+      await result.current.recentre();
+    });
+    await act(async () => {
+      await result.current.recentre();
     });
 
-    expect(mockLocation.request).not.toHaveBeenCalled();
+    expect(mockLocation.request).toHaveBeenCalledTimes(2);
+  });
+
+  it('hands the fresh fix back to its caller', async () => {
+    mockRequest.mockResolvedValue(WAIKIKI);
+    const { result } = await renderHook(() => useAnchoredStops());
+
+    let fix: unknown;
+    await act(async () => {
+      fix = await result.current.recentre();
+    });
+
+    expect(fix).toEqual(WAIKIKI);
   });
 
   it('still yields a usable anchor when location was denied', async () => {

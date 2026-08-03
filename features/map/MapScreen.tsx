@@ -1,59 +1,176 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import * as Linking from 'expo-linking';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, { Marker, MarkerPressEvent, type MapPressEvent } from 'react-native-maps';
+import MapView, {
+  Callout,
+  Marker,
+  MarkerPressEvent,
+  type LongPressEvent,
+  type MapMarker,
+} from 'react-native-maps';
 import type BottomSheet from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
 import { useAnchoredStops } from './useAnchoredStops';
-import { StopSheet, MEDIUM_DETENT } from './StopSheet';
-import { useStopQueries } from '../../data/gtfs/db';
+import { hasDriftedFrom, regionAround, visibleCentre, type Region } from './region';
+import { StopSheet, FULL_DETENT, MEDIUM_DETENT, PEEK_DETENT, visibleAbove } from './StopSheet';
+import { useStopQueries, NEARBY_RADIUS_METERS } from '../../data/gtfs/db';
 import {
   addFavorite,
   loadFavorites,
   removeFavorite,
 } from '../../data/storage/favorites';
 import { useTheme } from '../../lib/theme';
-import type { RouteSummary, Stop, StopWithDistance } from '../../data/gtfs/types';
+import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
+import type { Coords } from '../../lib/distance';
 
 /**
  * The map tab: stops around one anchor, as pins and as a list, which are two
  * views of the same set rather than two sets.
  *
- * Tapping the map moves the anchor. Tapping a pin — or a row — selects a stop
- * and shows its next arrivals inline. There is no pan or zoom handler; see
- * `useAnchoredStops` for why that is a decision rather than an omission.
+ * Tapping a pin — or a row — selects a stop, and the sheet swaps its list for
+ * that stop's arrival board. A plain tap on the map dismisses; it does not
+ * move the anchor. Moving the anchor is two explicit gestures, both of which
+ * announce themselves: a long press with a *Search here* callout, and *Search
+ * this area* once the camera has been carried away from the pins.
+ *
+ * That is a reversal. Tap-to-search was the shipped design and it fires
+ * constantly by accident on a device, and every accident discarded the stop set
+ * and the selection together. The capability it was chosen for — checking
+ * service near somewhere you have not gone yet — survives in the long press.
+ *
+ * There is still no *query* on pan or zoom; see `useAnchoredStops` for why that
+ * is a decision rather than an omission. `onRegionChangeComplete` here only
+ * decides whether to offer.
  */
 
 const RECENTRE_LABEL = 'Centre on my location';
+const SETTINGS_LABEL = 'Turn on location in Settings';
+
+/**
+ * One line per way of having no location, and none of them a dead end.
+ *
+ * Denial is the one that matters. iOS shows its dialog once per install, so
+ * after a refusal `requestForegroundPermissionsAsync` returns `denied` without
+ * asking anything, and a button that silently did nothing forever is how ⌖
+ * used to behave. It now opens Settings, and this says so.
+ */
 const LOCATION_PROMPT = 'Showing downtown Honolulu. Tap ⌖ to use your location.';
+const LOCATION_DENIED = 'Location is off for this app. Tap ⌖ to turn it on in Settings.';
+const LOCATION_ERROR = 'Could not get your location. Tap ⌖ to try again.';
+const SEARCH_AREA_LABEL = 'Search this area';
+const SEARCH_HERE_LABEL = 'Search here';
+
+/**
+ * How far the camera has to be carried from the anchor before *Search this
+ * area* appears, as a fraction of the screen's width.
+ *
+ * A guess, to be tuned on a device: too small and the control blinks in and
+ * out while a rider reads the map, too large and it never shows up when they
+ * have deliberately gone looking somewhere else. Named so that tuning it is a
+ * one-line change.
+ */
+const DRIFT_FRACTION = 0.25;
+
+/** Long enough to read as travel rather than a cut, short enough not to wait. */
+const CAMERA_MS = 350;
 
 export function MapScreen() {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
-  const { region, source, stops, status, setAnchor, recentre, locationStatus } =
-    useAnchoredStops();
+  const { height: windowHeight } = useWindowDimensions();
+  const {
+    anchor,
+    region,
+    source,
+    stops,
+    status,
+    setAnchor,
+    recentre,
+    requestLocation,
+    locationStatus,
+  } = useAnchoredStops();
   const { routesForStops } = useStopQueries();
 
   const map = useRef<MapView | null>(null);
   const sheet = useRef<BottomSheet | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const pendingMarker = useRef<MapMarker | null>(null);
+  const [selectedStop, setSelectedStop] = useState<StopWithDistance | null>(null);
+  /** The detent the sheet last settled on. `index={0}` is where it starts. */
+  const [detent, setDetent] = useState<number>(PEEK_DETENT);
+  /** Where a long press landed, waiting for its callout to be taken up. */
+  const [pending, setPending] = useState<Coords | null>(null);
+  /** Where the camera settled last. `null` until it has moved at all. */
+  const [camera, setCamera] = useState<Region | null>(null);
+  /** A fix is in flight, so ⌖ says so rather than looking inert. */
+  const [locating, setLocating] = useState(false);
   const [routesByStop, setRoutesByStop] = useState<Map<string, RouteSummary[]>>(new Map());
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
 
   /**
-   * `initialRegion` is read once at mount and ignored afterwards, so moving the
-   * camera later has to be imperative. `region` is memoised on the anchor
-   * inside `useAnchoredStops`, so this fires exactly when the anchor moves.
+   * Offered rather than taken: the stops on screen are still the ones the
+   * anchor found, and they stay that way until a rider says otherwise.
    *
-   * **Only when the anchor moves.** Not on a refresh, not on a poll, not on a
-   * re-render. A camera that re-centres on its own yanks the view out from
-   * under someone who is looking at a street two blocks over — see the
-   * TheBusLive comparison, where the same lesson is written down as a flag.
-   * Here it falls out of the dependency rather than needing one.
+   * Both of these read the *visible* centre rather than the window's, because
+   * the window's centre is under the sheet on purpose — see `regionAround`.
+   * Measuring drift from it would mark a freshly framed map as drifted.
    */
+  const drifted = useMemo(
+    () => camera !== null && hasDriftedFrom(anchor, camera, DRIFT_FRACTION, visibleAbove(detent)),
+    [anchor, camera, detent],
+  );
+
+  /**
+   * **Not** the centring mechanism — `regionAround` does that, and says why.
+   * On Apple Maps this prop becomes the view's `layoutMargins`, which is what
+   * positions the compass and Apple's own legal label. Setting it keeps that
+   * label out from under the sheet, and nothing else.
+   */
+  const mapPadding = useMemo(
+    () => ({
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: Math.round(windowHeight * (1 - visibleAbove(detent))),
+    }),
+    [windowHeight, detent],
+  );
+
+  /**
+   * The camera moves in exactly two situations: a ⌖ recentre, and the first
+   * time the anchor turns out to be the rider's own location. Nowhere else —
+   * not on re-anchoring, not on selection, not on a poll.
+   *
+   * This used to be an effect on the memoised `region`, which made *every*
+   * anchor change a camera move. That is no longer expressible: the anchor now
+   * moves in cases where the camera must not, so the rule is stated here
+   * instead of emerging from a dependency array.
+   */
+  const frameOn = useCallback(
+    (center: Coords) => {
+      map.current?.animateToRegion(
+        regionAround(center, NEARBY_RADIUS_METERS, visibleAbove(detent)),
+        CAMERA_MS,
+      );
+    },
+    [detent],
+  );
+
+  /** Set once the camera has been put on the rider, so it is not done twice. */
+  const framedOnRider = useRef(false);
+
   useEffect(() => {
-    map.current?.animateToRegion(region, 350);
-  }, [region]);
+    if (framedOnRider.current || source !== 'location') return;
+    framedOnRider.current = true;
+    frameOn(anchor);
+  }, [source, anchor, frameOn]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,38 +202,86 @@ export function MapScreen() {
   /**
    * Pin tap and row tap take exactly this path, so the two cannot drift into
    * behaving differently.
+   *
+   * It **sets**; it never clears. A pin tap means "this one", so a mis-aimed
+   * tap on the pin already selected must not close the card being read —
+   * dismissal is the back control, which says what it does.
+   *
+   * And it raises the sheet only from below medium. Snapping unconditionally
+   * takes back height the rider asked for: on a device, selecting a row while
+   * reading the list at full height dropped the sheet to half and moved the
+   * row out from under the thumb that had just touched it.
    */
-  const select = useCallback((stop: Stop) => {
-    setSelectedId((current) => (current === stop.stop_id ? null : stop.stop_id));
-    sheet.current?.snapToIndex(MEDIUM_DETENT);
+  const select = useCallback(
+    (stop: StopWithDistance) => {
+      setSelectedStop(stop);
+      if (detent < MEDIUM_DETENT) sheet.current?.snapToIndex(MEDIUM_DETENT);
+    },
+    [detent],
+  );
+
+  /** Back out of the card to the nearby list. The sheet keeps its height. */
+  const clearSelection = useCallback(() => {
+    setSelectedStop(null);
   }, []);
 
   /**
-   * A tap on empty map moves the anchor, and clears the selection with it — the
-   * stop that was expanded is about to be replaced by a different set, so
-   * leaving it selected would keep an arrivals poll running for a stop no
-   * longer in the list.
+   * A tap on empty map dismisses, and dismisses only. It used to move the
+   * anchor, which meant a thumb landing an inch wide of a pin threw away both
+   * the stop set and the card being read.
    */
-  const onMapPress = useCallback(
-    (event: MapPressEvent) => {
-      const { latitude, longitude } = event.nativeEvent.coordinate;
-      setSelectedId(null);
-      setAnchor({ lat: latitude, lon: longitude });
+  const onMapPress = useCallback(() => {
+    setSelectedStop(null);
+    setPending(null);
+  }, []);
+
+  /**
+   * A long press does not search. It drops a marker and offers to, so a stray
+   * one costs a dismissal rather than the whole view — and so the gesture is
+   * cancellable after it has fired, which a long press that searched could not
+   * be.
+   */
+  const onMapLongPress = useCallback((event: LongPressEvent) => {
+    const { latitude, longitude } = event.nativeEvent.coordinate;
+    setPending({ lat: latitude, lon: longitude });
+  }, []);
+
+  /**
+   * iOS shows a callout only when it is asked to; without this the marker
+   * appears bearing an invisible offer, and the gesture reads as broken.
+   */
+  useEffect(() => {
+    if (pending === null) return;
+    pendingMarker.current?.showCallout();
+  }, [pending]);
+
+  const searchFrom = useCallback(
+    (coords: Coords) => {
+      setPending(null);
+      // The set behind the card is about to be replaced, and a card for a stop
+      // no longer in the list would keep polling for it.
+      setSelectedStop(null);
+      setAnchor(coords);
     },
     [setAnchor],
   );
 
+  const searchThisArea = useCallback(() => {
+    if (camera === null) return;
+    searchFrom(visibleCentre(camera, visibleAbove(detent)));
+  }, [camera, detent, searchFrom]);
+
   const onPinPress = useCallback(
     (event: MarkerPressEvent, stop: StopWithDistance) => {
+      // Without this the press also reaches `MapView`'s `onPress`, and the tap
+      // that selected a stop dismisses it again in the same gesture.
       event.stopPropagation();
       select(stop);
     },
-    []
+    // `select` reads the settled detent, so a stale copy here would be a copy
+    // that thinks the sheet is still at peek — and would lower it.
+    [select],
   );
-
-  const openStop = useCallback((stop: Stop) => {
-    router.push(`/stop/${encodeURIComponent(stop.stop_code || stop.stop_id)}`);
-  }, []);
 
   const openRoute = useCallback((route: RouteSummary) => {
     router.push(`/route/${encodeURIComponent(route.route_id)}`);
@@ -137,54 +302,170 @@ export function MapScreen() {
     [favoriteIds],
   );
 
-  const onRecentre = useCallback(() => {
-    setSelectedId(null);
-    recentre();
-  }, [recentre]);
+  /**
+   * ⌖, and the recovery from every way of not having a location.
+   *
+   * After a refusal iOS will not show its dialog again, so asking a second
+   * time returns `denied` without a prompt and the button does nothing at all.
+   * Opening Settings is the only route back, and taking it is what stops a
+   * single accidental "Don't Allow" from being permanent. An `error` is
+   * different — nothing was refused, so the fix is to ask again.
+   */
+  const onRecentre = useCallback(async () => {
+    if (locationStatus === 'denied') {
+      void Linking.openSettings();
+      return;
+    }
+
+    setSelectedStop(null);
+    setPending(null);
+    // Claimed before the fix arrives so the first-fix effect does not animate
+    // to the same place a moment later.
+    framedOnRider.current = true;
+
+    setLocating(true);
+    try {
+      const coords = await recentre();
+      if (coords !== null) frameOn(coords);
+    } finally {
+      setLocating(false);
+    }
+  }, [locationStatus, recentre, frameOn]);
+
+  /**
+   * The prompt is tied to *opening the map*, which is a deliberate act, rather
+   * than to a component mounting — and it fires over a drawn map instead of a
+   * grey rectangle. Only from `idle`: once it has been answered, in either
+   * direction, asking again is either pointless or a second dialog.
+   */
+  const onMapReady = useCallback(() => {
+    if (locationStatus !== 'idle') return;
+    void requestLocation();
+  }, [locationStatus, requestLocation]);
+
+  const banner =
+    locationStatus === 'denied'
+      ? LOCATION_DENIED
+      : locationStatus === 'error'
+        ? LOCATION_ERROR
+        : LOCATION_PROMPT;
 
   return (
     // No SafeAreaView around the map. A map is one of the few things that
     // should run under the status bar and behind the tab bar; insetting it
     // would leave grey bars top and bottom. What sits *on* it takes the insets.
     <View style={styles.fill}>
-      <MapView
-        ref={map}
+      {/*
+        At full height the map is a sliver above the sheet, and every touch that
+        lands on it is a miss — a pin tapped by accident, or an anchor gesture
+        aimed at the sheet's handle. Blocking the whole view is cruder than
+        hit-testing the visible strip and is exactly right: there is nothing up
+        there anyone means to touch.
+      */}
+      <View
         style={styles.fill}
-        initialRegion={region}
-        onPress={onMapPress}
-        showsUserLocation={locationStatus === 'granted'}
-        showsMyLocationButton={false}
-        toolbarEnabled={false}
+        pointerEvents={detent === FULL_DETENT ? 'none' : 'auto'}
       >
-        {stops.map((stop) => (
-          <Marker
-            key={stop.stop_id}
-            identifier={stop.stop_id}
-            coordinate={{ latitude: stop.lat, longitude: stop.lon }}
-            title={stop.stop_name}
-            pinColor={selectedId === stop.stop_id ? palette.live : undefined}
-            onPress={(event) => onPinPress(event, stop)}
-          />
-        ))}
-      </MapView>
+        <MapView
+          ref={map}
+          style={styles.fill}
+          initialRegion={region}
+          onPress={onMapPress}
+          onLongPress={onMapLongPress}
+          onRegionChangeComplete={setCamera}
+          onMapReady={onMapReady}
+          mapPadding={mapPadding}
+          showsUserLocation={locationStatus === 'granted'}
+          showsMyLocationButton={false}
+          toolbarEnabled={false}
+        >
+          {stops.map((stop) => (
+            <Marker
+              key={stop.stop_id}
+              identifier={stop.stop_id}
+              coordinate={{ latitude: stop.lat, longitude: stop.lon }}
+              title={stop.stop_name}
+              pinColor={selectedStop?.stop_id === stop.stop_id ? palette.live : undefined}
+              onPress={(event) => onPinPress(event, stop)}
+            />
+          ))}
+
+          {pending === null ? null : (
+            <Marker
+              ref={pendingMarker}
+              identifier="pending-anchor"
+              coordinate={{ latitude: pending.lat, longitude: pending.lon }}
+              // Without this the press falls through to the map, which would
+              // dismiss the marker the rider is reaching for.
+              onPress={(event) => event.stopPropagation()}
+            >
+              {/*
+                `tooltip` drops MapKit's own bubble and draws ours. The native
+                one styles itself and its contents do not, so a themed label
+                inside it is a guess about a surface this project cannot see.
+              */}
+              <Callout tooltip onPress={() => searchFrom(pending)}>
+                <View
+                  style={[
+                    styles.callout,
+                    { backgroundColor: palette.background, borderColor: palette.border },
+                  ]}
+                >
+                  <Text style={[styles.calloutText, { color: palette.text }]}>
+                    {SEARCH_HERE_LABEL}
+                  </Text>
+                </View>
+              </Callout>
+            </Marker>
+          )}
+        </MapView>
+      </View>
 
       {source === 'fallback' && locationStatus !== 'loading' ? (
         <View style={[styles.prompt, { top: insets.top + 12, backgroundColor: palette.background }]}>
-          <Text style={[styles.promptText, { color: palette.text }]}>{LOCATION_PROMPT}</Text>
+          <Text style={[styles.promptText, { color: palette.text }]}>{banner}</Text>
         </View>
       ) : null}
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={RECENTRE_LABEL}
+        // The label follows what the button will actually do. A ⌖ that opens
+        // Settings and announces itself as "centre on my location" is a lie to
+        // exactly the riders who most need to be told.
+        accessibilityLabel={locationStatus === 'denied' ? SETTINGS_LABEL : RECENTRE_LABEL}
+        accessibilityState={{ busy: locating }}
         onPress={onRecentre}
         style={[
           styles.recentre,
           { top: insets.top + 64, backgroundColor: palette.background, borderColor: palette.border },
         ]}
       >
-        <Text style={[styles.recentreGlyph, { color: palette.text }]}>⌖</Text>
+        {locating ? (
+          <ActivityIndicator />
+        ) : (
+          <Text style={[styles.recentreGlyph, { color: palette.text }]}>⌖</Text>
+        )}
       </Pressable>
+
+      {/*
+        The discoverable half of the pair. A long press can never teach itself;
+        this appears on its own once the camera has been carried away from the
+        pins, and disappears the moment it is taken up, because re-anchoring to
+        the screen centre makes the drift zero.
+      */}
+      {drifted ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={SEARCH_AREA_LABEL}
+          onPress={searchThisArea}
+          style={[
+            styles.searchArea,
+            { top: insets.top + 64, backgroundColor: palette.background, borderColor: palette.border },
+          ]}
+        >
+          <Text style={[styles.searchAreaText, { color: palette.text }]}>{SEARCH_AREA_LABEL}</Text>
+        </Pressable>
+      ) : null}
 
       <StopSheet
         ref={sheet}
@@ -192,11 +473,12 @@ export function MapScreen() {
         status={status}
         routesByStop={routesByStop}
         favoriteIds={favoriteIds}
-        selectedId={selectedId}
+        selectedStop={selectedStop}
         onSelect={select}
+        onBack={clearSelection}
         onToggleFavorite={toggleFavorite}
-        onOpenStop={openStop}
         onOpenRoute={openRoute}
+        onDetentChange={setDetent}
       />
     </View>
   );
@@ -225,4 +507,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recentreGlyph: { fontSize: 22, lineHeight: 26 },
+  searchArea: {
+    position: 'absolute',
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  searchAreaText: { fontSize: 14, fontWeight: '600' },
+  callout: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  calloutText: { fontSize: 14, fontWeight: '600' },
 });

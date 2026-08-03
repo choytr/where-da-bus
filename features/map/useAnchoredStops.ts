@@ -50,11 +50,21 @@ export type AnchoredStops = {
   /** Move the anchor to a point the rider tapped. */
   setAnchor: (coords: Coords) => void;
   /**
-   * Back to the rider's own location. Asks for permission if it has not been
-   * asked for yet — which is what ties the system prompt to a deliberate tap,
-   * the same contract `useLocation` was written for.
+   * Back to the rider's own location, on a **fresh** fix every time, and hands
+   * that fix back so a caller can move a camera onto it.
+   *
+   * Fresh every time is not an optimisation to skip. The hook cached one
+   * position for the app's lifetime, so recentring after a bus ride put the
+   * rider back where they boarded — on a transit app, the exact moment the
+   * button exists for.
    */
-  recentre: () => void;
+  recentre: () => Promise<Coords | null>;
+  /**
+   * Ask for a location without touching the anchor — what the map calls once it
+   * has drawn, so the permission prompt appears over a map rather than over a
+   * grey rectangle, and the first launch opens on the rider.
+   */
+  requestLocation: () => Promise<Coords | null>;
   locationStatus: LocationStatus;
 };
 
@@ -63,6 +73,10 @@ const NO_STOPS: StopWithDistance[] = [];
 export function useAnchoredStops(): AnchoredStops {
   const { nearby } = useStopQueries();
   const location = useLocation();
+  // Destructured because `location` is a fresh object every render, while
+  // `request` is stable — depending on the object would churn every callback
+  // built on it.
+  const { request } = location;
 
   /**
    * A tapped point, or null to mean "follow my location". Storing the override
@@ -117,10 +131,10 @@ export function useAnchoredStops(): AnchoredStops {
     setChosen(coords);
   }, []);
 
-  const recentre = useCallback(() => {
+  const recentre = useCallback(async () => {
     setChosen(null);
-    if (location.coords === null) void location.request();
-  }, [location]);
+    return request();
+  }, [request]);
 
   return {
     anchor,
@@ -130,6 +144,7 @@ export function useAnchoredStops(): AnchoredStops {
     status,
     setAnchor,
     recentre,
+    requestLocation: request,
     locationStatus: location.status,
   };
 }

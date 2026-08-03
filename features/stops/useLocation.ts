@@ -7,7 +7,14 @@ export type LocationStatus = 'idle' | 'loading' | 'granted' | 'denied' | 'error'
 export type LocationState = {
   status: LocationStatus;
   coords: Coords | null;
-  request: () => Promise<void>;
+  /**
+   * Takes a fresh fix and hands it back, or null if there was not one to take.
+   *
+   * Returning it as well as storing it is what lets a caller act on *this*
+   * fix — moving a camera onto it — without watching state and guessing which
+   * change was theirs.
+   */
+  request: () => Promise<Coords | null>;
 };
 
 /**
@@ -21,7 +28,7 @@ export function useLocation(): LocationState {
   const [status, setStatus] = useState<LocationStatus>('idle');
   const [coords, setCoords] = useState<Coords | null>(null);
 
-  const request = useCallback(async () => {
+  const request = useCallback(async (): Promise<Coords | null> => {
     setStatus('loading');
 
     try {
@@ -29,17 +36,20 @@ export function useLocation(): LocationState {
       if (permission.status !== 'granted') {
         setStatus('denied');
         setCoords(null);
-        return;
+        return null;
       }
 
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      setCoords({ lat: position.coords.latitude, lon: position.coords.longitude });
+      const fix = { lat: position.coords.latitude, lon: position.coords.longitude };
+      setCoords(fix);
       setStatus('granted');
+      return fix;
     } catch {
       setStatus('error');
       setCoords(null);
+      return null;
     }
   }, []);
 
