@@ -2,6 +2,12 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
     // "node" is required so `import { DatabaseSync } from 'node:sqlite'` resolves in the
     // GTFS build script and its SQL tests (Tasks 3 and 4) — those files share this program.
     // Cost: @types/node's ambient setTimeout/setInterval overloads (returning NodeJS.Timeout)
@@ -13,5 +19,6 @@
   // and expo/tsconfig.base excludes only node_modules and the native folders.
   // Without this, `npm run typecheck` compiles a WIP branch's App.tsx into the
   // same program as the real one and reports its errors as the root's.
-  "exclude": ["node_modules", ".claude"]
+
+  "exclude": ["node_modules", ".claude", "**/__tests__/**/*"]
 }

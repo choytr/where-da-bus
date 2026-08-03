@@ -52,7 +52,7 @@ export function hawaiiDateTime(date: string, time: string): Date | null {
 
   // 12 AM is hour 0 and 12 PM is hour 12, so the modulo has to come before the
   // PM adjustment rather than after it.
-  const hour = (h % 12) + (meridiem.toUpperCase() === 'PM' ? 12 : 0);
+  const hour = (h % 12) + (meridiem?.toUpperCase() === 'PM' ? 12 : 0);
 
   const stamp = Date.UTC(
     Number(year),

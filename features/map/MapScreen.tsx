@@ -30,7 +30,7 @@ const LOCATION_PROMPT = 'Showing downtown Honolulu. Tap ⌖ to use your location
 export function MapScreen() {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
-  const { region, anchor, source, stops, status, setAnchor, recentre, locationStatus } =
+  const { region, source, stops, status, setAnchor, recentre, locationStatus } =
     useAnchoredStops();
   const { routesForStops } = useStopQueries();
 

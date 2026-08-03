@@ -41,7 +41,7 @@ function sectionsFor(directions: RouteDirection[]): Section[] {
   return directions
     .filter((direction) => direction.stops.length > 0)
     .map((direction) => ({
-      title: `Toward ${direction.stops[direction.stops.length - 1].stop_name}`,
+      title: `Toward ${direction.stops[direction.stops.length - 1]?.stop_name}`,
       data: direction.stops,
     }));
 }
