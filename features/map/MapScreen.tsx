@@ -19,7 +19,13 @@ import MapView, {
 import type BottomSheet from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
 import { useAnchoredStops } from './useAnchoredStops';
-import { hasDriftedFrom, regionAround, visibleCentre, type Region } from './region';
+import {
+  centredOn,
+  hasDriftedFrom,
+  regionAround,
+  visibleCentre,
+  type Region,
+} from './region';
 import { StopSheet, FULL_DETENT, MEDIUM_DETENT, PEEK_DETENT, visibleAbove } from './StopSheet';
 import { useStopQueries, NEARBY_RADIUS_METERS } from '../../data/gtfs/db';
 import {
@@ -176,6 +182,10 @@ export function MapScreen() {
    * taken up from a long press. Nowhere else — not on selection, not on a poll,
    * and not on *Search this area*.
    *
+   * The first two *frame*, rebuilding the window from the query radius, because
+   * both are the map being opened on somewhere. The third only *pans* — see
+   * `panTo`.
+   *
    * This used to be an effect on the memoised `region`, which made *every*
    * anchor change a camera move. That is no longer expressible: the anchor now
    * moves in cases where the camera must not, so the rule is stated here
@@ -190,6 +200,23 @@ export function MapScreen() {
       );
     },
     [detent],
+  );
+
+  /**
+   * Travel without zooming: the window keeps the spans it already has and only
+   * its centre moves. `frameOn` rebuilds the window from the query radius,
+   * which is right for opening the map on somewhere and wrong for going to a
+   * point on a street a rider has already zoomed into.
+   */
+  const panTo = useCallback(
+    (center: Coords) => {
+      // `camera` is null only before the map has ever reported a region, in
+      // which case what is on screen is `initialRegion` — so its spans are the
+      // ones to preserve.
+      const base = camera ?? region;
+      map.current?.animateToRegion(centredOn(base, center, visibleAbove(detent)), CAMERA_MS);
+    },
+    [camera, region, detent],
   );
 
   /** Set once the camera has been put on the rider, so it is not done twice. */
@@ -305,13 +332,16 @@ export function MapScreen() {
    * question by putting the answer somewhere you cannot see it. *Search this
    * area* is deliberately **not** given the same treatment: it names the area
    * already on screen, so there is nothing to travel to.
+   *
+   * It **pans**; it does not reframe. The rider picked both the point and the
+   * zoom, and only one of those was a question.
    */
   const searchHere = useCallback(
     (coords: Coords) => {
       searchFrom(coords);
-      frameOn(coords);
+      panTo(coords);
     },
-    [searchFrom, frameOn],
+    [searchFrom, panTo],
   );
 
   const searchThisArea = useCallback(() => {

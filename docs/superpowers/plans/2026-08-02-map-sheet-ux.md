@@ -210,6 +210,13 @@ And one reversal, taken knowingly: **`Search here` now centres the camera on
 the point long-pressed.** See the amendment in the spec's Revision. *Search
 this area* deliberately still does not.
 
+A second device round the same day caught the first version of that doing too
+much: it reframed on the query radius rather than panning, discarding a zoom
+the rider had chosen. `centredOn` in `region.ts` moves a window without
+touching its spans, and is the inverse of `visibleCentre`. **⌖ and the first
+fix still reframe** — both are the map being opened on somewhere, which is a
+different act from going to a point on a street already on screen.
+
 A fourth finding was withdrawn — arrivals do carry the bus number, on the
 `estimated === "1"` rows that have one. `"???"` is a sentinel `parse.ts` maps
 to null, and per `docs/api/README.md` it co-occurs exactly with schedule-only

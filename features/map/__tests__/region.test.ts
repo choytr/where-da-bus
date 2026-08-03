@@ -1,4 +1,10 @@
-import { hasDriftedFrom, regionAround, visibleCentre, visibleWidthMetres } from '../region';
+import {
+  centredOn,
+  hasDriftedFrom,
+  regionAround,
+  visibleCentre,
+  visibleWidthMetres,
+} from '../region';
 import { metersBetween } from '../../../lib/distance';
 
 const HONOLULU = { lat: 21.3069, lon: -157.8583 };
@@ -130,6 +136,41 @@ describe('hasDriftedFrom', () => {
 
     expect(hasDriftedFrom(HONOLULU, { ...street, ...{ latitude: moved.lat } }, 0.25)).toBe(true);
     expect(hasDriftedFrom(HONOLULU, { ...city, ...{ latitude: moved.lat } }, 0.25)).toBe(false);
+  });
+});
+
+describe('centredOn', () => {
+  /** A rider who has zoomed well past the query radius, down to a street. */
+  const zoomedIn = { latitude: 21.3069, longitude: -157.8583, latitudeDelta: 0.004, longitudeDelta: 0.004 };
+  const target = { lat: 21.29, lon: -157.84 };
+
+  it('keeps the zoom the rider chose', () => {
+    // The bug this exists for: a long-press search rebuilt the window from the
+    // 1.5 km radius and threw away a zoom the rider had set deliberately.
+    const moved = centredOn(zoomedIn, target, 0.55);
+
+    expect(moved.latitudeDelta).toBe(zoomedIn.latitudeDelta);
+    expect(moved.longitudeDelta).toBe(zoomedIn.longitudeDelta);
+  });
+
+  it('puts the target in the middle of what the rider can see', () => {
+    const moved = centredOn(zoomedIn, target, 0.55);
+
+    expect(visibleCentre(moved, 0.55).lat).toBeCloseTo(target.lat, 9);
+    expect(visibleCentre(moved, 0.55).lon).toBeCloseTo(target.lon, 9);
+  });
+
+  it('is the inverse of visibleCentre at any coverage', () => {
+    for (const fraction of [1, 0.86, 0.55, 0.1]) {
+      const seen = visibleCentre(centredOn(zoomedIn, target, fraction), fraction);
+      expect(seen.lat).toBeCloseTo(target.lat, 9);
+    }
+  });
+
+  it('moves the window south of the target when a sheet covers the bottom', () => {
+    expect(centredOn(zoomedIn, target, 0.55).latitude).toBeLessThan(target.lat);
+    // And not at all when nothing is covered.
+    expect(centredOn(zoomedIn, target, 1).latitude).toBe(target.lat);
   });
 });
 

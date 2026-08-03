@@ -77,6 +77,19 @@ jest.mock('react-native-maps', () => {
             })
           }
         />
+        {/* A rider zoomed down to a street: spans well inside the 1.5 km the
+            query frames, so a reframe would be visible as one. */}
+        <Pressable
+          accessibilityLabel="zoom in close"
+          onPress={() =>
+            onRegionChangeComplete?.({
+              latitude: 21.3069,
+              longitude: -157.8583,
+              latitudeDelta: 0.004,
+              longitudeDelta: 0.004,
+            })
+          }
+        />
         {/* And settling back over it: 220 m north, well inside a quarter of
             the same window. */}
         <Pressable
@@ -519,6 +532,29 @@ describe('MapScreen', () => {
       expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.45, lon: -157.95 });
     });
     expect(mockCameraMoves).toHaveLength(1);
+  });
+
+  it('keeps the rider’s zoom when Search here is pressed', async () => {
+    // Truman, 2026-08-03, off the device: going to a point is not a reason to
+    // throw away a zoom he set. The camera travels; it does not reframe.
+    await show();
+    await waitFor(() => {
+      expect(mockNearby).toHaveBeenCalledTimes(1);
+    });
+
+    // A rider zoomed in well past the 1.5 km the query frames.
+    await fireEvent.press(screen.getByLabelText('zoom in close'));
+
+    await fireEvent.press(screen.getByLabelText('long press the map'));
+    await fireEvent.press(screen.getByLabelText('callout'));
+
+    await waitFor(() => {
+      expect(mockCameraMoves).toHaveLength(1);
+    });
+    expect(mockCameraMoves[0]).toMatchObject({
+      latitudeDelta: 0.004,
+      longitudeDelta: 0.004,
+    });
   });
 
   it('says nothing is nearby without saying something failed', async () => {

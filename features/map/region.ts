@@ -96,6 +96,27 @@ export function visibleCentre(camera: Region, visibleFraction = 1): Coords {
 }
 
 /**
+ * The same camera window, moved so `target` sits in the middle of what the
+ * rider can see. **The zoom is untouched.**
+ *
+ * That is the whole point of it existing next to `regionAround`. Framing the
+ * query radius is right when the map is being *opened* on somewhere — ⌖, or a
+ * first location fix. It is wrong when a rider who has zoomed into a street
+ * asks about a point on it: they chose that zoom, and rebuilding the window
+ * from the radius throws it away to answer a question they did not ask.
+ *
+ * The inverse of `visibleCentre`, and tested as such.
+ */
+export function centredOn(camera: Region, target: Coords, visibleFraction = 1): Region {
+  const shift = ((1 - visibleFraction) / 2) * camera.latitudeDelta;
+  return {
+    ...camera,
+    latitude: target.lat - shift,
+    longitude: target.lon,
+  };
+}
+
+/**
  * Has the camera been carried far enough from the anchor that the stops on
  * screen are no longer about what is on screen?
  *
