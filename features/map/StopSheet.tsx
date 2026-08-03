@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import BottomSheet, { BottomSheetFlatList, useBottomSheetSpringConfigs } from '@gorhom/bottom-sheet';
 import { StopRow } from '../stops/StopRow';
 import { ExpandedStopRow } from './ExpandedStopRow';
 import { useTheme } from '../../lib/theme';
@@ -59,6 +59,13 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
   const { palette } = useTheme();
   const detents = useMemo(() => [...DETENTS], []);
 
+  const animationConfigs = useBottomSheetSpringConfigs({
+    damping: 90,
+    stiffness: 650,
+    mass: 0.70,
+    overshootClamping: true,
+  });
+
   const renderItem = useCallback(
     ({ item }: { item: StopWithDistance }) => (
       <View>
@@ -94,6 +101,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
       enablePanDownToClose={false}
       backgroundStyle={{ backgroundColor: palette.background }}
       handleIndicatorStyle={{ backgroundColor: palette.muted }}
+      animationConfigs={animationConfigs}
     >
       <BottomSheetFlatList
         data={stops}
