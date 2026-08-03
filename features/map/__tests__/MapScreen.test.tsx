@@ -77,6 +77,19 @@ jest.mock('react-native-maps', () => {
             })
           }
         />
+        {/* And settling back over it: 220 m north, well inside a quarter of
+            the same window. */}
+        <Pressable
+          accessibilityLabel="pan the camera back"
+          onPress={() =>
+            onRegionChangeComplete?.({
+              latitude: 21.3089,
+              longitude: -157.8583,
+              latitudeDelta: 0.03,
+              longitudeDelta: 0.03,
+            })
+          }
+        />
         {children}
       </View>
     );
@@ -317,9 +330,11 @@ describe('MapScreen', () => {
 
     await fireEvent.press(screen.getByLabelText('long press the map'));
 
-    // A marker offering to search, and nothing asked for yet.
+    // A marker offering to search, and nothing asked for yet. The long press
+    // itself moves nothing — not the stop set, not the anchor, not the camera.
     screen.getByLabelText('pin pending-anchor');
     expect(mockNearby).toHaveBeenCalledTimes(1);
+    expect(mockCameraMoves).toEqual([]);
 
     await fireEvent.press(screen.getByLabelText('callout'));
 
@@ -351,8 +366,20 @@ describe('MapScreen', () => {
       lat: expect.closeTo(21.4521, 4),
       lon: -157.8583,
     });
-    // Re-anchored to the screen centre, so there is no drift left to offer.
+    // Re-anchored to the screen centre, so the offer is answered and retires.
     expect(screen.queryByLabelText('Search this area')).toBeNull();
+  });
+
+  it('keeps offering to search this area after the camera drifts back', async () => {
+    // Truman, 2026-08-03: an offer that blinks out while you are reading the
+    // map is worse than one that lingers. It stands until the anchor moves.
+    await show();
+    await fireEvent.press(screen.getByLabelText('pan the camera away'));
+    screen.getByLabelText('Search this area');
+
+    await fireEvent.press(screen.getByLabelText('pan the camera back'));
+
+    screen.getByLabelText('Search this area');
   });
 
   it('stops the map receiving touches at full height', async () => {
@@ -454,22 +481,44 @@ describe('MapScreen', () => {
     expect(mockCameraMoves).toEqual([]);
   });
 
-  it('does not move the camera when the anchor moves', async () => {
+  it('does not move the camera when Search this area re-anchors', async () => {
     // The rule this pass exists to state. A camera that travels under a rider
     // who did not ask was judged the worse failure than a map and a list that
-    // disagree about how far "nearby" reaches.
+    // disagree about how far "nearby" reaches. This control names the area
+    // already on screen, so there is nothing to travel to.
+    await show();
+    await waitFor(() => {
+      expect(mockNearby).toHaveBeenCalledTimes(1);
+    });
+
+    await fireEvent.press(screen.getByLabelText('pan the camera away'));
+    await fireEvent.press(screen.getByLabelText('Search this area'));
+
+    await waitFor(() => {
+      expect(mockNearby).toHaveBeenCalledTimes(2);
+    });
+    expect(mockCameraMoves).toEqual([]);
+  });
+
+  it('centres the map when Search here is pressed, not when the long press lands', async () => {
+    // The one exception, and Truman's call on 2026-08-03: a long press names a
+    // point, often near an edge or under the sheet, so answering the question
+    // without travelling to it puts the answer where it cannot be seen. The
+    // travelling waits for the callout — the press that says yes.
     await show();
     await waitFor(() => {
       expect(mockNearby).toHaveBeenCalledTimes(1);
     });
 
     await fireEvent.press(screen.getByLabelText('long press the map'));
+    expect(mockCameraMoves).toEqual([]);
+
     await fireEvent.press(screen.getByLabelText('callout'));
 
     await waitFor(() => {
-      expect(mockNearby).toHaveBeenCalledTimes(2);
+      expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.45, lon: -157.95 });
     });
-    expect(mockCameraMoves).toEqual([]);
+    expect(mockCameraMoves).toHaveLength(1);
   });
 
   it('says nothing is nearby without saying something failed', async () => {

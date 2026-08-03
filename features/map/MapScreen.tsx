@@ -109,23 +109,50 @@ export function MapScreen() {
   const [pending, setPending] = useState<Coords | null>(null);
   /** Where the camera settled last. `null` until it has moved at all. */
   const [camera, setCamera] = useState<Region | null>(null);
+  /**
+   * The anchor the drift offer belongs to, or null. Storing *which* anchor
+   * rather than a bare flag is what makes the offer sticky without making it
+   * stuck: it stands until the anchor moves, and moving the anchor is the only
+   * thing that can answer it.
+   */
+  const [offeredFor, setOfferedFor] = useState<Coords | null>(null);
   /** A fix is in flight, so ⌖ says so rather than looking inert. */
   const [locating, setLocating] = useState(false);
   const [routesByStop, setRoutesByStop] = useState<Map<string, RouteSummary[]>>(new Map());
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
 
   /**
-   * Offered rather than taken: the stops on screen are still the ones the
-   * anchor found, and they stay that way until a rider says otherwise.
+   * Drift is judged once per *settled* camera, and the answer sticks.
    *
-   * Both of these read the *visible* centre rather than the window's, because
-   * the window's centre is under the sheet on purpose — see `regionAround`.
-   * Measuring drift from it would mark a freshly framed map as drifted.
+   * Judging it on every render instead would re-judge it the moment the anchor
+   * moves, against a camera from before the move — a pairing that was never on
+   * screen — and would latch an offer the map is about to make untrue. Doing it
+   * here means the only inputs are a camera that actually settled and the
+   * anchor it settled against.
+   *
+   * Sticky because a rider who pans out and drifts back a few metres was still
+   * told there was something over there, and an offer that blinks out under a
+   * thumb reaching for it is worse than one that lingers.
    */
-  const drifted = useMemo(
-    () => camera !== null && hasDriftedFrom(anchor, camera, DRIFT_FRACTION, visibleAbove(detent)),
-    [anchor, camera, detent],
+  const onCameraSettled = useCallback(
+    (region: Region) => {
+      setCamera(region);
+      // Against the *visible* centre, not the window's — the window's centre is
+      // under the sheet on purpose, see `regionAround`.
+      if (hasDriftedFrom(anchor, region, DRIFT_FRACTION, visibleAbove(detent))) {
+        setOfferedFor(anchor);
+      }
+    },
+    [anchor, detent],
   );
+
+  /**
+   * Offered rather than taken: the stops on screen are still the ones the
+   * anchor found, and they stay that way until a rider says otherwise. Any
+   * anchor move — this button, a long press, ⌖ — retires the offer, because
+   * `anchor` is a fresh object each time it moves.
+   */
+  const offering = offeredFor === anchor;
 
   /**
    * **Not** the centring mechanism — `regionAround` does that, and says why.
@@ -144,14 +171,16 @@ export function MapScreen() {
   );
 
   /**
-   * The camera moves in exactly two situations: a ⌖ recentre, and the first
-   * time the anchor turns out to be the rider's own location. Nowhere else —
-   * not on re-anchoring, not on selection, not on a poll.
+   * The camera moves in exactly three situations: a ⌖ recentre, the first time
+   * the anchor turns out to be the rider's own location, and a *Search here*
+   * taken up from a long press. Nowhere else — not on selection, not on a poll,
+   * and not on *Search this area*.
    *
    * This used to be an effect on the memoised `region`, which made *every*
    * anchor change a camera move. That is no longer expressible: the anchor now
    * moves in cases where the camera must not, so the rule is stated here
-   * instead of emerging from a dependency array.
+   * instead of emerging from a dependency array. Each of the three is one
+   * explicit call, which is what keeps a fourth from appearing by accident.
    */
   const frameOn = useCallback(
     (center: Coords) => {
@@ -266,6 +295,25 @@ export function MapScreen() {
     [setAnchor],
   );
 
+  /**
+   * A long press is the one anchor gesture that *does* move the camera.
+   *
+   * The rule everywhere else is that the camera stays where a rider put it —
+   * see `frameOn`. This is the exception, and the reason it is one: a long
+   * press names a point, and the point named is very often near the edge of the
+   * screen or under the sheet, so leaving the camera alone would answer the
+   * question by putting the answer somewhere you cannot see it. *Search this
+   * area* is deliberately **not** given the same treatment: it names the area
+   * already on screen, so there is nothing to travel to.
+   */
+  const searchHere = useCallback(
+    (coords: Coords) => {
+      searchFrom(coords);
+      frameOn(coords);
+    },
+    [searchFrom, frameOn],
+  );
+
   const searchThisArea = useCallback(() => {
     if (camera === null) return;
     searchFrom(visibleCentre(camera, visibleAbove(detent)));
@@ -372,7 +420,7 @@ export function MapScreen() {
           initialRegion={region}
           onPress={onMapPress}
           onLongPress={onMapLongPress}
-          onRegionChangeComplete={setCamera}
+          onRegionChangeComplete={onCameraSettled}
           onMapReady={onMapReady}
           mapPadding={mapPadding}
           showsUserLocation={locationStatus === 'granted'}
@@ -404,7 +452,7 @@ export function MapScreen() {
                 one styles itself and its contents do not, so a themed label
                 inside it is a guess about a surface this project cannot see.
               */}
-              <Callout tooltip onPress={() => searchFrom(pending)}>
+              <Callout tooltip onPress={() => searchHere(pending)}>
                 <View
                   style={[
                     styles.callout,
@@ -450,10 +498,10 @@ export function MapScreen() {
       {/*
         The discoverable half of the pair. A long press can never teach itself;
         this appears on its own once the camera has been carried away from the
-        pins, and disappears the moment it is taken up, because re-anchoring to
-        the screen centre makes the drift zero.
+        pins, stays up while the rider looks around, and retires the moment the
+        anchor moves — by this button or any other route.
       */}
-      {drifted ? (
+      {offering ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={SEARCH_AREA_LABEL}

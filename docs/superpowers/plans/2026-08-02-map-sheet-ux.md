@@ -190,3 +190,27 @@ know:
    shipped `@gorhom/bottom-sheet/mock` swallows `onChange` and `snapToIndex`
    while `react-native-maps` was doubled as a function component with no ref.
    Both doubles now expose what they are asked to do.
+
+## What the device said, 2026-08-03
+
+Built from run `30788262742` off `dev` and driven by Truman. All three
+questions above are answered, and two produced work.
+
+1. **The 45% detent shows one and a half rows, and that is being kept.** His
+   call, and the reasoning is better than the arithmetic was: the next bus is
+   the whole experience, and half of the one after it says "there is more here"
+   without a rider having to be told. The detent is not raised.
+2. **The long-press callout appears where the finger is.** Its text is not
+   centred on the pin — shifted right. Deferred as UI polish, in the backlog.
+3. **25% is about right**, but the offer must not blink out. *Search this area*
+   now sticks until the anchor moves, keyed to the anchor rather than to a
+   flag, so a camera settling back inside the threshold no longer retires it.
+
+And one reversal, taken knowingly: **`Search here` now centres the camera on
+the point long-pressed.** See the amendment in the spec's Revision. *Search
+this area* deliberately still does not.
+
+A fourth finding was withdrawn — arrivals do carry the bus number, on the
+`estimated === "1"` rows that have one. `"???"` is a sentinel `parse.ts` maps
+to null, and per `docs/api/README.md` it co-occurs exactly with schedule-only
+arrivals, which are 96% of them.

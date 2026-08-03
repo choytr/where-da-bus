@@ -114,15 +114,21 @@ red, invisible locally because `npm install` tolerates what `npm ci` refuses.
 
 ## What to pick up next
 
-**Device-verify the UX pass, then ask about merging.** In order:
+**The UX pass is device-verified.** Built from run `30788262742` off `dev`,
+sideloaded, and driven by Truman on 2026-08-03. All three of the plan's
+questions are answered, in the plan's *What the device said* section; two
+produced work and both of those are now done.
 
-1. **Build and drive it.** `gh workflow run ios-ipa.yml --ref dev`. The plan
-   ends with three questions only a device can answer, and they are the reason
-   for the build rather than a formality: does the 45% detent show five arrival
-   rows or two; does a long-press callout appear where the finger was; is 25%
-   of the visible width the right drift threshold for *Search this area*
-   (`DRIFT_FRACTION` in `MapScreen.tsx`, one line to change).
+Next, in order:
+
+1. **Re-verify the three follow-up changes on a device** — the sticky *Search
+   this area*, the camera centring on *Search here*, and nothing else moving the
+   camera. They were made after the build above, so no device has run them.
 2. **Merging `dev` into `main`** — Truman's explicit permission, every time.
+
+Two cosmetic findings are deferred in `docs/backlog.md`, on his instruction —
+"functionality first": the callout's text is not centred on its pin, and the
+card's header carries route chips that `/stop/[code]` does not.
 
 ### What the UX pass built
 
@@ -135,8 +141,14 @@ traded away as well as what was chosen.
 
 The one-line version: the sheet is two modes rather than one list, the detail
 card is the *full* arrival board (so `ExpandedStopRow` is gone), tapping the map
-no longer moves the anchor, the camera moves only on ⌖ and the first location
-fix, and the map asks for location on `onMapReady`.
+no longer moves the anchor, the camera moves only on ⌖, the first location fix
+and a *Search here*, and the map asks for location on `onMapReady`.
+
+**That third camera case is a reversal Truman made on 2026-08-03**, after using
+it, and the spec's Revision carries a dated amendment saying so. *Search this
+area* was re-confirmed as **not** moving the camera in the same breath, so the
+settled preference is intact rather than abandoned — do not generalise the
+exception.
 
 Three things the diff does not explain:
 

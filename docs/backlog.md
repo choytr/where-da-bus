@@ -342,11 +342,33 @@ question: there is nothing left to invite a second tap towards.
   `useArrivalBoard(stopCode, client?)`, so the seam is one hook rather than two
   components that had to agree.
 
-**Still open after the UX pass of 2026-08-02.** Three questions only a device
-can answer, all recorded on the plan rather than here because they are
-verification steps and not defects yet: whether the 45% detent shows five
-arrival rows or two, whether a long-press callout appears where the finger was,
-and whether 25% of the visible width is the right drift threshold for *Search
-this area*. `DRIFT_FRACTION` in `MapScreen.tsx` is a named constant so the
-third is a one-line change.
+## The map sheet's UX pass — device findings, 2026-08-03
+
+Driven by Truman from run `30788262742`. The plan's three questions are all
+answered there; what follows is what came back as work rather than as an answer.
+Both are cosmetic, and he was explicit about the order: "UI design needs work,
+but that'll come later. Functionality first."
+
+- **The *Search here* callout's text is not centred on its pin** — it sits
+  shifted to the right. The bubble is drawn by this app rather than by MapKit
+  (`tooltip` on the `Callout`), so the fix is ours and is a layout one; a native
+  bubble would have centred itself. Nothing about it is wrong functionally: it
+  appears where the finger was, which is what the plan asked.
+- **The card's header and the arrivals screen's disagree.** `StopCard` shows
+  distance and route-number chips; `/stop/[code]` shows neither. Truman prefers
+  the card's and noticed the gap; deferring the convergence rather than picking
+  a direction now. Adding chips to `ArrivalsScreen` costs it a `routesForStops`
+  query it does not currently make, which is the only real cost either way.
+
+**The 45% detent is deliberately not being raised.** It shows one and a half
+arrival rows and that is the intended shape, not a defect to fix later: the next
+bus is the whole experience, and half of the row beneath it says "there is more"
+without a rider being told. Recorded here because the plan predicted five or six
+rows, so a future session finding one and a half might otherwise "fix" it.
+
+**A finding that was withdrawn**, recorded so it is not rediscovered: arrivals
+appear to lack a bus number, but they do not. `parse.ts` maps the `"???"`
+sentinel to null, and `docs/api/README.md` establishes that it co-occurs exactly
+with `estimated !== "1"` — 1,228 of 1,269 sampled. The rows that *have* a bus
+number show it; 96% of arrivals do not have one to show.
 

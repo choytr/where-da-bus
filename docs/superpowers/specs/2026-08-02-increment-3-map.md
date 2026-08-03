@@ -169,7 +169,16 @@ A plain tap now only dismisses the detail card, and does nothing otherwise.
 ### The camera moves in exactly two situations
 
 On ⌖ recentre, and on the first location fix. Not on re-anchoring, not on
-selection, not on a poll. The rule is now stated rather than emerging from an
+selection, not on a poll.
+
+> **Amended 2026-08-03, after driving it** — **three** situations. Truman asked
+> for *Search here* to centre the map on the point long-pressed, and that is now
+> what it does. The reasoning is the one thing this section did not weigh: a
+> long press *names* a point, and the point named is often near a screen edge or
+> under the sheet, so answering without travelling to it puts the answer where
+> the rider cannot see it. **The rule below is otherwise intact and was
+> re-confirmed**, including for *Search this area*, which names the area already
+> on screen and therefore has nowhere to travel to. The rule is now stated rather than emerging from an
 effect's dependency array, which is a change of mechanism as well as of
 behaviour: `region` can no longer be the thing that drives the camera, because
 the anchor moves in cases where the camera must not.
