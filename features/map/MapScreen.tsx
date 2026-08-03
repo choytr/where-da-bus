@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, { Marker, type MapPressEvent } from 'react-native-maps';
+import MapView, { Marker, MarkerPressEvent, type MapPressEvent } from 'react-native-maps';
 import type BottomSheet from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
 import { useAnchoredStops } from './useAnchoredStops';
@@ -13,7 +13,7 @@ import {
   removeFavorite,
 } from '../../data/storage/favorites';
 import { useTheme } from '../../lib/theme';
-import type { RouteSummary, Stop } from '../../data/gtfs/types';
+import type { RouteSummary, Stop, StopWithDistance } from '../../data/gtfs/types';
 
 /**
  * The map tab: stops around one anchor, as pins and as a list, which are two
@@ -61,7 +61,7 @@ export function MapScreen() {
       .then((ids) => {
         if (!cancelled) setFavoriteIds(ids);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
     };
@@ -76,11 +76,20 @@ export function MapScreen() {
       .then((routes) => {
         if (!cancelled) setRoutesByStop(routes);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
     };
   }, [stops, routesForStops]);
+
+  /**
+   * Pin tap and row tap take exactly this path, so the two cannot drift into
+   * behaving differently.
+   */
+  const select = useCallback((stop: Stop) => {
+    setSelectedId((current) => (current === stop.stop_id ? null : stop.stop_id));
+    sheet.current?.snapToIndex(MEDIUM_DETENT);
+  }, []);
 
   /**
    * A tap on empty map moves the anchor, and clears the selection with it — the
@@ -97,14 +106,13 @@ export function MapScreen() {
     [setAnchor],
   );
 
-  /**
-   * Pin tap and row tap take exactly this path, so the two cannot drift into
-   * behaving differently.
-   */
-  const select = useCallback((stop: Stop) => {
-    setSelectedId((current) => (current === stop.stop_id ? null : stop.stop_id));
-    sheet.current?.snapToIndex(MEDIUM_DETENT);
-  }, []);
+  const onPinPress = useCallback(
+    (event: MarkerPressEvent, stop: StopWithDistance) => {
+      event.stopPropagation();
+      select(stop);
+    },
+    []
+  );
 
   const openStop = useCallback((stop: Stop) => {
     router.push(`/stop/${encodeURIComponent(stop.stop_code || stop.stop_id)}`);
@@ -155,7 +163,7 @@ export function MapScreen() {
             coordinate={{ latitude: stop.lat, longitude: stop.lon }}
             title={stop.stop_name}
             pinColor={selectedId === stop.stop_id ? palette.live : undefined}
-            onPress={() => select(stop)}
+            onPress={(event) => onPinPress(event, stop)}
           />
         ))}
       </MapView>
