@@ -4,9 +4,9 @@
 session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
-Last updated: **2026-08-04**. **Increment 4 is merged. Increment 5 is
-code-complete on `dev` and blocked on two things, both of which need Truman.**
-See *Increment 5 is built, and what it is waiting on* below.
+Last updated: **2026-08-04**. **Increment 4 is merged. Increment 5 is complete,
+reviewed and device-verified on `dev`, and waiting only on permission to
+merge.** See *Increment 5 is built* below.
 
 Increment 4 was device-verified from run `30884750888` and merged on
 2026-08-03; his one change was masking the onboarding key field, which is done.
@@ -21,10 +21,11 @@ the source of truth.
 
 1. `CLAUDE.md` — the traps. Updated this session with a new Jest one.
 2. `docs/superpowers/plans/2026-08-03-increment-5-self-refreshing-data.md` —
-   **what was just built**, and its *What was built* section at the end records
-   where reality disagreed with it plus what verification is still outstanding.
-   Its spec is `../specs/2026-08-03-increment-5-self-refreshing-data.md`, and
-   the binding version of that spec is its *Revision: keep the floor* section.
+   **what was just built**. Its *What was built* section records seven places
+   reality disagreed with the plan, and its *Verification* section records both
+   workflow runs and what the device said. Its spec is
+   `../specs/2026-08-03-increment-5-self-refreshing-data.md`, and the binding
+   version of that spec is its *Revision: keep the floor* section.
 3. `docs/superpowers/specs/2026-07-29-wheredabus-design.md` — scope and
    sequencing. Its Increment 3 row is superseded by the spec above; three of
    its claims were corrected on 2026-08-02 and carry inline notes saying so.
@@ -43,8 +44,8 @@ device-verified and merged.
 
 **`dev` is ten commits ahead**: two documentation commits closing out
 Increment 4, then Increment 5's six tasks, `08dc855`..`c20946e`, plus the
-handoff update and the boundary review's one fix. **Reviewed. Not
-device-verified, not merged.**
+handoff update and the boundary review's one fix. **Reviewed and
+device-verified. Not merged.**
 
 Green: **388 Jest, 73 `node --test`, clean typecheck, clean `npm ci`**, and CI
 green on `dev`.
@@ -141,45 +142,31 @@ permission on 2026-08-03, after a second device round caught the zoom reset on
 
 ## What to pick up next
 
-**Only the device round is left.** The workflow has run for real and the data
-is published.
+**Increment 5 is done and verified. Only the merge is left, and that is
+Truman's call.**
 
-**The device round, which is where the real risk is.** Install the `.ipa`,
-confirm it opens on the bundled floor, let it refresh, **force-quit**, relaunch,
-and confirm it opens the downloaded generation and the previous file is gone.
+Merging matters more than usual this time, because two of the things this
+increment built **do not run at all until the workflow is on `main`**:
 
-**The force-quit is the point, not a formality.** The pointer is read once per
-launch, so a refresh is only ever observable across a restart — an app that
-never gets closed will look exactly like one that is not refreshing. Settings is
-where to check in between: it names the build in use and when it last looked.
+- the **weekly `schedule`**, which like `workflow_dispatch` only ever fires from
+  the default branch. Until the merge there is no automatic refresh — the data
+  published on 2026-08-04 is a one-off from a hand-triggered run.
+- **`workflow_dispatch`**, so nobody can rebuild the data by hand either without
+  repeating the throwaway-branch trick.
 
-What to expect on the first launch after installing: Settings says *Using the
-copy that came with the app*, then after a few seconds and a **Check now** it
-should say *New stop data downloaded. It will be used the next time you open the
-app.* After the force-quit and relaunch it should say *Using the copy published
-4 August 2026*.
+The app half is unaffected: it reads a fixed URL and the release already exists,
+so an installed build keeps refreshing whenever new data appears.
 
-**The `gtfs-data.yml` half is done and does not need repeating.** It ran twice
-for real on 2026-08-04, from a temporary `push` trigger on a throwaway branch
-that has since been removed:
-
-- run `30901281396` built and published `gtfs-v1-20260804T103550Z.db` and then
-  `manifest.json`, in that order, into the `data` release;
-- run `30901405253` exited at the check with `changed=false`, the upstream zip
-  being byte-identical — which is the change detection working, not a failure.
-
-The published database was downloaded and checked independently: `sha256` and
-byte count match the manifest exactly, `meta.schema_version` is 1, and the
-counts are 3,830 stops / 118 routes / 8,629 stop_routes with a `generated_at`
-from the run itself. That last part is what proves it is a fresh build rather
-than the committed floor republished.
+Everything else is finished — see *Increment 5 is built* below and the plan's
+*Verification* section, which records both workflow runs and what the device
+said.
 
 **One loose thread, small.** The onboarding field's masking (`c7e5f2c`) landed
 *after* Truman's device round, so that one change has not been on a phone. The
 `main` build from run `30892749009` contains it. Not worth a special trip; worth
 a glance next time an `.ipa` is installed for any reason.
 
-## Increment 5 is built, and what it is waiting on
+## Increment 5 is built, reviewed and device-verified
 
 All six tasks of `docs/superpowers/plans/2026-08-03-increment-5-self-refreshing-data.md`,
 inline on `dev`, one commit each. **387 Jest, 73 `node --test`, typecheck clean,

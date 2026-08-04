@@ -184,15 +184,30 @@ out in `waitFor`, and the one after hangs the run with no output at all. The
 offending test passes in isolation the whole time, so `-t` bisection says it is
 fine.
 
-### What verification is still outstanding
+### Verification — complete, 2026-08-04
 
-- **`gtfs-data.yml` has not run.** `workflow_dispatch` requires the workflow
-  file on the **default branch**, so `gh workflow run gtfs-data.yml --ref dev`
-  is a 404 until `dev` merges. Its two node steps *were* run end to end locally
-  — `check` (feed downloaded and hashed), `npm run build:gtfs`, then `package`
-  (floor check passed at 3,830 stops / 118 routes / 8,629 stop_routes, manifest
-  written) — so what is unproven is the YAML and the upload ordering, not the
-  logic.
-- **Nothing has been on a device.** And there is nothing published for a device
-  to download: with no release, `checkForUpdate` gets a 404 and the app stays on
-  the floor. A build off `dev` would exercise the *failure* path only.
+**`gtfs-data.yml` ran for real, twice.** `workflow_dispatch` requires the
+workflow file on the default branch, so it was proven from a temporary `push`
+trigger on a throwaway branch instead — `push` runs a workflow as defined on the
+ref pushed. The trigger was removed afterwards.
+
+- `30901281396` — built and published `gtfs-v1-20260804T103550Z.db`, then
+  `manifest.json`, in that order.
+- `30901405253` — exited at the check with `changed=false`, the upstream zip
+  being byte-identical. The change detection, observed.
+
+The published database was downloaded and checked independently rather than
+trusted from the log: `sha256` and byte count match the manifest exactly,
+`meta.schema_version` is 1, counts are 3,830 / 118 / 8,629, and `generated_at`
+came from the run — which is what proves it is a fresh build rather than the
+committed floor republished.
+
+**Device-verified by Truman**, from the `.ipa` of run `30901502536` built off
+`dev`. All three steps of the round below passed: it opened on the bundled
+floor, the refresh downloaded and reported that it would take effect next
+launch, and after a force-quit it opened the downloaded generation.
+
+**That is the claim this increment most needed observed.** Everything about the
+generation-and-pointer design — that nothing overwrites an open database, that
+the rename is atomic, that the pointer survives a restart — was a claim about a
+mechanism, and no test off a device could reach it.
