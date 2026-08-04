@@ -2,7 +2,9 @@
 
 Everything here was read out of the vendor PDFs sitting next to this file
 (`Web_Services_API.pdf` and the six per-endpoint sheets) on 2026-07-31, then
-**checked against the live API on 2026-08-01**. Where this document and those
+**checked against the live API on 2026-08-01**, with further live probes on
+2026-08-02 (the fleet endpoint) and **2026-08-03 (what a rejected AppID looks
+like, and one correction: the `headsign=` search now 500s)**. Where this document and those
 PDFs disagree, read carefully: claims marked as verified live win over the
 PDFs, because the PDFs were last revised in 2016 and are wrong in at least two
 places that matter. For anything not marked verified, the PDFs win — and read
@@ -318,6 +320,12 @@ an id — e.g. `"KALIHI TRANSIT CENTER (Stop: 4523)"`.
 The `headsign=` form is a text search, which makes this the one endpoint that
 answers a question the bundled GTFS asset cannot.
 
+> **It is broken as of 2026-08-03.** Every non-empty `headsign=` value returns
+> a 500 and an IIS HTML page, with a valid key and an invalid one alike. See
+> the correction under [What a rejected AppID looks
+> like](#what-a-rejected-appid-looks-like--observed-live-2026-08-03). Nothing
+> in the app uses it.
+
 ## Errors and empty results — settled 2026-08-01
 
 The vendor documents the field name `errorMessage` and nothing else: no
@@ -330,7 +338,7 @@ signal whatsoever for an application-level error:
 
 | Request | Status | Body |
 |---|---|---|
-| bad / empty / absent `key` | **200** | `{"errorMessage": "Invalid or unspecified API key"}` |
+| bad / empty / absent `key` | **200** | `{"errorMessage": "Invalid or unspecified API key"}` — on `arrivalsJSON`. **The wording is per-endpoint**; see [What a rejected AppID looks like](#what-a-rejected-appid-looks-like--observed-live-2026-08-03) |
 | `stop` absent | **200** | `{"errorMessage": "Invalid or unspecified stop ID"}` |
 | `stop=abc` (non-numeric) | **200** | `{"errorMessage": "Unspecified API error"}` |
 | `stop=9999999` (no such stop) | 200 | `{"stop":"9999999","timestamp":"…","arrivals": []}` |
@@ -360,6 +368,99 @@ returns a 1,245-byte IIS **HTML** error page with `Content-Type: text/html`.
 Calling `res.json()` unconditionally throws a `SyntaxError` on it. Check the
 status and the content type before parsing, and treat a non-JSON response as a
 transport failure rather than letting the parse error surface as a crash.
+
+## What a rejected AppID looks like — observed live 2026-08-03
+
+Probed for Increment 4, which makes every install register its own key and so
+has to tell "your key was rejected" apart from "the service is down". **These
+are measurements, not readings** — each row below is a verbatim response body.
+
+The 2026-08-01 probe above established that a *garbage* key is refused. What it
+did not cover is the case a real user actually produces: a **well-formed but
+unregistered** AppID — a typo in a pasted GUID, or a key the vendor deleted
+after six months of inactivity.
+
+### The four wrong-key forms are indistinguishable
+
+On `arrivalsJSON`, all four return byte-identical responses:
+
+| Wrong-key form | Response |
+|---|---|
+| well-formed unregistered GUID (two distinct random ones) | 200, `application/json`, 52 bytes |
+| malformed string (`not-a-key`) | identical |
+| empty `key=` | identical |
+| `key` absent entirely | identical |
+
+The body, verbatim, with a trailing `\r\n` (52 bytes in total):
+
+```
+{"errorMessage": "Invalid or unspecified API key"}
+```
+
+**The app cannot distinguish "never registered" from "mistyped" from "deleted
+after six months".** That is not a gap to work around — it is why the
+user-facing wording for a rejected key must not assume the key was never right.
+
+The HTTP layer carries nothing. `200 OK`, `Content-Type: application/json`,
+`Server: Microsoft-IIS/8.5`, no `WWW-Authenticate`, and **no 401 or 403 in any
+case tried**. TheBusLive's 401/403 mapping is a different API's behaviour and
+must not be ported here.
+
+### The rejection message differs per endpoint
+
+This is the trap. A matcher keyed to the `arrivalsJSON` string alone silently
+fails to recognise a rejected key everywhere else:
+
+| Endpoint | Body for an unregistered key |
+|---|---|
+| `arrivalsJSON` | `{"errorMessage": "Invalid or unspecified API key"}` + `\r\n`, 52 bytes |
+| `routeJSON` | `{"errorMessage": "Application key was not found"}`, 49 bytes, **no trailing CRLF** |
+| `vehicle` (XML) | `<errorMessage>Invalid or unspecified API key</errorMessage>` inside `<vehicles>`, 175 bytes |
+
+Two consequences beyond the wording:
+
+- **`routeJSON` answers an empty or absent `key` with a zero-byte 200 body**,
+  still labelled `Content-Type: application/json`. `JSON.parse('')` throws on
+  it. `arrivalsJSON` does not do this — it returns the normal error message —
+  so this shape is reachable only through the route endpoint.
+- **The XML error carries a `<timestamp>`.** The rule recorded above — that an
+  error has no `stop` and no `timestamp` — is a fact about the *JSON* bodies
+  only. Do not carry it to the vehicle endpoint.
+
+### Parameter validation runs before key validation
+
+On both JSON endpoints, a bad parameter is reported even when the key is also
+wrong, so the key error never surfaces:
+
+| Request | Body |
+|---|---|
+| unregistered key, `stop` absent | `{"errorMessage": "Invalid or unspecified stop ID"}` |
+| unregistered key, `stop=abc` | `{"errorMessage": "Unspecified API error"}` |
+| unregistered key, `route` absent | `{"errorMessage": "Invalid parameters"}` — identical with a **valid** key |
+
+**The absence of a key error does not prove the key is good.** Anything that
+tries to validate a key by probing must send otherwise-valid parameters, which
+is one more reason Increment 4 does not validate at onboarding and lets the
+first real request tell the truth instead.
+
+This costs the app nothing in practice: stop codes come from the bundled GTFS
+asset, so they are well-formed by construction and the key error does surface.
+
+### Correction: the `headsign=` form of `routeJSON` is broken
+
+Found while probing the above, and **unrelated to the key**.
+
+Every non-empty `headsign=` value returns **HTTP 500** with a 1,208-byte IIS
+HTML page — tried `WAIKIKI`, `HAWAII%20KAI`, `ALA%20MOANA` and the nonsense
+value `zzzz`, with a valid key and with an unregistered one, all identical.
+`headsign=` with an *empty* value returns 200 `{"errorMessage": "Invalid
+parameters"}`, so the parameter is still recognised and it is the search itself
+that fails. The `route=` form answered normally in the same session.
+
+The Route section below calls this "the one endpoint that answers a question the
+bundled GTFS asset cannot". **It currently answers nothing.** Nothing in the app
+calls it, so this blocks no work — but do not plan a feature on it without
+re-probing first.
 
 ## Response quirks that will bite
 
@@ -472,10 +573,24 @@ Two things the probe found that nobody had thought to ask:
 The raw probe scripts were throwaway; everything they established is written
 down above, with sample sizes. Re-run them only if a claim here looks wrong.
 
+## Settled on 2026-08-03
+
+Probed for Increment 4. Full detail in [What a rejected AppID looks
+like](#what-a-rejected-appid-looks-like--observed-live-2026-08-03).
+
+| Question | Answer |
+|---|---|
+| What does a rejected AppID look like? | **HTTP 200**, `{"errorMessage": "Invalid or unspecified API key"}` on `arrivalsJSON`. Never a 401 or 403. |
+| Does a well-formed-but-unregistered key differ from garbage? | **No.** Unregistered, malformed, empty and absent are byte-identical. |
+| Is the message the same everywhere? | **No.** `routeJSON` says `"Application key was not found"`. This is the one that will bite. |
+| Is the key checked before the parameters? | **No, after.** A bad parameter masks a bad key entirely. |
+
 ## Still open
 
 - **Is the GTFS-RT feed openly accessible, and what message types does it
   carry?** Not mentioned anywhere in these PDFs. Unchanged from the design doc.
+- **Will the `headsign=` form of `routeJSON` come back?** It 500s for every
+  non-empty value as of 2026-08-03. Nothing depends on it.
 - **What distinguishes `estimated` `"0"` from `"2"`?** Both mean schedule-only
   as far as the payload shows. Three samples of `"0"` against 1,225 of `"2"`,
   with no field differing between them. It does not block anything — the

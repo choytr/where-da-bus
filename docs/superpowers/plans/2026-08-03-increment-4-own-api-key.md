@@ -28,6 +28,28 @@ Nothing threads a fourth state through the screens.
 
 ## 0. What the API says when the AppID is wrong
 
+> **Done, 2026-08-03.** Written up in `docs/api/README.md` under *What a
+> rejected AppID looks like*. The answer, and the two things it changed:
+>
+> - `arrivalsJSON` → HTTP 200, `application/json`,
+>   `{"errorMessage": "Invalid or unspecified API key"}` with a trailing
+>   `\r\n`. **Never a 401 or 403** — TheBusLive's status-code mapping confirmed
+>   inapplicable, as the plan suspected.
+> - **A well-formed-but-unregistered GUID, a garbage string, an empty `key=`
+>   and an absent `key` are byte-identical.** So the wording in task 4 cannot
+>   distinguish "mistyped" from "deleted after six months", which is exactly
+>   the case the spec says the wording must reach. One message, no branching.
+> - **The message is per-endpoint**: `routeJSON` says
+>   `"Application key was not found"`. Nothing in the app calls `routeJSON`
+>   today, but a matcher written against the arrivals string alone is a trap
+>   the moment something does — task 4 matches both.
+> - **Parameters are validated before the key.** A bad `stop` masks a bad key
+>   entirely. Harmless here (stop codes come from GTFS), and one more reason
+>   the gate does not validate at onboarding.
+>
+> Unrelated correction found while probing: the `headsign=` form of `routeJSON`
+> 500s for every non-empty value, with a valid key too. Unused by the app.
+
 - Investigation, no code. `docs/api/README.md` gets the finding.
 - Call `arrivals` against the live API with a deliberately invalid AppID and
   **record the verbatim response** — status, `content-type`, body.
@@ -98,6 +120,18 @@ Nothing threads a fourth state through the screens.
 - Add `| { readonly kind: 'unauthorized' }` to `ArrivalsFailure`
 - `parseArrivals` recognises it **from the body observed in task 0**, not from a
   status code
+- **Match both vendor strings**, not just the arrivals one — task 0 found the
+  message is per-endpoint (`"Invalid or unspecified API key"` on `arrivalsJSON`,
+  `"Application key was not found"` on `routeJSON`). Recognise on a normalised
+  substring test over both, so the check does not depend on casing or framing;
+  the error body is serialised differently from the success body and the README
+  says not to rely on that framing.
+- Everything else with an `errorMessage` stays `kind: 'api'`. `"Invalid or
+  unspecified stop ID"` and `"Unspecified API error"` are *not* key problems,
+  and task 0 found they are what a bad key returns when a parameter is also
+  wrong — so a looser match would mislabel a parameter bug as a rejected key.
+- The wording cannot distinguish a mistyped key from one deleted after six
+  months of inactivity; task 0 proved those are byte-identical. One message.
 - Wording, following TheBusLive: *"Your API key was rejected. Check it in
   Settings."* — and it must not render like `unreachable`. Different cause,
   different fix, different text.
