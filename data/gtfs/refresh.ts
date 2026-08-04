@@ -1,4 +1,4 @@
-import { SCHEMA_VERSION } from './sql';
+import { SCHEMA_VERSION, meetsFloor } from './sql';
 import type { DatabaseFiles } from './files';
 
 /**
@@ -171,6 +171,49 @@ export async function downloadDatabase(
 
   files.rename(part, manifest.file);
   return manifest.file;
+}
+
+/**
+ * Downloads the build `manifest` describes and proves it is worth switching to.
+ * Returns the pointer value; the caller stores it.
+ *
+ * Three checks, and each catches something the others cannot:
+ *
+ * - **`sha256`** says the bytes arrived intact. It says nothing about whether
+ *   the build was right.
+ * - **The floor** says the build is right. Upstream publishing a truncated zip
+ *   yields a forty-stop database that is perfectly valid and hashes perfectly;
+ *   this is the only thing between that and a rider. It runs in the Action too,
+ *   and runs again here because a bad build that was published anyway is the
+ *   only case that reaches a phone.
+ * - **`schemaVersion`** says this binary can read it. Unreachable by design —
+ *   the filename carries the version, so the app can only ever have asked for
+ *   its own — which is why it is checked rather than assumed.
+ *
+ * A file that fails any of them is deleted and the pointer stays where it is.
+ */
+export async function installUpdate(
+  manifest: Manifest,
+  files: DatabaseFiles,
+): Promise<{ file: string; builtAt: string }> {
+  const file = await downloadDatabase(manifest, files);
+
+  try {
+    const { schemaVersion, counts } = await files.inspect(file);
+    if (schemaVersion !== null && schemaVersion !== SCHEMA_VERSION) {
+      throw new Error(`Downloaded stop data is schema v${schemaVersion}, not v${SCHEMA_VERSION}.`);
+    }
+    if (!meetsFloor(counts)) {
+      throw new Error(
+        `Downloaded stop data is too small to be a whole feed (${JSON.stringify(counts)}).`,
+      );
+    }
+  } catch (error) {
+    files.remove(file);
+    throw error;
+  }
+
+  return { file, builtAt: manifest.builtAt };
 }
 
 /**

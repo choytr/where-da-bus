@@ -1,4 +1,4 @@
-import { Component, Suspense, type ReactNode } from 'react';
+import { Component, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
@@ -9,6 +9,7 @@ import { ThemeProvider, useTheme } from './lib/theme';
 import { themeStorage } from './data/storage/preferences';
 import { TheBusProvider } from './data/thebus';
 import { apiKeyStorage } from './data/storage/apiKey';
+import { BUNDLED_DATABASE, loadCurrentDatabase } from './data/storage/database';
 import { KeyGate } from './features/onboarding/KeyGate';
 
 /**
@@ -39,6 +40,46 @@ import { KeyGate } from './features/onboarding/KeyGate';
  */
 async function openReadOnly(db: SQLiteDatabase): Promise<void> {
   await db.execAsync('PRAGMA query_only = ON;');
+}
+
+/**
+ * Which database file this launch opens: a downloaded generation, or the
+ * bundled floor when there is no pointer yet or it could not be read.
+ *
+ * **Read once, and deliberately never re-read.** A refresh that completes
+ * mid-session moves the pointer for the *next* launch rather than swapping the
+ * file underneath a running app. That is not caution about SQLite — the
+ * generation design makes the swap itself safe — it is about what is below this
+ * provider: the router. Changing `databaseName` remounts `SQLiteProvider` and
+ * every screen under it, so a rider halfway through reading an arrival board
+ * would be thrown back to the home screen by a background download finishing.
+ * Waiting one launch costs nothing; the floor and the new generation differ by
+ * a few stop names.
+ *
+ * Null means still loading, which is one AsyncStorage read and shows the same
+ * "Opening stop data…" the database open already shows.
+ */
+function useCurrentDatabaseName(): string | null {
+  const [name, setName] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadCurrentDatabase()
+      .then((current) => {
+        if (!cancelled) setName(current?.file ?? BUNDLED_DATABASE);
+      })
+      // `loadCurrentDatabase` swallows its own failures, so this is belt to
+      // braces — but a shell that never resolves would hang on the spinner
+      // forever, and the floor is always a correct answer.
+      .catch(() => {
+        if (!cancelled) setName(BUNDLED_DATABASE);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return name;
 }
 
 /**
@@ -97,19 +138,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               */}
               <KeyGate>
                 <Suspense fallback={<Waiting />}>
-                  <SQLiteProvider
-                    databaseName="gtfs.db"
-                    // Re-copied from the bundle on every launch. The file on disk is a
-                    // disposable copy of reference data — never user state, which lives
-                    // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
-                    // (npm run build:gtfs) from being shadowed by a stale first-launch
-                    // copy for the entire life of the install.
-                    assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
-                    onInit={openReadOnly}
-                    useSuspense
-                  >
-                    {children}
-                  </SQLiteProvider>
+                  <StopData>{children}</StopData>
                 </Suspense>
               </KeyGate>
               <ThemedStatusBar />
@@ -118,6 +147,36 @@ export function AppShell({ children }: { children: ReactNode }) {
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+/**
+ * Opens whichever generation this launch is pointed at.
+ *
+ * `assetSource` is on the floor path *only*. The bundle can supply `gtfs.db`
+ * and nothing else, so naming it while opening a downloaded generation would
+ * ask expo-sqlite to import the bundled asset over the newer file — undoing
+ * every refresh on every launch. `forceOverwrite` is what makes that damage
+ * certain rather than occasional, and it stays because the floor genuinely is
+ * a disposable copy of reference data that must not be shadowed by a stale
+ * first-launch copy.
+ */
+function StopData({ children }: { children: ReactNode }) {
+  const databaseName = useCurrentDatabaseName();
+  if (databaseName === null) return <Waiting />;
+
+  const floor = databaseName === BUNDLED_DATABASE;
+  return (
+    <SQLiteProvider
+      databaseName={databaseName}
+      assetSource={
+        floor ? { assetId: require('./assets/db/gtfs.db'), forceOverwrite: true } : undefined
+      }
+      onInit={openReadOnly}
+      useSuspense
+    >
+      {children}
+    </SQLiteProvider>
   );
 }
 

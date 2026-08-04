@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppShell } from '../AppShell';
 import { Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -121,8 +122,12 @@ function ClientReader() {
 const sqlite = () => jest.requireMock('expo-sqlite');
 
 describe('AppShell', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    // `clearAllMocks` resets call records, not the storage mock's contents, so
+    // the generation-pointer tests below would otherwise leave a pointer set
+    // for every test after them and none of them would open the floor.
+    await AsyncStorage.clear();
     // Reset, so the two gate tests below cannot leak a null key into whichever
     // test happens to run next.
     mockStoredKey = '3f7c1e92-8a4b-4d16-9f03-c5e28b71da40';
@@ -193,6 +198,57 @@ describe('AppShell', () => {
 
     const props = sqlite().SQLiteProvider.mock.calls[0][0];
     expect(props.assetSource.forceOverwrite).toBe(true);
+  });
+
+  it('opens the downloaded generation once one has been installed', async () => {
+    await AsyncStorage.setItem(
+      'gtfs.current.v1',
+      JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
+    );
+
+    await render(<AppShell><InsetReader /></AppShell>);
+
+    await waitFor(() => {
+      const props = sqlite().SQLiteProvider.mock.calls.at(-1)[0];
+      expect(props.databaseName).toBe('gtfs-v1-20260810T120000Z.db');
+    });
+  });
+
+  /**
+   * The bundle can supply `gtfs.db` and nothing else, so naming `assetSource`
+   * while opening a generation asks expo-sqlite to import the bundled asset
+   * over the newer file — and `forceOverwrite` makes that certain rather than
+   * occasional. Every refresh would be undone on the next launch, and the app
+   * would look like it was simply never updating.
+   */
+  it('does not name the bundled asset while opening a generation', async () => {
+    await AsyncStorage.setItem(
+      'gtfs.current.v1',
+      JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
+    );
+
+    await render(<AppShell><InsetReader /></AppShell>);
+
+    await waitFor(() => {
+      const props = sqlite().SQLiteProvider.mock.calls.at(-1)[0];
+      expect(props.databaseName).not.toBe('gtfs.db');
+      expect(props.assetSource).toBeUndefined();
+    });
+  });
+
+  /**
+   * A pointer that will not parse costs one stale launch, not a dead app. The
+   * floor is a database that definitely exists, which is the entire reason it
+   * is still in the bundle.
+   */
+  it('falls back to the bundled floor when the pointer is unreadable', async () => {
+    await AsyncStorage.setItem('gtfs.current.v1', 'not json at all');
+
+    await render(<AppShell><InsetReader /></AppShell>);
+
+    await waitFor(() => screen.getByText('inside the shell'));
+    const props = sqlite().SQLiteProvider.mock.calls.at(-1)[0];
+    expect(props.databaseName).toBe('gtfs.db');
   });
 
   it('says it is opening the database while the open is still running', async () => {

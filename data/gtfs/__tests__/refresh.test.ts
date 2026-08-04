@@ -2,12 +2,13 @@ import {
   MANIFEST_URL,
   checkForUpdate,
   downloadDatabase,
+  installUpdate,
   parseManifest,
   staleGenerations,
   type FetchManifest,
   type Manifest,
 } from '../refresh';
-import type { DatabaseFiles } from '../files';
+import type { DatabaseFacts, DatabaseFiles } from '../files';
 import { SCHEMA_VERSION } from '../sql';
 
 const published = {
@@ -32,11 +33,21 @@ function serving(body: unknown, status = 200): FetchManifest {
  * tests can assert on what was *not* touched, which is the whole safety claim
  * of this module.
  */
-function fakeFiles(options: { downloads?: string } = {}) {
+const wholeFeed: DatabaseFacts = {
+  schemaVersion: SCHEMA_VERSION,
+  counts: { stops: 3830, routes: 118, stopRoutes: 8629 },
+};
+
+function fakeFiles(options: { downloads?: string; facts?: DatabaseFacts | Error } = {}) {
   const contents = new Map<string, string>([['gtfs.db', 'the floor']]);
   const removed: string[] = [];
 
   const files: DatabaseFiles = {
+    async inspect() {
+      const facts = options.facts ?? wholeFeed;
+      if (facts instanceof Error) throw facts;
+      return facts;
+    },
     async download(_url, name) {
       contents.set(name, options.downloads ?? 'fresh bytes');
     },
@@ -200,6 +211,57 @@ describe('downloadDatabase', () => {
     await downloadDatabase(manifest, files);
     expect(removed).toContain(`${manifest.file}.part`);
     expect(contents.get(manifest.file)).toBe('fresh bytes');
+  });
+});
+
+describe('installUpdate', () => {
+  const manifest: Manifest = {
+    schemaVersion: SCHEMA_VERSION,
+    builtAt: published.builtAt,
+    file: published.file,
+    bytes: published.bytes,
+    sha256: 'sha(fresh bytes)',
+    feedEndDate: '20260822',
+  };
+
+  it('returns the pointer value once the file passes every check', async () => {
+    const { files } = fakeFiles();
+    expect(await installUpdate(manifest, files)).toEqual({
+      file: manifest.file,
+      builtAt: manifest.builtAt,
+    });
+  });
+
+  /**
+   * The case the floor exists for, and the one `sha256` structurally cannot
+   * catch: the agency publishes a truncated zip, the cron dutifully builds a
+   * forty-stop database, and the checksum matches perfectly.
+   */
+  it('refuses a database too small to be a whole feed, and deletes it', async () => {
+    const { files, contents, removed } = fakeFiles({
+      facts: { schemaVersion: SCHEMA_VERSION, counts: { stops: 40, routes: 3, stopRoutes: 90 } },
+    });
+
+    await expect(installUpdate(manifest, files)).rejects.toThrow(/too small to be a whole feed/);
+    expect(removed).toContain(manifest.file);
+    expect(contents.get('gtfs.db')).toBe('the floor');
+  });
+
+  it('refuses a database built for another schema, and deletes it', async () => {
+    const { files, removed } = fakeFiles({
+      facts: { ...wholeFeed, schemaVersion: SCHEMA_VERSION + 1 },
+    });
+
+    await expect(installUpdate(manifest, files)).rejects.toThrow(/schema v/);
+    expect(removed).toContain(manifest.file);
+  });
+
+  /** A database that will not open at all is the same answer: delete, keep the pointer. */
+  it('refuses a database that will not open, and deletes it', async () => {
+    const { files, removed } = fakeFiles({ facts: new Error('file is not a database') });
+
+    await expect(installUpdate(manifest, files)).rejects.toThrow(/not a database/);
+    expect(removed).toContain(manifest.file);
   });
 });
 

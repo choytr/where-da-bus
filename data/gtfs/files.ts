@@ -1,6 +1,7 @@
 import { Directory, File } from 'expo-file-system';
 import { CryptoDigestAlgorithm, digest } from 'expo-crypto';
-import { defaultDatabaseDirectory } from 'expo-sqlite';
+import { defaultDatabaseDirectory, openDatabaseAsync } from 'expo-sqlite';
+import { FLOOR_COUNTS, SCHEMA_VERSION_SQL, type TableCounts } from './sql';
 
 /**
  * Every filesystem touch the refresh needs, and nothing else.
@@ -26,6 +27,18 @@ export type DatabaseFiles = {
   remove(name: string): void;
   /** Every filename in the database directory. */
   list(): string[];
+  /** Opens `name` and reports what it contains. Throws if it will not open. */
+  inspect(name: string): Promise<DatabaseFacts>;
+};
+
+/**
+ * What a downloaded file has to say for itself before the pointer will move
+ * onto it. `schemaVersion` is null when `meta` has no such column, which is
+ * what a database built before the version existed looks like.
+ */
+export type DatabaseFacts = {
+  schemaVersion: number | null;
+  counts: TableCounts;
 };
 
 /**
@@ -89,4 +102,58 @@ export const databaseFiles: DatabaseFiles = {
       .list()
       .map((entry) => entry.name);
   },
+
+  async inspect(name) {
+    const db = await openDatabaseAsync(name);
+    try {
+      // No type argument on either call, deliberately: `getFirstAsync<T>` is a
+      // caller-supplied label rather than a runtime check, which is a type
+      // assertion spelled differently. Both results are narrowed below. See
+      // db.ts, which explains this at length for the same reason.
+      const counts = await db.getFirstAsync(FLOOR_COUNTS);
+      if (!isTableCounts(counts)) {
+        throw new Error(`${name} does not have the tables this app queries.`);
+      }
+
+      // Absent on anything built before the version existed — including the
+      // bundled floor, which is never asked. A missing column throws rather
+      // than returning null, so the two cases are told apart here.
+      let schemaVersion: number | null = null;
+      try {
+        const meta = await db.getFirstAsync(SCHEMA_VERSION_SQL);
+        if (isSchemaVersionRow(meta)) schemaVersion = meta.schema_version;
+      } catch {
+        schemaVersion = null;
+      }
+
+      return { schemaVersion, counts };
+    } finally {
+      // Released before the caller decides anything. A generation the app is
+      // about to delete must not still be open, and on the happy path this
+      // handle is not the one the app goes on to read through.
+      await db.closeAsync();
+    }
+  },
 };
+
+function isTableCounts(value: unknown): value is TableCounts {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'stops' in value &&
+    typeof value.stops === 'number' &&
+    'routes' in value &&
+    typeof value.routes === 'number' &&
+    'stopRoutes' in value &&
+    typeof value.stopRoutes === 'number'
+  );
+}
+
+function isSchemaVersionRow(value: unknown): value is { schema_version: number } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'schema_version' in value &&
+    typeof value.schema_version === 'number'
+  );
+}
