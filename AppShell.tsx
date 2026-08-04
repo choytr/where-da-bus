@@ -7,6 +7,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DISCLAIMER } from './lib/legal';
 import { ThemeProvider, useTheme } from './lib/theme';
 import { themeStorage } from './data/storage/preferences';
+import { TheBusProvider } from './data/thebus';
+import { apiKeyStorage } from './data/storage/apiKey';
 
 /**
  * Everything that must be true before any screen renders: the safe-area
@@ -72,24 +74,32 @@ export function AppShell({ children }: { children: ReactNode }) {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <ThemeProvider storage={themeStorage}>
-          <DatabaseGate>
-            <Suspense fallback={<Waiting />}>
-              <SQLiteProvider
-                databaseName="gtfs.db"
-                // Re-copied from the bundle on every launch. The file on disk is a
-                // disposable copy of reference data — never user state, which lives
-                // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
-                // (npm run build:gtfs) from being shadowed by a stale first-launch
-                // copy for the entire life of the install.
-                assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
-                onInit={openReadOnly}
-                useSuspense
-              >
-                {children}
-              </SQLiteProvider>
-            </Suspense>
-            <ThemedStatusBar />
-          </DatabaseGate>
+          {/*
+            Holds the user's AppID and the client built from it. Outside the
+            database gate because the two are independent: the key comes from
+            the keychain and the stop data from a bundled asset, so a device can
+            have one and not the other, and each has its own screen to say so.
+          */}
+          <TheBusProvider storage={apiKeyStorage}>
+            <DatabaseGate>
+              <Suspense fallback={<Waiting />}>
+                <SQLiteProvider
+                  databaseName="gtfs.db"
+                  // Re-copied from the bundle on every launch. The file on disk is a
+                  // disposable copy of reference data — never user state, which lives
+                  // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
+                  // (npm run build:gtfs) from being shadowed by a stale first-launch
+                  // copy for the entire life of the install.
+                  assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
+                  onInit={openReadOnly}
+                  useSuspense
+                >
+                  {children}
+                </SQLiteProvider>
+              </Suspense>
+              <ThemedStatusBar />
+            </DatabaseGate>
+          </TheBusProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

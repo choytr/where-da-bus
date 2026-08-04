@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react-native';
 import { AppShell } from '../AppShell';
 import { Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheBus } from '../data/thebus';
 
 /**
  * What this file owns is the gate in front of the stop list: the bundled
@@ -86,6 +87,17 @@ function InsetReader() {
   return <Text>inside the shell</Text>;
 }
 
+/**
+ * The same shape of guard, for `TheBusProvider`. `useTheBus` throws without
+ * one, and every screen that asks for arrivals now calls it through the route
+ * that mounts it — so a provider removed from `AppShell` breaks the whole app
+ * on a device while the rest of this file stays green.
+ */
+function ClientReader() {
+  useTheBus();
+  return <Text>read the client</Text>;
+}
+
 const sqlite = () => jest.requireMock('expo-sqlite');
 
 describe('AppShell', () => {
@@ -130,6 +142,17 @@ describe('AppShell', () => {
   it('wraps the app in a gesture root, which the map sheet cannot drag without', async () => {
     await render(<AppShell><InsetReader /></AppShell>);
     screen.getByLabelText('gesture root');
+  });
+
+  /**
+   * Explicit for the same reason as the two above: the throw is swallowed by
+   * `DatabaseGate`, so losing the provider would surface as a `waitFor` timeout
+   * that reads like the cold-cache flake rather than like a missing provider.
+   */
+  it('mounts the client provider, without which every arrivals view throws', async () => {
+    await render(<AppShell><ClientReader /></AppShell>);
+    await waitFor(() => screen.getByText('read the client'));
+    expect(screen.queryByText(/stop data unavailable/i)).toBeNull();
   });
 
   it('opens the bundled database read-only', async () => {

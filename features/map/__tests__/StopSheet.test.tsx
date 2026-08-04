@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import { StopSheet } from '../StopSheet';
 import { TestTheme } from '../../../lib/testing/theme';
 import type { StopWithDistance } from '../../../data/gtfs/types';
-import type { ArrivalsResult } from '../../../data/thebus';
+import type { ArrivalsResult, TheBusClient } from '../../../data/thebus';
 
 /**
  * The sheet's two modes. What is under test is only which of them is on screen
@@ -19,9 +19,14 @@ const mockArrivalsResult: ArrivalsResult = {
   board: { stopCode: '5', serverTime: new Date('2026-08-02T22:00:00Z'), arrivals: [] },
 };
 
-jest.mock('../../../data/thebus', () => ({
-  theBus: { arrivals: jest.fn(async () => mockArrivalsResult) },
-}));
+/**
+ * The card inside the sheet is the only thing here that asks the network, and
+ * it is handed this rather than reaching for a shared instance. Before
+ * Increment 4 this file mocked the whole data/thebus barrel to replace a
+ * module-level `theBus`; passing a stub is both smaller and honest about the
+ * dependency, since there is no longer a client to reach for.
+ */
+const client: TheBusClient = { arrivals: jest.fn(async () => mockArrivalsResult) };
 
 const stop = (id: string, name: string, meters: number): StopWithDistance => ({
   stop_id: id,
@@ -48,6 +53,7 @@ const show = (selectedStop: StopWithDistance | null, onBack = jest.fn()) =>
         onToggleFavorite={jest.fn()}
         onOpenRoute={jest.fn()}
         onDetentChange={jest.fn()}
+        client={client}
       />
     </TestTheme>,
   );

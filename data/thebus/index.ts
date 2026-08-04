@@ -1,6 +1,3 @@
-import { appIdFromEnv, createTheBusClient } from './client';
-import { withCache } from './cache';
-
 export type {
   Arrival,
   ArrivalBoard,
@@ -10,22 +7,24 @@ export type {
   Coords,
 } from './types';
 export type { FetchLike, HttpResponse, TheBusClient, TheBusClientConfig } from './client';
-export { appIdFromEnv, createTheBusClient } from './client';
+export { createTheBusClient } from './client';
 export { parseArrivals } from './parse';
 export { withCache } from './cache';
 export { hawaiiDateTime, hawaiiTimestamp } from './time';
 
 /**
- * The app's one client. A single instance is what keeps the connection alive
- * across polls, and there is only ever one AppID to spend.
+ * There is no module-level client any more.
  *
- * Wrapped in `withCache`, which is only meaningful because the instance is
- * shared: two screens asking the same question at the same time cost one
- * request, and a remount inside thirty seconds costs none. From Increment 3 on
- * that is a real situation rather than a hypothetical one — the map's expanded
- * row asks exactly what the arrival board asks.
+ * Until Increment 4 this file ended with
+ * `export const theBus = withCache(createTheBusClient({ appId: appIdFromEnv() }))`
+ * — one instance, built at import time from an environment variable inlined
+ * into the bundle. That cannot survive a key the user owns and can replace:
+ * an AppID fixed at import is one the app can only change by relaunching.
  *
- * Screens take a client as an argument and default to this, so a test can
- * substitute its own without touching the network or the environment.
+ * `TheBusProvider` holds the key and rebuilds the client whenever it changes,
+ * which is also what gives each key its own `withCache` cache. Screens take a
+ * client rather than reaching for a shared one, and the components that mount
+ * them read it from `useTheBus()`.
  */
-export const theBus = withCache(createTheBusClient({ appId: appIdFromEnv() }));
+export { TheBusProvider, useTheBus } from './provider';
+export type { ApiKeyStorage, TheBus } from './provider';

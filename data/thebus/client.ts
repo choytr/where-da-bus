@@ -72,18 +72,6 @@ const ATTEMPTS = 2;
 
 const unreachable: ArrivalsResult = { ok: false, failure: { kind: 'unreachable' } };
 
-/**
- * Reads the AppID from the environment. `EXPO_PUBLIC_` means it is inlined
- * into the bundle at build time and is extractable from the `.ipa` — an
- * accepted, documented tradeoff, not an oversight.
- *
- * The quota it spends is per AppID and shared across every install, which is
- * why withCache exists. See the comparison spec dated 2026-08-02.
- */
-export function appIdFromEnv(): string {
-  return process.env.EXPO_PUBLIC_THEBUS_APP_ID ?? '';
-}
-
 function isJson(response: HttpResponse): boolean {
   return response.headers.get('content-type')?.includes('json') ?? false;
 }
@@ -119,8 +107,9 @@ export function createTheBusClient(config: TheBusClientConfig): TheBusClient {
     } catch {
       // Deliberately swallowed rather than rethrown or logged. The rejection
       // reason from `fetch` can contain the full request URL, and that URL
-      // carries the AppID — which is shared across every install and
-      // rate-limited as one, so it must not reach a log or a screen.
+      // carries the AppID — now the user's own credential, read out of the
+      // keychain, which makes keeping it out of logs and screens a stronger
+      // obligation than it was when every install shared one.
       return null;
     } finally {
       cancelTimeout();

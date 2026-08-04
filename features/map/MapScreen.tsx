@@ -33,6 +33,7 @@ import {
   loadFavorites,
   removeFavorite,
 } from '../../data/storage/favorites';
+import type { TheBusClient } from '../../data/thebus';
 import { useTheme } from '../../lib/theme';
 import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
 import type { Coords } from '../../lib/distance';
@@ -88,7 +89,16 @@ const DRIFT_FRACTION = 0.25;
 /** Long enough to read as travel rather than a cut, short enough not to wait. */
 const CAMERA_MS = 350;
 
-export function MapScreen() {
+export type MapScreenProps = {
+  /**
+   * Read from `useTheBus()` by the route and handed down, rather than read
+   * here. Keeping the screen a plain function of its props is what lets its
+   * test drive it with a stub client and no provider.
+   */
+  client: TheBusClient;
+};
+
+export function MapScreen({ client }: MapScreenProps) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -557,6 +567,7 @@ export function MapScreen() {
         onToggleFavorite={toggleFavorite}
         onOpenRoute={openRoute}
         onDetentChange={setDetent}
+        client={client}
       />
     </View>
   );

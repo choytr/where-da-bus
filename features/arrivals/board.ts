@@ -103,7 +103,7 @@ export type ArrivalBoardView = {
   readonly tick: Date;
 };
 
-export function useArrivalBoard(stopCode: string, client?: TheBusClient): ArrivalBoardView {
+export function useArrivalBoard(stopCode: string, client: TheBusClient): ArrivalBoardView {
   const { board, failure, fetchedAt, loading, refreshing, refresh } = useArrivals(stopCode, client);
   const tick = useNow(TICK_MS);
 

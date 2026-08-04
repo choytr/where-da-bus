@@ -33,8 +33,8 @@ export { NOTICES } from './board';
 
 export type ArrivalsScreenProps = {
   stopCode: string;
-  /** Injected by tests; the app uses the shared client. */
-  client?: TheBusClient;
+  /** Supplied by the route, which reads it from `useTheBus()`. */
+  client: TheBusClient;
 };
 
 export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {

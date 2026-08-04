@@ -7,6 +7,7 @@ import { ATTRIBUTION } from '../../../lib/legal';
 import { NOTICES } from '../../arrivals/board';
 import type { RouteSummary, StopWithDistance } from '../../../data/gtfs/types';
 import type { ArrivalsResult } from '../../../data/thebus/types';
+import type { TheBusClient } from '../../../data/thebus';
 import type { LocationState } from '../../stops/useLocation';
 import type { Coords } from '../../../lib/distance';
 
@@ -231,14 +232,19 @@ let mockArrivalsResult: ArrivalsResult = {
   board: { stopCode: '5', serverTime: new Date('2026-08-02T22:00:00Z'), arrivals: [] },
 };
 
-jest.mock('../../../data/thebus', () => ({
-  theBus: {
-    arrivals: jest.fn(async (stopCode: string, options?: { signal?: AbortSignal }) => {
-      mockArrivalCalls.push({ stopCode, signal: options?.signal });
-      return mockArrivalsResult;
-    }),
-  },
-}));
+/**
+ * Handed to the screen as a prop rather than mocked into the module graph.
+ * Before Increment 4 this replaced the whole data/thebus barrel to substitute a
+ * module-level `theBus`; that instance is gone, because the AppID belongs to
+ * the user and the client is rebuilt whenever it changes. The route reads the
+ * real one from `useTheBus()`.
+ */
+const client: TheBusClient = {
+  arrivals: jest.fn(async (stopCode: string, options?: { signal?: AbortSignal }) => {
+    mockArrivalCalls.push({ stopCode, signal: options?.signal });
+    return mockArrivalsResult;
+  }),
+};
 
 const stop = (id: string, name: string, meters: number): StopWithDistance => ({
   stop_id: id,
@@ -258,7 +264,7 @@ function show() {
   return render(
     <SafeAreaProvider initialMetrics={METRICS}>
       <TestTheme>
-        <MapScreen />
+        <MapScreen client={client} />
       </TestTheme>
     </SafeAreaProvider>,
   );

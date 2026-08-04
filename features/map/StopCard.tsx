@@ -36,8 +36,8 @@ export type StopCardProps = {
   onBack: () => void;
   onToggleFavorite: (stopId: string) => void;
   onPressRoute: (route: RouteSummary) => void;
-  /** Injected by tests; the app uses the shared client. */
-  client?: TheBusClient;
+  /** Handed down from MapScreen, which reads it from `useTheBus()`. */
+  client: TheBusClient;
 };
 
 export function StopCard({

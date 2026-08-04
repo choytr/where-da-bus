@@ -11,6 +11,7 @@ import { StopCard } from './StopCard';
 import { useTheme } from '../../lib/theme';
 import { ATTRIBUTION } from '../../lib/legal';
 import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
+import type { TheBusClient } from '../../data/thebus';
 import type { AnchoredStatus } from './useAnchoredStops';
 
 /**
@@ -65,6 +66,13 @@ export type StopSheetProps = {
   onToggleFavorite: (stopId: string) => void;
   onOpenRoute: (route: RouteSummary) => void;
   /**
+   * Forwarded to the card, which is the only thing here that asks the network.
+   * The sheet passes it through rather than reading `useTheBus()` itself so a
+   * test can drive the card with a stub client instead of a real one built
+   * from a real key.
+   */
+  client: TheBusClient;
+  /**
    * The detent the sheet has *settled* on, reported as it settles. The screen
    * needs it for two things it cannot ask the sheet about: whether raising to
    * medium would actually be a raise, and whether the map underneath is still
@@ -85,6 +93,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     onToggleFavorite,
     onOpenRoute,
     onDetentChange,
+    client,
   },
   ref,
 ) {
@@ -193,6 +202,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
           onBack={onBack}
           onToggleFavorite={onToggleFavorite}
           onPressRoute={onOpenRoute}
+          client={client}
         />
       )}
     </BottomSheet>

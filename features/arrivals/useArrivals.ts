@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { repeat } from '../../lib/schedule';
-import { theBus, type ArrivalBoard, type ArrivalsFailure, type TheBusClient } from '../../data/thebus';
+import type { ArrivalBoard, ArrivalsFailure, TheBusClient } from '../../data/thebus';
 
 /**
  * Live arrivals for one stop, polled.
@@ -46,7 +46,13 @@ export type ArrivalsView = {
   readonly refresh: () => void;
 };
 
-export function useArrivals(stopCode: string, client: TheBusClient = theBus): ArrivalsView {
+/**
+ * `client` is required and has no default. It used to default to a shared
+ * module-level instance, which meant a caller that forgot it silently got a
+ * client built from a bundled AppID. There is no such instance any more — the
+ * key belongs to the user — so the dependency is stated rather than assumed.
+ */
+export function useArrivals(stopCode: string, client: TheBusClient): ArrivalsView {
   const [board, setBoard] = useState<ArrivalBoard | null>(null);
   const [failure, setFailure] = useState<ArrivalsFailure | null>(null);
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
