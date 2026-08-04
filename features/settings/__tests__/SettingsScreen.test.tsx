@@ -1,4 +1,5 @@
 import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { SettingsScreen } from '../SettingsScreen';
@@ -24,6 +25,22 @@ const mockQueries = {
 
 jest.mock('../../../data/gtfs/db', () => ({
   useStopQueries: () => mockQueries,
+}));
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
+/**
+ * The refresh, doubled. Two reasons, and either alone would be enough: the real
+ * one reaches GitHub, and importing it at all pulls in `expo-sqlite`, which
+ * does not load off a device (`hooks.js` requires `expo-asset`, which npm nests
+ * under `node_modules/expo/`). What this suite owns is the *reporting* — that
+ * each outcome reaches the screen as something different — not the refresh.
+ */
+const mockRefresh = jest.fn(async () => ({ state: 'up-to-date' }));
+jest.mock('../../../data/gtfs/dataRefresh', () => ({
+  refreshStopData: (...args: unknown[]) => mockRefresh(...args),
 }));
 
 const METRICS: Metrics = {
@@ -82,11 +99,14 @@ function pressAlertButton(label: string) {
 }
 
 describe('SettingsScreen', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     feedEnd = null;
     saved = [];
     keyStorage = fakeKeyStorage(KEY);
     jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockRefresh.mockReset();
+    mockRefresh.mockResolvedValue({ state: 'up-to-date' });
+    await AsyncStorage.clear();
     storage = {
       load: async () => 'automatic',
       save: async (p) => {
@@ -166,6 +186,97 @@ describe('SettingsScreen', () => {
   it('says arrival times never come from the bundled copy', async () => {
     await show();
     screen.getByText(/Arrival times always come from the live service/);
+  });
+
+  describe('the stop-data refresh', () => {
+    const pointAt = (builtAt: string) =>
+      AsyncStorage.setItem(
+        'gtfs.current.v1',
+        JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt }),
+      );
+
+    it('says the data came with the app until something has been downloaded', async () => {
+      await show();
+      await waitFor(() => screen.getByText(/Using the copy that came with the app/));
+      screen.getByText(/Not checked for updates yet/);
+    });
+
+    it('names the published date of the build it is using', async () => {
+      await pointAt('2026-08-10T12:00:00.000Z');
+      await show();
+
+      await waitFor(() => screen.getByText(/Using the copy published 10 August 2026/));
+    });
+
+    it('says when it last looked', async () => {
+      await AsyncStorage.setItem('gtfs.lastChecked.v1', new Date(Date.now() - 7200_000).toISOString());
+      await show();
+
+      await waitFor(() => screen.getByText(/Last checked 2 hours ago/));
+    });
+
+    it('checks on demand and says when there was nothing newer', async () => {
+      await show();
+
+      await waitFor(() => screen.getByText('Check now'));
+      await fireEvent.press(screen.getByText('Check now'));
+
+      await waitFor(() => screen.getByText(/the latest published/));
+      expect(mockRefresh).toHaveBeenCalled();
+    });
+
+    /**
+     * Not "up to date". The pointer is read once at launch, so a build fetched
+     * now is opened next time the app starts — and saying otherwise would make
+     * the next launch's changed stop names look like a glitch.
+     */
+    it('says a downloaded build takes effect next launch, rather than now', async () => {
+      mockRefresh.mockResolvedValue({ state: 'installed', builtAt: '2026-08-10T12:00:00.000Z' });
+      await show();
+
+      await waitFor(() => screen.getByText('Check now'));
+      await fireEvent.press(screen.getByText('Check now'));
+
+      await waitFor(() => screen.getByText(/next time you open the app/));
+      expect(screen.queryByText(/the latest published/)).toBeNull();
+    });
+
+    /**
+     * §4, in the one place this screen can breach it: a refresh that could not
+     * reach the service must not read like one that succeeded, and it must say
+     * that nothing on the device changed — which is the question someone reads
+     * this to answer.
+     */
+    it('reports a failed check as a failure, and says the data is unchanged', async () => {
+      mockRefresh.mockRejectedValue(new Error('offline'));
+      await show();
+
+      await waitFor(() => screen.getByText('Check now'));
+      await fireEvent.press(screen.getByText('Check now'));
+
+      await waitFor(() => screen.getByText(/Could not reach the stop-data service/));
+      screen.getByText(/data on this device is unchanged/);
+      expect(screen.queryByText(/the latest published/)).toBeNull();
+    });
+
+    it('disables the control while a check is running', async () => {
+      let release = () => {};
+      mockRefresh.mockImplementation(
+        () => new Promise((resolve) => {
+          release = () => resolve({ state: 'up-to-date' });
+        }),
+      );
+      await show();
+
+      await waitFor(() => screen.getByText('Check now'));
+      await fireEvent.press(screen.getByText('Check now'));
+
+      const button = await waitFor(() => screen.getByText('Checking…'));
+      expect(button).toBeTruthy();
+
+      release();
+      await waitFor(() => screen.getByText('Check now'));
+    });
   });
 
   it('masks the stored key', async () => {

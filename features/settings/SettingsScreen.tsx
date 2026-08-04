@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Linking,
@@ -12,7 +12,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, THEME_PREFERENCES, type ThemePreference } from '../../lib/theme';
 import { useStopQueries } from '../../data/gtfs/db';
-import { feedValidity, formatFeedDate } from '../../data/gtfs/feedValidity';
+import { feedValidity, formatFeedDate, timeAgo } from '../../data/gtfs/feedValidity';
+import { refreshStopData } from '../../data/gtfs/dataRefresh';
+import { loadCurrentDatabase, loadLastChecked } from '../../data/storage/database';
 import { ATTRIBUTION, DISCLAIMER } from '../../lib/legal';
 import { useTheBus } from '../../data/thebus';
 import { REGISTRATION_URL } from '../onboarding/KeyGate';
@@ -206,6 +208,141 @@ function ApiKeySection() {
   );
 }
 
+/**
+ * What a **Check now** can end in. Deliberately four states rather than three:
+ * "installed" is not "up to date", because the build it just fetched is not the
+ * one on screen — the pointer is read once at launch, so a new generation is
+ * opened next time the app starts. Saying "up to date" here would be a small
+ * lie that makes the next launch's changed stop names look like a glitch.
+ */
+type CheckState =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'up-to-date' }
+  | { state: 'installed' }
+  | { state: 'failed' };
+
+const CHECK_MESSAGE: Record<Exclude<CheckState['state'], 'idle' | 'checking'>, string> = {
+  'up-to-date': 'Your stop data is the latest published.',
+  installed:
+    'New stop data downloaded. It will be used the next time you open the app.',
+  // Names what did *not* happen, because that is the question someone reads
+  // this to answer. A refresh that failed changes nothing, and the alternative
+  // wording — "stop data could not be updated" — reads like a fault in the data
+  // on the device rather than in reaching the service.
+  failed: 'Could not reach the stop-data service. The data on this device is unchanged.',
+};
+
+/**
+ * Where the stop data came from and how fresh it is, plus the one control that
+ * does something about it.
+ *
+ * The refresh runs on its own at launch, so this section is mostly a report.
+ * **Check now** exists because a background task nobody can see is
+ * indistinguishable from one that is not running — the same reason the arrival
+ * board shows its age at all times rather than only when something is wrong.
+ */
+function StopDataSection({ feedEnd }: { feedEnd: string | null }) {
+  const { palette } = useTheme();
+  const [builtAt, setBuiltAt] = useState<string | null>(null);
+  const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  const [check, setCheck] = useState<CheckState>({ state: 'idle' });
+
+  const readState = useCallback(async () => {
+    const [current, last] = await Promise.all([loadCurrentDatabase(), loadLastChecked()]);
+    return { builtAt: current?.builtAt ?? null, checkedAt: last };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    readState()
+      .then((state) => {
+        if (cancelled) return;
+        setBuiltAt(state.builtAt);
+        setCheckedAt(state.checkedAt);
+      })
+      // Both reads already swallow their own failures and answer null, which
+      // renders as the bundled-data wording — true of a device that has never
+      // refreshed, and the honest thing to say when we cannot tell.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [readState]);
+
+  const checkNow = async () => {
+    setCheck({ state: 'checking' });
+    let outcome: CheckState;
+    try {
+      const result = await refreshStopData();
+      outcome = { state: result.state === 'installed' ? 'installed' : 'up-to-date' };
+    } catch {
+      outcome = { state: 'failed' };
+    }
+    // Re-read afterwards rather than deriving from the result: the refresh
+    // writes "last checked" on both paths, and this is also what picks up a
+    // check the launch effect ran and this screen coalesced with.
+    const state = await readState();
+    setBuiltAt(state.builtAt);
+    setCheckedAt(state.checkedAt);
+    setCheck(outcome);
+  };
+
+  const busy = check.state === 'checking';
+  const group = [styles.group, { backgroundColor: palette.section, borderColor: palette.border }];
+  const divider = { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border };
+  const checkedOn = checkedAt === null ? null : new Date(checkedAt);
+  const builtOn = builtAt === null ? null : new Date(builtAt);
+
+  return (
+    <>
+      <Text style={[styles.sectionHeader, { color: palette.muted }]}>STOP DATA</Text>
+      <View style={group}>
+        <Text style={[styles.body, { color: palette.text }]}>{feedLine(feedEnd, new Date())}</Text>
+
+        <View style={divider}>
+          <Text style={[styles.body, { color: palette.muted }]}>
+            {builtOn === null || Number.isNaN(builtOn.getTime())
+              ? 'Using the copy that came with the app.'
+              : `Using the copy published ${formatFeedDate(builtOn)}.`}
+            {'\n'}
+            {checkedOn === null || Number.isNaN(checkedOn.getTime())
+              ? 'Not checked for updates yet.'
+              : `Last checked ${timeAgo(checkedOn, new Date())}.`}
+          </Text>
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy, busy }}
+          disabled={busy}
+          onPress={() => void checkNow()}
+          style={[styles.option, divider, busy && styles.dimmed]}
+        >
+          <Text style={[styles.optionLabel, { color: palette.text }]}>
+            {busy ? 'Checking…' : 'Check now'}
+          </Text>
+        </Pressable>
+      </View>
+
+      {check.state === 'idle' || busy ? null : (
+        <Text
+          style={[
+            styles.footnote,
+            { color: check.state === 'failed' ? palette.warning : palette.muted },
+          ]}
+        >
+          {CHECK_MESSAGE[check.state]}
+        </Text>
+      )}
+
+      <Text style={[styles.footnote, { color: palette.muted }]}>
+        Arrival times always come from the live service and are never read from this copy.
+      </Text>
+    </>
+  );
+}
+
 export function SettingsScreen() {
   const { palette, preference, setPreference } = useTheme();
   const { feedEndDate } = useStopQueries();
@@ -275,13 +412,7 @@ export function SettingsScreen() {
 
         <ApiKeySection />
 
-        <Text style={[styles.sectionHeader, { color: palette.muted }]}>STOP DATA</Text>
-        <View style={group}>
-          <Text style={[styles.body, { color: palette.text }]}>{feedLine(feedEnd, new Date())}</Text>
-        </View>
-        <Text style={[styles.footnote, { color: palette.muted }]}>
-          Arrival times always come from the live service and are never read from this copy.
-        </Text>
+        <StopDataSection feedEnd={feedEnd} />
 
         <Text style={[styles.sectionHeader, { color: palette.muted }]}>ABOUT</Text>
         <View style={group}>

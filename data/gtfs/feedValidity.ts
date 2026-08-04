@@ -88,3 +88,26 @@ export function feedValidity(feedEndDate: string | null, now: Date): FeedValidit
 export function formatFeedDate(date: Date): string {
   return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 }
+
+/**
+ * How long ago something happened, in words.
+ *
+ * Coarser than `ageLabel` on the arrival board, and deliberately so: that one
+ * measures seconds because a rider is deciding whether to run for a bus, and
+ * this one measures days because a weekly refresh that last succeeded three
+ * days ago is perfectly healthy. Rounding down throughout, so it never claims
+ * something happened more recently than it did.
+ */
+export function timeAgo(then: Date, now: Date): string {
+  const seconds = Math.max(0, Math.floor((now.getTime() - then.getTime()) / 1000));
+  if (seconds < 60) return 'just now';
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+
+  const days = Math.floor(hours / 24);
+  return days === 1 ? '1 day ago' : `${days} days ago`;
+}

@@ -1,4 +1,4 @@
-import { feedValidity, formatFeedDate, parseFeedDate } from '../feedValidity';
+import { feedValidity, formatFeedDate, parseFeedDate, timeAgo } from '../feedValidity';
 
 /**
  * Every clock here is written out in full. The bundled feed expires on a real
@@ -82,5 +82,45 @@ describe('formatFeedDate', () => {
     expect(formatFeedDate(new Date(2026, 7, 22))).toBe('22 August 2026');
     expect(formatFeedDate(new Date(2026, 0, 1))).toBe('1 January 2026');
     expect(formatFeedDate(new Date(2026, 11, 31))).toBe('31 December 2026');
+  });
+});
+
+describe('timeAgo', () => {
+  const now = new Date('2026-08-11T12:00:00.000Z');
+  const ago = (ms: number) => timeAgo(new Date(now.getTime() - ms), now);
+
+  const SECOND = 1000;
+  const MINUTE = 60 * SECOND;
+  const HOUR = 60 * MINUTE;
+  const DAY = 24 * HOUR;
+
+  it('reads in the units that matter for a weekly refresh', () => {
+    expect(ago(0)).toBe('just now');
+    expect(ago(59 * SECOND)).toBe('just now');
+    expect(ago(MINUTE)).toBe('1 minute ago');
+    expect(ago(45 * MINUTE)).toBe('45 minutes ago');
+    expect(ago(HOUR)).toBe('1 hour ago');
+    expect(ago(5 * HOUR)).toBe('5 hours ago');
+    expect(ago(DAY)).toBe('1 day ago');
+    expect(ago(9 * DAY)).toBe('9 days ago');
+  });
+
+  /**
+   * Rounding down throughout, so it never claims something happened more
+   * recently than it did — the same honesty rule the arrival board's age line
+   * follows. A check that last succeeded 47 hours ago is "1 day ago", not two.
+   */
+  it('rounds down at every boundary', () => {
+    expect(ago(119 * SECOND)).toBe('1 minute ago');
+    expect(ago(2 * HOUR - SECOND)).toBe('1 hour ago');
+    expect(ago(2 * DAY - SECOND)).toBe('1 day ago');
+  });
+
+  /**
+   * A device whose clock is behind the timestamp it stored — a manual clock
+   * change, or an NTP correction — must not render "checked in -3 minutes".
+   */
+  it('never reads as the future when the clock has moved backwards', () => {
+    expect(ago(-HOUR)).toBe('just now');
   });
 });
