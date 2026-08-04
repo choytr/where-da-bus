@@ -1,10 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, THEME_PREFERENCES, type ThemePreference } from '../../lib/theme';
 import { useStopQueries } from '../../data/gtfs/db';
 import { feedValidity, formatFeedDate } from '../../data/gtfs/feedValidity';
 import { ATTRIBUTION, DISCLAIMER } from '../../lib/legal';
+import { useTheBus } from '../../data/thebus';
+import { REGISTRATION_URL } from '../onboarding/KeyGate';
 
 /**
  * Appearance, what the bundled data says about its own age, and the small
@@ -39,6 +50,160 @@ function feedLine(feedEnd: string | null, now: Date): string {
     case 'unknown':
       return 'This copy does not state how long it was published for.';
   }
+}
+
+/**
+ * Enough of the key to tell one from another, and no more.
+ *
+ * The last four characters are what someone checks against the email the key
+ * arrived in. The rest is a credential and does not need to be on a screen in
+ * a bus shelter — the reveal toggle is there for when it does.
+ *
+ * A fixed number of bullets rather than one per character, so the mask does not
+ * quietly report the key's length.
+ */
+function maskKey(key: string): string {
+  return `${'•'.repeat(12)}${key.slice(-4)}`;
+}
+
+/**
+ * The key section. Replacing and removing both live here because this is where
+ * someone arrives after being told "your API key was rejected" by the arrival
+ * board — the two things they might do about it should be in the same place as
+ * the thing that told them.
+ */
+function ApiKeySection() {
+  const { palette } = useTheme();
+  const { key, setKey, clearKey } = useTheBus();
+  const [revealed, setRevealed] = useState(false);
+  const [replacement, setReplacement] = useState('');
+  const [failed, setFailed] = useState(false);
+
+  const group = [styles.group, { backgroundColor: palette.section, borderColor: palette.border }];
+  /** The hairline between rows inside a group, matching the appearance list. */
+  const divider = { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.border };
+  const trimmed = replacement.trim();
+
+  const saveReplacement = async () => {
+    if (trimmed === '') return;
+    setFailed(false);
+    try {
+      await setKey(trimmed);
+      setReplacement('');
+      setRevealed(false);
+    } catch {
+      setFailed(true);
+    }
+  };
+
+  /**
+   * Removing the key drops the user back to onboarding, because the gate is
+   * above the router and there is nothing behind it without a key. That is a
+   * long way to go on a mis-tap, so it asks first.
+   */
+  const confirmRemove = () => {
+    Alert.alert(
+      'Remove your API key?',
+      'The app cannot show arrivals without a key, and you will be asked for one again.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            void clearKey();
+          },
+        },
+      ],
+    );
+  };
+
+  return (
+    <>
+      <Text style={[styles.sectionHeader, { color: palette.muted }]}>API KEY</Text>
+      <View style={group}>
+        <View style={styles.keyRow}>
+          <Text
+            style={[styles.keyValue, { color: palette.text }]}
+            // Selectable only once revealed, so copying gets the key rather
+            // than a string of bullets. `key` is non-null in practice — the
+            // gate is the only way onto this screen — and the branch is here
+            // so the type does not have to be widened to say otherwise.
+            selectable={revealed}
+          >
+            {key === null ? '' : revealed ? key : maskKey(key)}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={revealed ? 'Hide key' : 'Show key'}
+            onPress={() => setRevealed((was) => !was)}
+            style={styles.reveal}
+          >
+            <Text style={[styles.revealLabel, { color: palette.text }]}>
+              {revealed ? 'Hide' : 'Show'}
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={divider}>
+          <TextInput
+            accessibilityLabel="Replacement API key"
+            placeholder="Paste a new key to replace it"
+            placeholderTextColor={palette.muted}
+            value={replacement}
+            onChangeText={(next) => {
+              setReplacement(next);
+              setFailed(false);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="off"
+            spellCheck={false}
+            onSubmitEditing={() => void saveReplacement()}
+            returnKeyType="done"
+            style={[styles.input, { color: palette.text }]}
+          />
+        </View>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ disabled: trimmed === '' }}
+          disabled={trimmed === ''}
+          onPress={() => void saveReplacement()}
+          style={[styles.option, divider, trimmed === '' && styles.dimmed]}
+        >
+          <Text style={[styles.optionLabel, { color: palette.text }]}>Save key</Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={confirmRemove}
+          style={[styles.option, divider]}
+        >
+          <Text style={[styles.optionLabel, { color: palette.warning }]}>Remove key</Text>
+        </Pressable>
+      </View>
+
+      {failed ? (
+        <Text style={[styles.footnote, { color: palette.warning }]}>
+          That key could not be saved on this device. Please try again.
+        </Text>
+      ) : null}
+
+      <Text style={[styles.footnote, { color: palette.muted }]}>
+        Keys are deleted by the transit service after six months without use. If arrivals stop
+        loading, register again and paste the new key here.
+      </Text>
+      <Pressable
+        accessibilityRole="link"
+        onPress={() => {
+          void Linking.openURL(REGISTRATION_URL).catch(() => {});
+        }}
+      >
+        <Text style={[styles.footnote, { color: palette.text }]}>{REGISTRATION_URL}</Text>
+      </Pressable>
+    </>
+  );
 }
 
 export function SettingsScreen() {
@@ -108,6 +273,8 @@ export function SettingsScreen() {
           Automatic follows your phone&rsquo;s appearance.
         </Text>
 
+        <ApiKeySection />
+
         <Text style={[styles.sectionHeader, { color: palette.muted }]}>STOP DATA</Text>
         <View style={group}>
           <Text style={[styles.body, { color: palette.text }]}>{feedLine(feedEnd, new Date())}</Text>
@@ -151,4 +318,16 @@ const styles = StyleSheet.create({
   check: { fontSize: 16, fontWeight: '700' },
   body: { fontSize: 14, lineHeight: 20, padding: 14 },
   footnote: { fontSize: 12, lineHeight: 17, marginLeft: 4 },
+  keyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: 14,
+    minHeight: 48,
+  },
+  keyValue: { fontSize: 15, fontVariant: ['tabular-nums'], flexShrink: 1 },
+  reveal: { paddingHorizontal: 14, paddingVertical: 14, minHeight: 48, justifyContent: 'center' },
+  revealLabel: { fontSize: 15, fontWeight: '600' },
+  input: { fontSize: 16, padding: 14, minHeight: 48 },
+  dimmed: { opacity: 0.5 },
 });

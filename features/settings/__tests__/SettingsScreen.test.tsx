@@ -1,8 +1,13 @@
+import { Alert } from 'react-native';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { SettingsScreen } from '../SettingsScreen';
 import { ThemeProvider, type ThemePreference, type ThemeStorage } from '../../../lib/theme';
 import { ATTRIBUTION, DISCLAIMER } from '../../../lib/legal';
+import { TheBusProvider, type ApiKeyStorage } from '../../../data/thebus';
+
+const KEY = '3f7c1e92-8a4b-4d16-9f03-c5e28b71da40';
+const OTHER = '9b2d4f60-1c3a-4e57-8d09-2a6f4b8c1e35';
 
 let feedEnd: string | null = null;
 
@@ -33,21 +38,55 @@ const METRICS: Metrics = {
  */
 let saved: ThemePreference[] = [];
 let storage: ThemeStorage;
+let keyStorage: ApiKeyStorage & { stored: () => string | null };
+
+function fakeKeyStorage(initial: string | null): ApiKeyStorage & {
+  stored: () => string | null;
+} {
+  let value = initial;
+  return {
+    load: async () => value,
+    save: async (next) => {
+      value = next;
+    },
+    clear: async () => {
+      value = null;
+    },
+    stored: () => value,
+  };
+}
 
 function show() {
   return render(
     <SafeAreaProvider initialMetrics={METRICS}>
       <ThemeProvider storage={storage}>
-        <SettingsScreen />
+        <TheBusProvider storage={keyStorage}>
+          <SettingsScreen />
+        </TheBusProvider>
       </ThemeProvider>
     </SafeAreaProvider>,
   );
+}
+
+/**
+ * Confirmation runs through `Alert.alert`, which is a native call Jest cannot
+ * present. This captures the buttons it was given so a test can press the
+ * destructive one, which is the only way to reach the clear from here.
+ */
+function pressAlertButton(label: string) {
+  const alert = jest.mocked(Alert.alert);
+  const [[, , buttons]] = alert.mock.calls.slice(-1);
+  const button = buttons?.find((b) => b.text === label);
+  if (button === undefined) throw new Error(`no "${label}" button in the confirmation`);
+  button.onPress?.();
 }
 
 describe('SettingsScreen', () => {
   beforeEach(() => {
     feedEnd = null;
     saved = [];
+    keyStorage = fakeKeyStorage(KEY);
+    jest.spyOn(Alert, 'alert').mockImplementation(() => {});
     storage = {
       load: async () => 'automatic',
       save: async (p) => {
@@ -127,5 +166,81 @@ describe('SettingsScreen', () => {
   it('says arrival times never come from the bundled copy', async () => {
     await show();
     screen.getByText(/Arrival times always come from the live service/);
+  });
+
+  it('masks the stored key', async () => {
+    await show();
+
+    await waitFor(() => screen.getByText(/da40$/));
+    // The whole key is a credential. Enough of it shows to tell one key from
+    // another; the rest does not go on a screen someone can be shoulder-surfing.
+    expect(screen.queryByText(KEY)).toBeNull();
+  });
+
+  it('reveals the key on request', async () => {
+    await show();
+
+    await waitFor(() => screen.getByLabelText('Show key'));
+    await fireEvent.press(screen.getByLabelText('Show key'));
+
+    await screen.findByText(KEY);
+  });
+
+  it('hides the key again', async () => {
+    await show();
+
+    await waitFor(() => screen.getByLabelText('Show key'));
+    await fireEvent.press(screen.getByLabelText('Show key'));
+    await fireEvent.press(screen.getByLabelText('Hide key'));
+
+    expect(screen.queryByText(KEY)).toBeNull();
+  });
+
+  it('replaces the key with a pasted one', async () => {
+    await show();
+
+    await fireEvent.changeText(await screen.findByLabelText('Replacement API key'), OTHER);
+    await fireEvent.press(screen.getByText('Save key'));
+
+    await waitFor(() => expect(keyStorage.stored()).toBe(OTHER));
+  });
+
+  it('trims a pasted replacement', async () => {
+    await show();
+
+    await fireEvent.changeText(await screen.findByLabelText('Replacement API key'), `  ${OTHER}\n`);
+    await fireEvent.press(screen.getByText('Save key'));
+
+    await waitFor(() => expect(keyStorage.stored()).toBe(OTHER));
+  });
+
+  it('asks before clearing the key, rather than clearing it outright', async () => {
+    await show();
+
+    await fireEvent.press(await screen.findByText('Remove key'));
+
+    expect(Alert.alert).toHaveBeenCalled();
+    // Nothing gone yet. Clearing drops the user back to onboarding, so it is
+    // not something a mis-tap should be able to do.
+    expect(keyStorage.stored()).toBe(KEY);
+  });
+
+  it('clears the key once the confirmation is accepted', async () => {
+    await show();
+
+    await fireEvent.press(await screen.findByText('Remove key'));
+    pressAlertButton('Remove');
+
+    await waitFor(() => expect(keyStorage.stored()).toBeNull());
+  });
+
+  it('states the six-month inactivity deletion', async () => {
+    await show();
+    await screen.findByText(/six months/i);
+  });
+
+  it('says where to register a replacement', async () => {
+    await show();
+    await screen.findByText('https://api.thebus.org/NewAccount/');
   });
 });
