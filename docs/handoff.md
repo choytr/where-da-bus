@@ -8,37 +8,64 @@ up. Update it in place rather than adding a dated section each time.
 When an increment ships, its write-up in this file collapses to a pointer.
 
 Last updated: **2026-08-04**. Increments 1–5 are shipped, device-verified and
-merged. `main` and `dev` are level, working tree clean, CI green.
+merged. Increment 6 is **specced and planned, with no code written yet**.
 
 ---
 
-## Start here: Truman wants a grilling session for Increment 6
+## Start here: execute the Increment 6 plan
 
-He asked for it by name on 2026-08-04, before anything about Increment 6 had
-been decided. **Invoke the `grilling` skill before writing a spec, a plan, or a
-line of code.**
+The grilling happened on 2026-08-04 and is closed. Everything it settled is
+written down — **do not re-open it, and do not re-grill.**
 
-He is asking to have *his own* thinking stress-tested, not to be handed a
-proposal — so arriving with a recommendation and defending it pre-empts the
-thing he asked for. Attack premises, not details.
+1. `docs/superpowers/specs/2026-08-04-increment-6-correctness-and-ui.md`
+2. `docs/superpowers/plans/2026-08-04-increment-6-correctness.md` — seven
+   tasks, contract level
+3. `docs/superpowers/logs/2026-08-04-increment-6-ui.md` — 32 findings from the
+   first screenshot round
 
-This is a pattern, not a one-off. He approved Increment 4's plan only
-"tentatively" and asked for an architecture conversation first; it reversed four
-decisions and killed a fifth, including restoring the bundled database as a
-floor — which removed most of Increment 5's hard problems before they were
-built. The grilling is where this project's design work actually happens.
+**Increment 6 is two halves, in this order.** Six known-broken things from
+`docs/backlog.md` first, then a UI pass driven by screenshots from Truman's
+device. Start at Task 1 and work down; only Task 3 has ordering constraints, and
+they are stated in the plan.
 
-**Candidates, as raw material and explicitly not a recommendation:** route
-polylines and live vehicle positions (deferred through Increments 3–5);
-`docs/backlog.md`; or the endgame in Increment 5's spec — the app building the
-database itself, removing the GitHub dependency. His condition for that last one
-was "once we've proven that the app can work entirely without my constant
-maintenance," which the weekly cron now has to demonstrate over a few weeks.
+**Live vehicles are a later increment**, and route polylines were cut from that
+work entirely. Only new chrome at the map's *edges* is deferred with them — the
+sheet, card, pins and callouts are in scope now.
+
+### Three things about the UI half that will not be obvious
+
+**It has no stopping rule. Truman calls it done.** He was shown the consequence
+— the increment cannot close itself, so the boundary review has nothing to fire
+against — and chose it knowingly. **Commit once per surface**, so the eventual
+review walks commits rather than one undifferentiated diff.
+
+**It is collaborative. He edits files himself between messages.** `git pull
+--rebase` and `git status` before every editing session, and never write over a
+file carrying changes that are not ours. His code gets reviewed like anyone's,
+and the fix is left to him unless he asks.
+
+**Screenshots live in `~/wheredabus-screenshots/<date>/`, outside this
+repository**, because the repo is public and the map shots place him closely
+enough to locate. They are not committed and not gitignored-in-place; they
+simply do not live here. Transcribe findings into the UI log as soon as they
+arrive — **images do not survive a context compaction and text does.**
+
+### What he owes, and what he does not
+
+Nothing in the correctness half needs him. When he is next free, the useful
+things are: **arrivals scrolled to the very bottom** (settles whether the list
+clears the home indicator — do not reason about that one from source, see the
+backlog), the **Task 7 geocoder probe** results, and the remaining unseen states
+(empty arrivals, unauthorized, denied location, no search results, `KeyGate`).
+
+**Light theme is deprioritised** — his words, 2026-08-04: "honestly light is not
+that important rn. They looked fine when I last checked."
 
 ## Where things stand
 
-`main` and `dev` are both at the same commit. **388 Jest, 73 `node --test`,
-clean typecheck, clean `npm ci`.**
+`dev` is one commit ahead of `main` — `5c56192`, the spec, plan and UI log. No
+source has been touched. **388 Jest, 73 `node --test`, clean typecheck, clean
+`npm ci`.**
 
 **The one thing genuinely unproven: nothing has run unattended yet.** Every
 `gtfs-data.yml` run so far was hand-started. The first scheduled firing is
@@ -74,6 +101,7 @@ Read the plan for the increment you care about rather than the diff.
 | 3 | The map, and a UX pass over its bottom sheet |
 | 4 | Each user brings their own AppID; no secret in the build |
 | 5 | The data refreshes itself, from a weekly Action |
+| 6 | *In progress* — six correctness fixes, then a UI pass |
 
 ## Working agreement with Truman
 
@@ -135,6 +163,13 @@ commit messages:
 - **Is there a GTFS-Realtime feed that removes the need for a key?** Yes, and
   no — it exists, served by Swiftly, and needs a Swiftly key instead. Full
   finding in Increment 4's spec under *The realtime feed question*.
+- **Can the app search an address and show the stops around it?** Yes, with no
+  new dependency. `Location.geocodeAsync` is in `expo-location`, already a
+  dependency, verified against the v54 docs — no key, no native module. The
+  anchor machinery it needs already exists (`useAnchoredStops`'s `setAnchor`).
+  **Places are not addresses**: `CLGeocoder` resolves street addresses, while
+  point-of-interest search is `MKLocalSearch`, which `react-native-maps` does
+  not expose. Truman accepted address-only. Detail in Increment 6's spec.
 
 `docs/superpowers/specs/2026-08-02-thebuslive-comparison.md` reads an
 independent unofficial app against ours. Both of its actionable findings are
@@ -142,11 +177,12 @@ built. Read it before touching the vehicle endpoint or the map.
 
 ## Suggested skills
 
-- **`grilling`, first** — see the top of this file.
-- **`superpowers:brainstorming`, then `writing-plans`** — once the grilling has
-  settled what Increment 6 is. The order this project converged on is
-  grill → spec → contract-level plan → execute inline → review once at the
-  boundary → device round → merge.
+- **Not `grilling`.** Increment 6's grilling is done and its decisions are
+  written down. Grill again at the *next* increment boundary, not now.
+- **`superpowers:executing-plans`** — there is a written plan to work through.
+  The order this project converged on is grill → spec → contract-level plan →
+  execute inline → review once at the boundary → device round → merge, and the
+  first three are complete.
 - **`superpowers:systematic-debugging`** — whenever the app's *appearance* comes
   up, for the reason in the lessons above.
 - **Not `dispatching-parallel-agents` or `subagent-driven-development`.**
