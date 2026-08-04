@@ -58,9 +58,10 @@ account.** Consequences that are not obvious from reading the code:
   `.ipa` path is slow and reserved for real device installs. See
   `docs/sideloading.md`.
 - **Prefer modules Expo Go already bundles.** Adding a native module outside that
-  set forces every subsequent change through the slow CI loop. This is why maps
-  are deferred to Increment 3 rather than being built early. Adding such a
-  dependency is a real architectural decision, not a routine install.
+  set forces every subsequent change through the slow CI loop, so it is a real
+  architectural decision rather than a routine install. It is why the map waited
+  until Increment 3, and why `@gorhom/bottom-sheet` was acceptable when it came
+  (pure JS over reanimated and gesture-handler, no native module of its own).
 - **The SDK is pinned to 54 by Expo Go, not by preference.** The current App
   Store build of Expo Go on iOS 18 supports SDK 54 at most, so the project was
   downgraded from 57 on 2026-08-01 to keep the fast loop working at all. React
@@ -80,29 +81,32 @@ account.** Consequences that are not obvious from reading the code:
 
 ## Architecture
 
-What exists after Increment 2. Routing is **expo-router**: `package.json`'s
-`main` is `expo-router/entry`, and every file under `app/` is a URL.
+Current as of Increment 5. Routing is **expo-router**: `package.json`'s `main`
+is `expo-router/entry`, and every file under `app/` is a URL.
 
 ```
-app/_layout.tsx       ten lines: a Stack inside AppShell
-app/index.tsx         -> HomeScreen
-app/stop/[code].tsx   -> ArrivalsScreen        (/stop/596)
-app/route/[id].tsx    -> RouteScreen           (/route/1L)
-AppShell.tsx          SafeAreaProvider + key gate + database gate; takes children
-features/stops/       HomeScreen, StopRow, useLocation — nearby, search, favorites
-features/arrivals/    ArrivalsScreen, ArrivalRow, useArrivals, useNow, format.ts
-features/routes/      RouteScreen — ordered stop list, entirely offline
-features/onboarding/  KeyGate — no key, no app
-data/gtfs/            sql.ts (queries), db.ts (typed hooks), feedValidity.ts
-data/thebus/          TheBusClient: client.ts, parse.ts, time.ts, types.ts,
-                      provider.tsx (holds the user's key, builds the client)
-data/storage/         favorites + theme over AsyncStorage; apiKey.ts over the keychain
-lib/distance.ts       haversine metres between two coordinates
-lib/schedule.ts       timers that return a canceller, not a handle (see below)
-lib/legal.ts          the required attribution and disclaimer
-scripts/build-gtfs/   Node build: the GTFS feed -> assets/db/gtfs.db
-scripts/pdf-text.mjs  reads docs/api/*.pdf (see below)
-assets/db/gtfs.db     the built asset, committed
+app/_layout.tsx        a Stack inside AppShell
+app/(tabs)/            index -> MapScreen, stops -> StopsScreen, settings
+app/stop/[code].tsx    -> ArrivalsScreen        (/stop/596)
+app/route/[id].tsx     -> RouteScreen           (/route/1L)
+AppShell.tsx           safe-area + gesture + theme + key gate + database gate
+features/map/          MapScreen, StopSheet, StopCard, region.ts, useAnchoredStops
+features/stops/        StopsScreen, StopRow, useLocation — nearby, search, favorites
+features/arrivals/     ArrivalsScreen, ArrivalRow, BoardHeader, board.ts, format.ts
+features/routes/       RouteScreen — ordered stop list, entirely offline
+features/settings/     appearance, the API key, stop-data freshness
+features/onboarding/   KeyGate — no key, no app
+data/gtfs/             sql.ts (queries + SCHEMA_VERSION + the floor), db.ts (hooks),
+                       refresh.ts / dataRefresh.ts / files.ts (self-refresh),
+                       feedValidity.ts
+data/thebus/           TheBusClient: client.ts, parse.ts, time.ts, cache.ts,
+                       provider.tsx (holds the user's key, builds the client)
+data/storage/          favorites, theme, database pointer (AsyncStorage);
+                       apiKey.ts (keychain)
+lib/                   distance, legal, theme.tsx, schedule.ts (see below)
+scripts/build-gtfs/    the GTFS feed -> assets/db/gtfs.db, plus publish.mjs
+scripts/pdf-text.mjs   reads docs/api/*.pdf (see below)
+assets/db/gtfs.db      the bundled floor, committed
 ```
 
 **Screens live under `features/`, not under `app/`.** Every file in `app/` is a
@@ -110,17 +114,18 @@ route, so a `__tests__` directory there would become navigable. Route files are
 three lines that read a param and render a screen.
 
 **`AppShell` is not `_layout.tsx`, deliberately.** It takes `children`, so
-`__tests__/App.test.tsx` can drive the three database-open outcomes without
-standing up a router. See the safe-area section below for why the provider
-stays there rather than being left to the one expo-router mounts.
+`__tests__/App.test.tsx` can drive the database-open outcomes without standing
+up a router. See the safe-area section below for why the provider stays there
+rather than being left to the one expo-router mounts.
 
 ## Where things are written down
 
 | File | What it holds |
 |---|---|
-| `docs/superpowers/specs/2026-07-29-wheredabus-design.md` | scope and sequencing — the source of truth |
+| `docs/handoff.md` | where the project is now, and what the next session picks up |
+| `docs/superpowers/specs/2026-07-29-wheredabus-design.md` | scope and sequencing |
 | `docs/api/README.md` | the live API, verified against the vendor PDFs |
-| `docs/backlog.md` | known defects, triaged and deferred, from Increment 1's reviews |
+| `docs/backlog.md` | known defects, triaged and deferred |
 | `docs/sideloading.md` | getting a build onto a physical iPhone |
 
 **The API PDFs need `scripts/pdf-text.mjs` to read.** `Read` renders PDFs via
@@ -129,13 +134,11 @@ stays there rather than being left to the one expo-router mounts.
 extractor returns *zero bytes* and they look like scanned images. They are not.
 `node scripts/pdf-text.mjs docs/api/arrivalsJSON.pdf` decodes them properly.
 
-Increment 3 adds the map. `data/thebus/` and `features/arrivals/` now exist.
-
 **`data/gtfs/package.json` is three bytes and load-bearing.** It holds
 `{"type":"module"}` so Node treats `data/gtfs/sql.ts` as ESM when
-`data/gtfs/__tests__/sql.test.mjs` imports it — the root `package.json`
-declares no `type`. It looks like cruft; deleting it breaks
-`npm run test:scripts`.
+`data/gtfs/__tests__/sql.test.mjs`, `scripts/build-gtfs/emit.mjs` and
+`publish.mjs` import it — the root `package.json` declares no `type`. It looks
+like cruft; deleting it breaks `npm run test:scripts` *and* the GTFS build.
 
 Three boundaries carry real weight:
 
@@ -165,18 +168,38 @@ imply. `stop_times.txt` itself is deliberately never an asset, being tens of MB
 answering a question the live arrivals endpoint already answers.
 
 The feed states the last day it is valid through, the build carries that into
-the asset's `meta` table, and the home screen says so once that day is past.
-Refreshing the feed on-device is Increment 3; until then a rebuild is
-`npm run build:gtfs` plus a commit of the regenerated asset.
+the asset's `meta` table, and Settings says so once that day is past.
 
-## How work gets done here, from Increment 2 on
+**The app refreshes this itself, and nobody rebuilds the asset by hand.** A
+weekly Action (`.github/workflows/gtfs-data.yml`) rebuilds the feed and
+publishes `gtfs-v<schema>-<builtAt>.db` plus `manifest.json` to the fixed `data`
+release tag; the app checks the manifest shortly after launch, verifies
+`sha256`, opens the download and counts its rows before trusting it, and moves a
+stored pointer. **`assets/db/gtfs.db` stays in the bundle as the floor**, which
+is what makes every failure in that chain degrade to stale data rather than
+none. Do not "helpfully" run `npm run build:gtfs` and commit the result — that
+is the thing the increment exists to stop.
 
-Increment 1's plan ran 8,015 words against 6,250 words of shipped source,
-because it carried near-complete code for each of its nine tasks. The code was
-therefore written twice, and every subagent dispatched to execute one task read
-the whole plan to find its slice. Nine per-task review rounds followed. The
-process cost more than the implementation.
+Two consequences worth knowing. **The pointer is read once per launch**, so a
+build downloaded now is opened next launch — remounting `SQLiteProvider` would
+remount the router underneath it and throw a rider back to the home screen.
+And **`SCHEMA_VERSION` lives in `data/gtfs/sql.ts`**, imported by `emit.mjs` and
+`publish.mjs` rather than copied, because the version in the filename is what
+stops an old binary being handed a database it cannot read.
 
+## How work gets done here
+
+The shape below is a correction. Increment 1's plan ran 8,015 words against
+6,250 words of shipped source, because it carried near-complete code for each of
+its nine tasks — so the code was written twice, and nine per-task review rounds
+followed. The process cost more than the implementation. Increment 2 then
+overcorrected into no spec and no plan at all, which left its decisions
+recoverable only by reading twelve commits. These bullets are the settled
+middle.
+
+- **The design conversation comes first.** Truman asks to be grilled before an
+  increment is specced, and it is where the real decisions get made — see
+  `docs/handoff.md`.
 - **Every increment gets a spec and a plan, both kept.** The spec says what is
   being built and why, and records the decisions already settled so they are not
   re-argued; the plan breaks it into tasks. Written before the code, updated
@@ -201,15 +224,8 @@ process cost more than the implementation.
   single example — re-confirm the readings against the live API, not against
   the PDFs again.
 
-**Increment 2 has no spec and no plan, and that is the correction overshooting
-rather than an oversight worth imitating.** Increment 1's 8,015-word plan was so
-expensive that the next increment was built from a todo list and commit messages
-alone, which left its decisions — expo-router over React Navigation, the
-DaBus-shaped arrival board, the `estimated === "1"` whitelist — recoverable only
-by reading twelve commits. The compromise is the bullets above: a short spec
-plus a contract-level plan, neither of which carries code. Increment 2 is not
-being back-filled; a spec for shipped work is ceremony, and `docs/handoff.md`
-plus those commit messages already hold the reasoning.
+**Increment 2 is not being back-filled.** A spec for shipped work is ceremony;
+`docs/handoff.md` and its commit messages hold the reasoning.
 
 **Device verification is not what gets cut.** Nine review rounds, 90 Jest tests
 and a clean typecheck all missed that `SafeAreaView` had no provider and the
@@ -280,53 +296,49 @@ finds its insets by walking up the *native* view tree for an
 `ios/Fabric/RNCSafeAreaViewComponentView.mm`); with no provider that walk falls
 through to `return self` and every inset comes back zero. It reads no React
 context, so nothing warns you — the app just renders under the Dynamic Island.
-`App.tsx` mounts `SafeAreaProvider` for this reason. Do not remove it.
+`AppShell.tsx` mounts `SafeAreaProvider` for this reason. Do not remove it.
 
 Jest cannot exercise the native inset resolution — that mechanism is
 Objective-C walking a view tree that does not exist under test — but it does
-catch the removal. `HomeScreen` calls `useSafeAreaInsets`, which *throws*
-without a provider, so `__tests__/App.test.tsx` fails if the provider ever
-goes. `DatabaseGate` swallows the throw, though, so the failure surfaces as a
-`waitFor` timeout that looks exactly like the cold-cache flake in
-`docs/backlog.md`; the "rather than the database-failure screen" test exists to
-name the real cause.
+catch the removal, and only because something explicitly calls the hook that
+throws without a provider. **`InsetReader` in `__tests__/App.test.tsx` exists
+solely to call `useSafeAreaInsets`; do not replace it with a component that does
+not.** The screens no longer do it themselves: `StopsScreen` reads the safe area
+through `SafeAreaView`, which does *not* throw. `DatabaseGate` also swallows the
+throw, so the failure surfaces as a `waitFor` timeout that looks exactly like
+the cold-cache flake in `docs/backlog.md` — the "rather than the
+database-failure screen" test exists to name the real cause.
 
 **Never wire in `react-native-safe-area-context/jest/mock`.** It looks like the
-obvious cleanup for the two test files below. It replaces `useSafeAreaInsets`
-with a stub returning zero insets instead of throwing, which deletes the only
-guard this project has against the bug above.
+obvious cleanup. It replaces `useSafeAreaInsets` with a stub returning zero
+insets instead of throwing, which deletes the only guard this project has
+against the bug above.
 
-The two test files seed metrics by different routes, and have to.
+Test files seed metrics by two different routes, and have to.
 `initialWindowMetrics` is read from the native module at import time and is
 `null` off-device; a provider seeded with `null` renders nothing at all under
 Jest, blanking the tree so every assertion fails for an unrelated-looking
-reason. `HomeScreen.test.tsx` wraps the screen in its own `SafeAreaProvider`
-with explicit `initialMetrics`. `App.test.tsx` cannot — `App` owns the provider
+reason. Screen suites wrap the screen in their own `SafeAreaProvider` with
+explicit `initialMetrics`. `App.test.tsx` cannot — `AppShell` owns the provider
 — so it mocks the module's `initialWindowMetrics` instead, substituting the
 provider's *input*.
 
 ## Timer handles never escape a closure
 
-`lib/schedule.ts` exists for this. Use `schedule(fn, ms)` and `repeat(fn, ms)`;
-both return a canceller, and the handle is never given a type at all — so the
-wrong method is unexpressible rather than merely mistyped. The reasoning:
+**Use `schedule(fn, ms)` and `repeat(fn, ms)` from `lib/schedule.ts`.** Both
+return a canceller, and the handle is never given a type at all — so the wrong
+method is unexpressible rather than merely mistyped.
 
-## Timer handles are `number`, never `NodeJS.Timeout`
-
-`@types/node` is loaded project-wide (`tsconfig.json`'s `types`) so
-`node:sqlite` resolves in the GTFS build script and its tests. Side effect:
-`@types/node`'s ambient `setTimeout`/`setInterval` overloads (returning
-`NodeJS.Timeout`) win over React Native's (returning `number`). The 60-second
-arrivals poll and anything else that holds a timer handle must type it as
-`number` explicitly — `ReturnType<typeof setInterval>` is **not** a safe
-alternative, since it resolves to `NodeJS.Timeout` for the same reason. React
-Native returns a plain numeric ID at runtime, not a `Timeout` object, so
-`.unref()` / `.refresh()` will typecheck cleanly and then fail at runtime.
-
-Annotating as `number` cannot actually be written without a type assertion,
-which this project also forbids — `const n: number = setTimeout(...)` is
-TS2322 here, verified. Hence `lib/schedule.ts` above: keep the handle inside a
-closure and hand back a `() => void`.
+That module exists because the handle cannot be typed correctly here.
+`@types/node` is loaded project-wide (`tsconfig.json`'s `types`) so `node:sqlite`
+resolves in the GTFS build script, and its ambient `setTimeout`/`setInterval`
+overloads (returning `NodeJS.Timeout`) therefore win over React Native's
+(returning `number`). React Native returns a plain numeric ID at runtime, so
+`.unref()` / `.refresh()` typecheck cleanly and then fail on a device.
+`ReturnType<typeof setInterval>` is no escape — same wrong type, same reason —
+and annotating `const n: number = setTimeout(...)` is TS2322 here, verified,
+which would need the type assertion this project forbids. So the handle stays
+inside a closure and callers get a `() => void`.
 
 ## Legal
 
@@ -337,9 +349,9 @@ list, the arrival board and the route detail alike, because the terms require
 prominent display wherever their data appears.
 
 They are in `lib/` rather than on a screen for a concrete reason: while they
-lived on `HomeScreen`, the arrival board had to import a screen — and with it
-AsyncStorage, expo-location and the whole GTFS query layer — to render one line
-of small print. An obligation every data-showing screen carries must not be
+lived on the stop list, the arrival board had to import that screen — and with
+it AsyncStorage, expo-location and the whole GTFS query layer — to render one
+line of small print. An obligation every data-showing screen carries must not be
 reachable only through whichever screen declared it first.
 
 The required wording is **verified** against the Terms of Use page of
