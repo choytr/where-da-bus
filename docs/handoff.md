@@ -146,9 +146,14 @@ permission on 2026-08-03, after a second device round caught the zoom reset on
    launch is now exactly where it would bite. Deleting and reinstalling is what
    produces a no-key state; there is no in-app way back to onboarding except
    Settings → Remove key, which is itself worth trying.
-2. **Review the whole diff.** Eight commits, `f7d715a`..`eec190d`. Not done yet.
-   `CLAUDE.md` is explicit that review happens once, at the increment boundary,
-   on the whole diff — that is where the cross-cutting findings live.
+2. ~~**Review the whole diff.**~~ **Done — `/code-review ultra` on the whole
+   `dev` → `main` diff, 41 files, and it returned _zero findings_.**
+
+   Take that for exactly what it is worth. It is a real result, and it is not
+   evidence the increment works: nine review rounds, 90 Jest tests and a clean
+   typecheck all missed that `SafeAreaView` had no provider, because that class
+   of bug is invisible to everything except a device. A clean review moves none
+   of the risk that is actually left here, which is item 1.
 3. **Ask Truman about merging to `main`.** Needs his explicit permission.
 4. **Delete the `EXPO_PUBLIC_THEBUS_APP_ID` repository secret**, by hand, once
    the `.ipa` is verified. It is deliberately still there: deleting it before
