@@ -4,14 +4,14 @@
 session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
-Last updated: **2026-08-03**. **Increment 3 is complete, device-verified and
-merged** — `origin/main` is at `094d7f3`. **Increment 4 is next and has not been
-started**; its spec and plan are both written and the architecture behind it has
-been stress-tested. See *What to pick up next*, then the plan.
+Last updated: **2026-08-03**, second session. **Increment 3 is complete,
+device-verified and merged** — `origin/main` is at `094d7f3`. **Increment 4 is
+code-complete on `dev` and has NOT been device-verified**; that is the one thing
+standing between it and a merge request. See *Increment 4 is built* below.
 
-The session of 2026-08-03 wrote no app code. It revised the Increment 4 and 5
-specs, wrote both plans, and answered two questions by measurement rather than
-by reasoning. Nothing under `app/`, `features/`, `data/` or `lib/` changed.
+The earlier session of 2026-08-03 wrote no app code — it revised the Increment 4
+and 5 specs, wrote both plans, and answered two questions by measurement. The
+second session executed all eight tasks of the Increment 4 plan.
 
 **Everything durable is already in the repo.** This document exists only to
 carry what a transcript would otherwise lose. Read the repo docs first; they are
@@ -20,8 +20,10 @@ the source of truth.
 ## Read these, in this order
 
 1. `CLAUDE.md` — the traps. Updated this session.
-2. `docs/superpowers/specs/2026-08-02-increment-3-map.md` — **what to build
-   next**, and its plan under `docs/superpowers/plans/`.
+2. `docs/superpowers/plans/2026-08-03-increment-4-own-api-key.md` — **what was
+   just built**, annotated with where reality disagreed with it. Its spec is
+   `../specs/2026-08-02-increment-4-own-api-key.md`, with two revision sections
+   at the end.
 3. `docs/superpowers/specs/2026-07-29-wheredabus-design.md` — scope and
    sequencing. Its Increment 3 row is superseded by the spec above; three of
    its claims were corrected on 2026-08-02 and carry inline notes saying so.
@@ -35,19 +37,18 @@ the source of truth.
 
 ## Where things stand
 
-**Increment 2 is complete, verified on a physical iPhone, and merged.**
-`origin/main` is at `67dd266`. Live arrivals per stop with the §4 state model,
-and route detail with an ordered stop list.
+**`origin/main` is at `094d7f3`** — Increments 1 through 3, all
+device-verified and merged.
 
-`dev` has moved past it with Increment 3 — which *was* device-verified from an
-`.ipa` — and now with the UX pass on top, which has **not** been.
+**`dev` is eight commits ahead** with Increment 4, `f7d715a`..`eec190d`.
+Code-complete, **not device-verified, not reviewed, not merged.**
 
-Green: 277 Jest, 70 `node --test`, clean typecheck.
+Green: **330 Jest, 70 `node --test`, clean typecheck.**
 
-The twelve commits from `ffa69e9` to `67dd266` carry full reasoning in their
-messages. Read those rather than asking for a summary of what changed.
+Commit messages carry the reasoning throughout this project. Read those rather
+than asking for a summary of what changed.
 
-## Decisions made this session that are NOT obvious from the diff
+## Decisions from the Increment 2 session that are NOT obvious from the diff
 
 - **expo-router over React Navigation** — Truman's call, after being shown that
   expo-router is a file-based layer *over* React Navigation rather than a
@@ -127,26 +128,64 @@ permission on 2026-08-03, after a second device round caught the zoom reset on
 
 ## What to pick up next
 
-**Start Increment 4. The spec and the plan are both written; brainstorming and
-planning are done.**
+**Device-verify Increment 4, then ask about merging.** In order:
 
-`docs/superpowers/plans/2026-08-03-increment-4-own-api-key.md` — eight tasks,
-executed inline, in order. **Task 0 is an investigation and blocks task 4**:
-nobody knows what the live API returns for a rejected AppID, and it must be
-observed rather than guessed.
-
-Then, in order:
-
-1. **Increment 4 — each user brings their own API key.** Spec:
-   `2026-08-02-increment-4-own-api-key.md`, with **two** revision sections at
-   the end. The later one shrinks the work.
-2. **Make `choytr/where-da-bus` public — by hand.** Not code, no test will
-   notice it being skipped, cannot be undone once indexed. Must happen *after*
-   Increment 4, because `EXPO_PUBLIC_` puts the AppID in every `.ipa`. History
-   is verified clean; the 16 key-bearing artifacts are deleted.
-3. **Increment 5 — the data refreshes itself.** Spec + plan both dated
+1. **Build and drive the `.ipa`.** `gh workflow run ios-ipa.yml --ref dev`,
+   sideload, and check the thing this increment changed: **a fresh install with
+   no key must reach onboarding**, accept a pasted key, and then show arrivals.
+   Expo Go carries a local `.env` that a real install does not, which is the
+   disagreement this project has already been bitten by once — and the first
+   launch is now exactly where it would bite. Deleting and reinstalling is what
+   produces a no-key state; there is no in-app way back to onboarding except
+   Settings → Remove key, which is itself worth trying.
+2. **Review the whole diff.** Eight commits, `f7d715a`..`eec190d`. Not done yet.
+   `CLAUDE.md` is explicit that review happens once, at the increment boundary,
+   on the whole diff — that is where the cross-cutting findings live.
+3. **Ask Truman about merging to `main`.** Needs his explicit permission.
+4. **Delete the `EXPO_PUBLIC_THEBUS_APP_ID` repository secret**, by hand, once
+   the `.ipa` is verified. It is deliberately still there: deleting it before
+   verification would turn a rollback into a re-registration.
+5. **Make `choytr/where-da-bus` public — by hand.** Not code, no test will
+   notice it being skipped, cannot be undone once indexed. **Increment 4 is what
+   made this safe**, and that is now done: the key is out of the bundle, absent
+   from the whole tree, and `git log --all -S` confirms it was never committed.
+   The 16 key-bearing artifacts were already deleted.
+6. **Increment 5 — the data refreshes itself.** Spec + plan both dated
    2026-08-03. The spec's *Revision: keep the floor* is the version that gets
    built; its headline decision was reversed.
+
+## Increment 4 is built, and not yet verified
+
+All eight tasks of `docs/superpowers/plans/2026-08-03-increment-4-own-api-key.md`,
+inline on `dev`, one commit each. **330 Jest, 70 `node --test`, typecheck
+clean.** The plan's *What was built* section records where reality disagreed
+with it; read that rather than the diff.
+
+The shape: `KeyGate` sits above the router in `AppShell`, so no screen mounts
+without a key — which is what stops "no key yet" from being a fourth §4 state in
+every data view. `TheBusProvider` holds the key and rebuilds the client when it
+changes, and that rebuild is also what clears `withCache`. A rejected key is
+`unauthorized`, recognised from the body because this API reports every error as
+HTTP 200.
+
+**Truman's two calls, settled at the start of the session:** keep the **hard
+gate** (it is less work, and it was his product call anyway — the soft gate was
+reopened only because the floor decision revived its premise), and **no separate
+public data repo**; this repo goes public with the data build in it.
+
+Three findings from task 0's live probe that were not expected:
+
+- **The rejection message is per-endpoint.** `arrivalsJSON` says "Invalid or
+  unspecified API key", `routeJSON` says "Application key was not found". Only
+  the first is reachable today, so a matcher written against it alone would have
+  looked correct indefinitely. Both are matched.
+- **Parameters are validated before the key**, so a bad key with a bad stop
+  reports the stop. The absence of a key error does not prove a key is good —
+  one more reason onboarding does not validate.
+- **`routeJSON`'s `headsign=` search is broken**, 500 for every non-empty value,
+  with a valid key too. Unused by the app. `docs/api/README.md` records it, and
+  notes it was checked against the valid key *before* being written down — the
+  first reading was "a bad key 500s this endpoint", which would have been wrong.
 
 ### The architecture discussion happened — 2026-08-03
 

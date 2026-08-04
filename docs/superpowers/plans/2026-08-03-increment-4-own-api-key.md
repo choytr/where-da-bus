@@ -203,6 +203,49 @@ This increment changes what happens on first launch, and Expo Go carries a
 `.env` that a real install will not. That is precisely the disagreement between
 the two loops this project has already been bitten by once.
 
+## What was built — 2026-08-03
+
+**All eight tasks, inline on `dev`, in order.** 330 Jest, 70 `node --test`,
+typecheck clean. One commit per task; the reasoning is in the messages.
+
+Where reality disagreed with this plan:
+
+- **Task 0 found more than it was sent for.** The per-endpoint variation in the
+  rejection message was not anticipated, and it changed task 4's contract — see
+  the note under task 0. It also turned up an unrelated live break: the
+  `headsign=` form of `routeJSON` now 500s for every non-empty value.
+- **Task 3 threaded `client` as a prop instead of reading context in the
+  screens.** "Hosts read it from `useTheBus()`" turned out to be unimplementable
+  for `StopCard`: the provider builds a *real* client from a real key, so a
+  component that reaches for the context cannot be handed a stub. The route
+  files read the context and pass a required prop down through `MapScreen` and
+  `StopSheet`. The upside was unplanned — it deleted the two blunt module mocks
+  in the map tests rather than adding any.
+- **The route files carry a one-line null check.** `useTheBus().client` is
+  `null` without a key, which `KeyGate` makes unreachable; the check keeps the
+  screens' prop honestly non-nullable rather than pushing an optional client
+  through the sheet into the card.
+- **`KeyGate` went inside `DatabaseGate`, not beside it.** Inside, so onboarding
+  is themed and the status bar renders; outside `SQLiteProvider`, so a first
+  launch with no key never copies or opens a database at all. `App.test.tsx`
+  asserts both.
+- **Task 1's `apiKeyStorage` is typed by task 2.** `ApiKeyStorage` is declared
+  next to the provider that consumes it, and `data/storage/apiKey.ts`
+  `import type`s it — keeping the runtime edge pointing storage → thebus, the
+  way `preferences.ts` does with `lib/theme.tsx`.
+- **`setKey` persists before it applies**, unlike `ThemeProvider`, which is
+  optimistic. A theme is a preference; a key is a credential, and one reported
+  as saved that was not saved strands the user at onboarding next launch.
+- **Four tests needed `await fireEvent(...)`.** Without it the press lands
+  before `disabled` has flushed and the save silently never happens —
+  `CLAUDE.md`'s async-RNTL trap, which applies to `fireEvent` and not only to
+  `render`.
+
+Still outstanding, and the reason this is not finished: **the `.ipa` has not
+been built or driven.** See Verification above — it is not optional, and this
+increment changes what happens on first launch, which is exactly where Expo Go
+and a real install disagree.
+
 ## After this, before Increment 5
 
 Make `choytr/where-da-bus` public, by hand. Not code, no test will catch it
