@@ -10,6 +10,8 @@ import { themeStorage } from './data/storage/preferences';
 import { TheBusProvider } from './data/thebus';
 import { apiKeyStorage } from './data/storage/apiKey';
 import { BUNDLED_DATABASE, loadCurrentDatabase } from './data/storage/database';
+import { refreshStopData, sweepStaleGenerations } from './data/gtfs/dataRefresh';
+import { schedule } from './lib/schedule';
 import { KeyGate } from './features/onboarding/KeyGate';
 
 /**
@@ -151,6 +153,44 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 /**
+ * A moment, not a delay for its own sake. The first seconds of a launch already
+ * hold a location fix, a map, and the first arrivals request; a 1.2 MB download
+ * starting inside that window competes with the things the rider is waiting
+ * for, and it is not waiting for this one.
+ */
+const REFRESH_DELAY_MS = 2000;
+
+/**
+ * Looks for a newer build of the stop data, in the background, after the app is
+ * usable.
+ *
+ * **Never blocks anything.** There is already a working database open — the
+ * floor at worst — so this is an upgrade rather than a prerequisite, and it has
+ * no screen. Failure is silent apart from the "last checked" timestamp in
+ * Settings: a modal about a background refresh that did not work would be
+ * strictly worse than saying nothing, since nothing is broken and there is
+ * nothing for the rider to do.
+ *
+ * The sweep goes first, and is the other half of never overwriting an open
+ * database: generations accumulate precisely because a refresh refuses to reuse
+ * a name, so the previous one is deleted here, on the launch after the pointer
+ * moved off it, when nothing holds it open.
+ */
+function useStopDataRefresh(): void {
+  useEffect(
+    () =>
+      schedule(() => {
+        void sweepStaleGenerations();
+        // Already silent — `refreshStopData` records the attempt itself — but
+        // an unhandled rejection from a fire-and-forget call would still reach
+        // the console and, in a release build, look like a crash report.
+        void refreshStopData().catch(() => {});
+      }, REFRESH_DELAY_MS),
+    [],
+  );
+}
+
+/**
  * Opens whichever generation this launch is pointed at.
  *
  * `assetSource` is on the floor path *only*. The bundle can supply `gtfs.db`
@@ -163,6 +203,10 @@ export function AppShell({ children }: { children: ReactNode }) {
  */
 function StopData({ children }: { children: ReactNode }) {
   const databaseName = useCurrentDatabaseName();
+  // Inside the suspense boundary, so the effect commits only once the database
+  // is actually open — which is what makes the sweep safe: the generation being
+  // kept is the one this provider has a handle on.
+  useStopDataRefresh();
   if (databaseName === null) return <Waiting />;
 
   const floor = databaseName === BUNDLED_DATABASE;

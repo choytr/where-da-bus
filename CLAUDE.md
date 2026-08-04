@@ -248,6 +248,17 @@ that caused them, which makes them look like a broken component:
   auto-cleanup as a top-level `afterEach`, which Jest runs *after* a
   `describe`-level one — so components mounted in the test are still mounted
   and still polling while `jest.useRealTimers()` runs.
+- **Turning fake timers on for *one* test in a real-timer suite needs
+  `doNotFake`.** Use
+  `jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] })`.
+  React Native's async `act` and the AsyncStorage mock both resolve through
+  `setImmediate`; faking it leaves the renderer wedged *after that test
+  unmounts*. The next test to render times out in `waitFor` and the one after
+  hangs the run with no output at all — so the symptom is a suite that produces
+  nothing, pointing at neither the test that caused it nor the timer. The
+  offending test passes in isolation, which is what makes `-t` bisection read
+  like the test is fine. A suite that fake-times *every* test (see
+  `ArrivalsScreen.test.tsx`) never switches back and so never hits this.
 
 `jest.advanceTimersByTimeAsync` awaits inside its calling `act` scope and trips
 React's overlapping-act guard. Advance synchronously inside an async `act`

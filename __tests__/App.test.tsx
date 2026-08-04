@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react-native';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppShell } from '../AppShell';
 import { Text } from 'react-native';
@@ -39,6 +39,17 @@ jest.mock('expo-sqlite', () => ({
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
 );
+
+/**
+ * The background refresh, doubled — the real one would reach GitHub from a unit
+ * test. Its own behaviour is covered in data/gtfs/__tests__/dataRefresh.test.ts;
+ * what this file owns is that the shell *starts* it, which is the part no other
+ * suite can see.
+ */
+jest.mock('../data/gtfs/dataRefresh', () => ({
+  refreshStopData: jest.fn(async () => ({ state: 'up-to-date' })),
+  sweepStaleGenerations: jest.fn(async () => {}),
+}));
 
 /**
  * The keychain, which has no native module under Jest.
@@ -249,6 +260,53 @@ describe('AppShell', () => {
     await waitFor(() => screen.getByText('inside the shell'));
     const props = sqlite().SQLiteProvider.mock.calls.at(-1)[0];
     expect(props.databaseName).toBe('gtfs.db');
+  });
+
+  /**
+   * The launch check is fire-and-forget with no screen of its own, so nothing
+   * else in the app would notice it never being started. On a device the cost
+   * is stop data that silently stops refreshing — which looks exactly like the
+   * bug this whole increment exists to fix.
+   *
+   * Fake timers are swapped back only after `cleanup()`, because RNTL registers
+   * its auto-cleanup as a top-level `afterEach` that runs *after* this — so the
+   * shell would still be mounted, and its scheduled callback still pending,
+   * while real timers came back. See CLAUDE.md.
+   *
+   * **`doNotFake` is load-bearing, and its absence does not fail this test.**
+   * React Native's async `act` and the AsyncStorage mock both resolve through
+   * `setImmediate`. Faking it in one test of a suite whose other tests run on
+   * real timers leaves the renderer wedged after this one unmounts: the next
+   * test to render times out in `waitFor`, and the one after that hangs the
+   * whole run with no output at all. This test passed alone the entire time it
+   * was breaking the eleven that follow it.
+   */
+  it('looks for newer stop data shortly after the app is usable, not before', async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
+    const refresh = jest.requireMock('../data/gtfs/dataRefresh');
+
+    try {
+      await render(<AppShell><InsetReader /></AppShell>);
+
+      // The first seconds of a launch already hold a location fix, a map and
+      // the first arrivals request. This is not what the rider is waiting for.
+      expect(refresh.refreshStopData).not.toHaveBeenCalled();
+
+      // Advanced synchronously inside an async act: advanceTimersByTimeAsync
+      // awaits inside its calling act scope and trips React's overlapping-act
+      // guard.
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+
+      // The sweep runs first, on the launch after the pointer moved off the
+      // previous generation, when nothing holds it open.
+      expect(refresh.sweepStaleGenerations).toHaveBeenCalled();
+      expect(refresh.refreshStopData).toHaveBeenCalled();
+    } finally {
+      await cleanup();
+      jest.useRealTimers();
+    }
   });
 
   it('says it is opening the database while the open is still running', async () => {
