@@ -40,6 +40,26 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 /**
+ * The keychain, which has no native module under Jest.
+ *
+ * Most of this file is about the *database* gate, and `KeyGate` now stands in
+ * front of it — with no key, the shell renders onboarding and never opens a
+ * database at all. So a key is seeded here to put the shell in the state these
+ * tests are about, and the gate's own behaviour is asserted separately at the
+ * bottom rather than left implicit in a seed.
+ */
+let mockStoredKey: string | null = '3f7c1e92-8a4b-4d16-9f03-c5e28b71da40';
+jest.mock('expo-secure-store', () => ({
+  getItemAsync: jest.fn(async () => mockStoredKey),
+  setItemAsync: jest.fn(async (_key: string, value: string) => {
+    mockStoredKey = value;
+  }),
+  deleteItemAsync: jest.fn(async () => {
+    mockStoredKey = null;
+  }),
+}));
+
+/**
  * `initialWindowMetrics` is read from the native module at import time and is
  * `null` off-device. A `SafeAreaProvider` seeded with `null` renders its
  * children only once native reports the window — which never happens under
@@ -103,6 +123,9 @@ const sqlite = () => jest.requireMock('expo-sqlite');
 describe('AppShell', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Reset, so the two gate tests below cannot leak a null key into whichever
+    // test happens to run next.
+    mockStoredKey = '3f7c1e92-8a4b-4d16-9f03-c5e28b71da40';
     sqlite().SQLiteProvider.mockImplementation((props: { children: unknown }) => props.children);
     sqlite().useSQLiteContext.mockReturnValue({
       getAllAsync: jest.fn(async () => []),
@@ -212,5 +235,32 @@ describe('AppShell', () => {
 
     screen.getByText(/not affiliated with or endorsed by/i);
     reported.mockRestore();
+  });
+
+  /**
+   * The key gate, asserted at the shell rather than only in its own file.
+   * `KeyGate.test.tsx` proves the component works; this proves `AppShell`
+   * actually mounts it, which is the part that would silently regress — and
+   * the consequence of losing it is an install with no key showing a broken
+   * arrival board instead of being asked for one.
+   */
+  it('asks for a key instead of opening the app when none is stored', async () => {
+    mockStoredKey = null;
+
+    await render(<AppShell><InsetReader /></AppShell>);
+
+    await screen.findByText('Add your API key');
+    expect(screen.queryByText('inside the shell')).toBeNull();
+  });
+
+  it('does not open the database at all until there is a key', async () => {
+    // The gate sits outside SQLiteProvider on purpose: with no key there is no
+    // app to open a database for, so a first launch goes straight to asking.
+    mockStoredKey = null;
+
+    await render(<AppShell><InsetReader /></AppShell>);
+
+    await screen.findByText('Add your API key');
+    expect(sqlite().SQLiteProvider).not.toHaveBeenCalled();
   });
 });

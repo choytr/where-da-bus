@@ -9,6 +9,7 @@ import { ThemeProvider, useTheme } from './lib/theme';
 import { themeStorage } from './data/storage/preferences';
 import { TheBusProvider } from './data/thebus';
 import { apiKeyStorage } from './data/storage/apiKey';
+import { KeyGate } from './features/onboarding/KeyGate';
 
 /**
  * Everything that must be true before any screen renders: the safe-area
@@ -82,21 +83,35 @@ export function AppShell({ children }: { children: ReactNode }) {
           */}
           <TheBusProvider storage={apiKeyStorage}>
             <DatabaseGate>
-              <Suspense fallback={<Waiting />}>
-                <SQLiteProvider
-                  databaseName="gtfs.db"
-                  // Re-copied from the bundle on every launch. The file on disk is a
-                  // disposable copy of reference data — never user state, which lives
-                  // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
-                  // (npm run build:gtfs) from being shadowed by a stale first-launch
-                  // copy for the entire life of the install.
-                  assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
-                  onInit={openReadOnly}
-                  useSuspense
-                >
-                  {children}
-                </SQLiteProvider>
-              </Suspense>
+              {/*
+                Inside the database gate so onboarding is themed and the status
+                bar below still renders, but *outside* the SQLiteProvider: with
+                no key there is no app to open a database for, so the copy and
+                open never happen and the first launch goes straight to asking
+                for a key.
+
+                Above the router, which is the point. No screen can mount
+                without a key, so "no key yet" never becomes a fourth state
+                threaded through every view that shows data — the screens deal
+                only with `unauthorized`, which is a different thing.
+              */}
+              <KeyGate>
+                <Suspense fallback={<Waiting />}>
+                  <SQLiteProvider
+                    databaseName="gtfs.db"
+                    // Re-copied from the bundle on every launch. The file on disk is a
+                    // disposable copy of reference data — never user state, which lives
+                    // in AsyncStorage — so overwriting it is what keeps a rebuilt feed
+                    // (npm run build:gtfs) from being shadowed by a stale first-launch
+                    // copy for the entire life of the install.
+                    assetSource={{ assetId: require('./assets/db/gtfs.db'), forceOverwrite: true }}
+                    onInit={openReadOnly}
+                    useSuspense
+                  >
+                    {children}
+                  </SQLiteProvider>
+                </Suspense>
+              </KeyGate>
               <ThemedStatusBar />
             </DatabaseGate>
           </TheBusProvider>
