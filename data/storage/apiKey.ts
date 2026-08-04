@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import type { ApiKeyStorage } from '../thebus/provider';
 
 /**
  * The user's own TheBus AppID.
@@ -69,8 +70,14 @@ export async function clearApiKey(): Promise<void> {
   await SecureStore.deleteItemAsync(KEY);
 }
 
-/** What AppShell hands TheBusProvider. */
-export const apiKeyStorage = {
+/**
+ * What AppShell hands TheBusProvider.
+ *
+ * The type comes from the provider, not from here — `import type` erases, so
+ * this costs no runtime edge, and it keeps the one that matters pointing the
+ * right way. Exactly how preferences.ts takes ThemeStorage from lib/theme.tsx.
+ */
+export const apiKeyStorage: ApiKeyStorage = {
   load: loadApiKey,
   save: saveApiKey,
   clear: clearApiKey,
