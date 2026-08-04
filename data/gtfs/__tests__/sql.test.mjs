@@ -14,6 +14,9 @@ import {
   routesForStopsSql,
   stopsByIdsSql,
   toFtsQuery,
+  FLOOR,
+  FLOOR_COUNTS,
+  meetsFloor,
 } from '../sql.ts';
 
 const DB = path.resolve(import.meta.dirname, '../../../assets/db/gtfs.db');
@@ -161,6 +164,36 @@ describe('gtfs sql', () => {
       assert.ok(query, `expected a runnable query for ${JSON.stringify(input)}`);
       assert.doesNotThrow(() => db.prepare(SEARCH_BY_NAME).all(query.match, 5));
     }
+  });
+});
+
+describe('the floor', () => {
+  /**
+   * The floor is only useful if the real thing clears it by a wide margin. A
+   * floor set just under the current feed's counts would fail the first time
+   * the agency retired a route, so this is the test that keeps those numbers
+   * honest — against the shipped asset, not a fixture.
+   */
+  test('the bundled database clears it, with room to spare', () => {
+    const db = new DatabaseSync(DB, { readOnly: true });
+    const counts = db.prepare(FLOOR_COUNTS).get();
+    db.close();
+
+    assert.ok(meetsFloor(counts), `bundled asset fails the floor: ${JSON.stringify(counts)}`);
+    assert.ok(
+      counts.stops > FLOOR.stops * 1.2,
+      `floor of ${FLOOR.stops} stops is too close to the feed's ${counts.stops}`,
+    );
+  });
+
+  test('rejects a database short on any one table', () => {
+    const ample = { stops: 3800, routes: 120, stopRoutes: 18000 };
+    assert.equal(meetsFloor(ample), true);
+    // A truncated upstream zip is the case this exists for: a perfectly valid,
+    // perfectly hashed database with forty stops in it.
+    assert.equal(meetsFloor({ ...ample, stops: 40 }), false);
+    assert.equal(meetsFloor({ ...ample, routes: 4 }), false);
+    assert.equal(meetsFloor({ ...ample, stopRoutes: 200 }), false);
   });
 });
 

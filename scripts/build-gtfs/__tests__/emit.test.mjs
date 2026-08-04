@@ -6,6 +6,7 @@ import {
   emitDatabase,
   withoutMergedDuplicateStops,
 } from '../emit.mjs';
+import { SCHEMA_VERSION, SCHEMA_VERSION_SQL } from '../../../data/gtfs/sql.ts';
 
 const stops = [
   { stop_id: '5', stop_code: '5', stop_name: 'LAGOON DR + IOLANA PL', stop_lat: '21.32', stop_lon: '-157.9' },
@@ -93,6 +94,21 @@ describe('emitDatabase', () => {
     const generatedAt = new Date(row.generated_at);
     assert.ok(generatedAt >= before && generatedAt <= after, 'generated_at should be a real timestamp from the build');
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM meta').get().n, 1);
+    db.close();
+  });
+
+  /**
+   * The discipline this increment needs — bump the constant, publish under the
+   * new filename, leave the old assets up — is exactly what gets forgotten, so
+   * it gets a test rather than a note. Reading through `SCHEMA_VERSION_SQL`
+   * rather than a literal makes this fail if the *column* is renamed too, which
+   * is the other way the two sides can stop agreeing.
+   */
+  test('stamps meta with the schema version the app is compiled against', () => {
+    const db = new DatabaseSync(':memory:');
+    emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedStartDate: '20260701', feedEndDate: '20260822' });
+
+    assert.equal(db.prepare(SCHEMA_VERSION_SQL).get().schema_version, SCHEMA_VERSION);
     db.close();
   });
 

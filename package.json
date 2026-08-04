@@ -9,6 +9,8 @@
     "expo": "^54.0.36",
     "expo-build-properties": "~1.0.10",
     "expo-constants": "~18.0.13",
+    "expo-crypto": "~15.0.9",
+    "expo-file-system": "~19.0.23",
     "expo-linking": "~8.0.12",
     "expo-location": "19.0",
     "expo-router": "~6.0.24",

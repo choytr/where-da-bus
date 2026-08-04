@@ -7,6 +7,11 @@
  * shelling out to `unzip`.
  */
 import { requireField, requireNumberField } from './derive.mjs';
+// The app's copy, not a second one. `data/gtfs/package.json` marks that
+// directory ESM so Node can load the .ts directly (type stripping); the same
+// route `data/gtfs/__tests__/sql.test.mjs` already takes. A published database
+// and the binary that reads it agree on this number or the handshake is a lie.
+import { SCHEMA_VERSION } from '../../data/gtfs/sql.ts';
 
 const SCHEMA_SQL = `
   PRAGMA journal_mode = DELETE;
@@ -37,7 +42,8 @@ const SCHEMA_SQL = `
   CREATE TABLE meta (
     feed_start_date TEXT,
     feed_end_date   TEXT,
-    generated_at    TEXT NOT NULL
+    generated_at    TEXT NOT NULL,
+    schema_version  INTEGER NOT NULL
   );
   CREATE INDEX idx_stops_lat_lon ON stops(lat, lon);
   CREATE INDEX idx_stop_routes_stop ON stop_routes(stop_id);
@@ -155,7 +161,7 @@ export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedSt
     'INSERT INTO route_stops (route_id, direction_id, seq, stop_id) VALUES (?, ?, ?, ?)',
   );
   const insertMeta = db.prepare(
-    'INSERT INTO meta (feed_start_date, feed_end_date, generated_at) VALUES (?, ?, ?)',
+    'INSERT INTO meta (feed_start_date, feed_end_date, generated_at, schema_version) VALUES (?, ?, ?, ?)',
   );
 
   db.exec('BEGIN');
@@ -196,7 +202,7 @@ export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedSt
     routeStopsInserted += 1;
   }
 
-  insertMeta.run(feedStartDate ?? null, feedEndDate ?? null, new Date().toISOString());
+  insertMeta.run(feedStartDate ?? null, feedEndDate ?? null, new Date().toISOString(), SCHEMA_VERSION);
 
   db.exec("INSERT INTO stops_fts(stops_fts) VALUES('rebuild')");
   db.exec('COMMIT');

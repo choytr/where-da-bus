@@ -51,6 +51,68 @@ export const FEED_END_DATE = `
 `;
 
 /**
+ * The schema this build of the app is compiled against, and the `v1` in every
+ * published filename.
+ *
+ * Once the database can arrive over the network, the schema `emit.mjs` writes
+ * and the schema these queries read stop being tied together by the build. The
+ * version goes in the *filename* — the app asks for `gtfs-v1-….db` and can
+ * therefore never be handed a database it cannot read — and this constant is
+ * what makes the request. Bumping the schema means bumping this, publishing
+ * `gtfs-v2-….db`, and leaving the v1 assets up for as long as an old binary
+ * might still be asking for them. There is no App Store here to push a fix
+ * through, so an old binary has to keep working forever.
+ *
+ * `emit.mjs` imports this rather than declaring its own copy: the two numbers
+ * agreeing is the entire point, and two constants cannot drift when there is
+ * only one.
+ */
+export const SCHEMA_VERSION = 1;
+
+/**
+ * The version the *file* claims, as a second assertion after a download.
+ * Belt to the filename's braces. The bundled floor predates versioning and is
+ * never asked — it shipped inside the binary, so it cannot disagree with it.
+ */
+export const SCHEMA_VERSION_SQL = `
+  SELECT schema_version FROM meta LIMIT 1
+`;
+
+/**
+ * What a database has to contain before the app will switch onto it.
+ *
+ * `sha256` proves the bytes arrived intact; it says nothing about whether the
+ * build was *right*. The failure this guards is upstream publishing a truncated
+ * zip: the cron dutifully builds a forty-stop database, hashes it, and the
+ * checksum matches perfectly. Oahu's feed carries ~3,800 stops and ~120 routes,
+ * so these are floors with a wide margin, not expectations.
+ *
+ * Checked twice — in the Action before publishing, and in the app before the
+ * pointer moves — because the two catch different things. The Action catches a
+ * bad build before anyone sees it; the app catches a bad build that was
+ * published anyway, which is the only case that reaches a rider.
+ */
+export const FLOOR = { stops: 3000, routes: 100, stopRoutes: 5000 } as const;
+
+export const FLOOR_COUNTS = `
+  SELECT
+    (SELECT count(*) FROM stops)       AS stops,
+    (SELECT count(*) FROM routes)      AS routes,
+    (SELECT count(*) FROM stop_routes) AS stopRoutes
+`;
+
+export type TableCounts = { stops: number; routes: number; stopRoutes: number };
+
+/** Whether counts from `FLOOR_COUNTS` describe a database worth switching onto. */
+export function meetsFloor(counts: TableCounts): boolean {
+  return (
+    counts.stops > FLOOR.stops &&
+    counts.routes > FLOOR.routes &&
+    counts.stopRoutes > FLOOR.stopRoutes
+  );
+}
+
+/**
  * Cheap bounding-box prefilter. Parameters: (minLat, maxLat, minLon, maxLon).
  * Exact haversine distance and ordering happen in JavaScript afterwards, because
  * SQLite has no trigonometric functions available here.
