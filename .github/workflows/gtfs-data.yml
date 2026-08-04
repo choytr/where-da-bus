@@ -1,0 +1,92 @@
+name: Publish GTFS data
+
+# The reason this increment exists: the bundled stop data goes stale, and
+# Truman must never run `npm run build:gtfs` and push again.
+#
+# Weekly, this rebuilds Oahu's feed into the SQLite asset the app reads and
+# publishes it to a fixed release tag. The app checks the manifest on launch and
+# downloads a newer build in the background. `assets/db/gtfs.db` stays in the
+# repo as the *floor* — the thing a first launch renders while this downloads,
+# and the thing every failure here degrades to. This workflow never commits it.
+
+on:
+  schedule:
+    # 12:00 UTC Monday — 02:00 in Honolulu, which is nobody's commute.
+    - cron: '0 12 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: gtfs-data
+  cancel-in-progress: false
+
+# Uploading a release asset is a write to the repository's contents.
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # node:sqlite for the build, and type stripping so emit.mjs can import
+          # SCHEMA_VERSION straight out of data/gtfs/sql.ts.
+          node-version: 22
+
+      # Deliberately no `npm ci`. Nothing on this path touches node_modules —
+      # the build script is Node builtins plus this repo's own .mjs files, and
+      # the one .ts it reaches into imports nothing but a type. That keeps a
+      # data refresh independent of the dependency tree's health, which is not
+      # nothing: a react-dom peer conflict took three pushes red once. If this
+      # step ever starts failing on a missing module, that is the reason, and
+      # the fix is to add `npm ci` back rather than to work around it.
+
+      - name: Has the upstream feed changed?
+        id: check
+        run: node scripts/build-gtfs/publish.mjs check
+
+      # Everything below is skipped when the feed is byte-identical to the one
+      # behind the currently published manifest. Change detection is by hash
+      # rather than by date because expiry and republication are different
+      # things: a feed can be replaced long before it expires, and can expire
+      # with nothing to replace it.
+      - name: Build the SQLite asset
+        if: steps.check.outputs.changed == 'true'
+        # Reads the zip publish.mjs just cached, so the build runs over exactly
+        # the bytes that were hashed.
+        run: npm run build:gtfs
+
+      - name: Floor-check and stage the release
+        id: package
+        if: steps.check.outputs.changed == 'true'
+        run: node scripts/build-gtfs/publish.mjs package "${{ steps.check.outputs.source_sha256 }}"
+
+      - name: Ensure the release exists
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view data >/dev/null 2>&1 || gh release create data \
+            --title "Stop data" \
+            --notes "Generated stop data for the app to download. Published by .github/workflows/gtfs-data.yml; not a software release."
+
+      # The database first and the manifest second, always. A manifest that
+      # exists therefore always describes an asset that exists, which is what
+      # makes a half-failed run safe rather than a source of 404s. Two steps
+      # rather than one command because a single `gh release upload a b` gives
+      # no ordering guarantee.
+      - name: Upload the database
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload data "dist/${{ steps.package.outputs.file }}" --clobber
+
+      - name: Upload the manifest
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload data dist/manifest.json --clobber
