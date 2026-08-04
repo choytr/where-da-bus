@@ -4,9 +4,9 @@
 session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
-Last updated: **2026-08-04**. **Increment 4 is merged. Increment 5 is complete,
-reviewed and device-verified on `dev`, and waiting only on permission to
-merge.** See *Increment 5 is built* below.
+Last updated: **2026-08-04**. **Increment 5 is complete, device-verified and
+merged.** The app now refreshes its own stop data, and nobody runs
+`npm run build:gtfs` by hand again. See *Increment 5 is built* below.
 
 Increment 4 was device-verified from run `30884750888` and merged on
 2026-08-03; his one change was masking the onboarding key field, which is done.
@@ -39,13 +39,8 @@ the source of truth.
 
 ## Where things stand
 
-**`origin/main` is at `c7e5f2c`** — Increments 1 through 4, all
-device-verified and merged.
-
-**`dev` is ten commits ahead**: two documentation commits closing out
-Increment 4, then Increment 5's six tasks, `08dc855`..`c20946e`, plus the
-handoff update and the boundary review's one fix. **Reviewed and
-device-verified. Not merged.**
+**`origin/main` is at `8226127`** — Increments 1 through 5, all
+device-verified and merged. `dev` is level with it.
 
 Green: **388 Jest, 73 `node --test`, clean typecheck, clean `npm ci`**, and CI
 green on `dev`.
@@ -142,24 +137,34 @@ permission on 2026-08-03, after a second device round caught the zoom reset on
 
 ## What to pick up next
 
-**Increment 5 is done and verified. Only the merge is left, and that is
-Truman's call.**
+**Increment 5 is merged. Nothing is outstanding, and the next increment is not
+yet chosen.**
 
-Merging matters more than usual this time, because two of the things this
-increment built **do not run at all until the workflow is on `main`**:
+Merged on 2026-08-04 with Truman's explicit permission, fast-forwarded `c7e5f2c`
+-> `8226127`. Confirmed live on `main` afterwards rather than assumed:
+`workflow_dispatch` is accepted where it used to 404, a dispatched run exited
+correctly at the check with `changed=false`, the weekly `schedule` is registered
+and active, and the `.ipa` build off `main` went green.
 
-- the **weekly `schedule`**, which like `workflow_dispatch` only ever fires from
-  the default branch. Until the merge there is no automatic refresh — the data
-  published on 2026-08-04 is a one-off from a hand-triggered run.
-- **`workflow_dispatch`**, so nobody can rebuild the data by hand either without
-  repeating the throwaway-branch trick.
+**The first unattended proof is the Monday cron.** Nothing has yet run without
+someone starting it. The next session should check whether the 12:00 UTC Monday
+run fired and what it decided — `gh run list --workflow gtfs-data.yml`. A run
+that exits with `changed=false` is the expected outcome most weeks and is not a
+failure.
 
-The app half is unaffected: it reads a fixed URL and the release already exists,
-so an installed build keeps refreshing whenever new data appears.
+**Candidates for what comes next**, none of them decided:
 
-Everything else is finished — see *Increment 5 is built* below and the plan's
-*Verification* section, which records both workflow runs and what the device
-said.
+- The design spec's remaining scope — route polylines and live vehicle
+  positions, both explicitly deferred through Increments 3 to 5.
+- `docs/backlog.md`, which now has three sections of triaged findings. The two
+  cosmetic map ones are the oldest and Truman ordered them behind
+  functionality.
+- The endgame named in Increment 5's spec: **the app builds the database
+  itself**, removing the GitHub dependency. Truman's condition for looking at it
+  was "once we've proven that the app can work entirely without my constant
+  maintenance" — which is what the cron now has to demonstrate over a few weeks.
+  The download, the atomic swap, the schema handshake and the refresh UI are all
+  reused when it happens; only the source of the bytes changes.
 
 **One loose thread, small.** The onboarding field's masking (`c7e5f2c`) landed
 *after* Truman's device round, so that one change has not been on a phone. The
