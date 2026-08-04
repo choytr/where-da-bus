@@ -34,8 +34,8 @@ the source of truth.
    2026-08-02. It marks which claims are vendor quotes and which are readings
    of a single example. Do not re-read the PDFs to re-derive what the README
    already records; that was done once, deliberately.
-5. `docs/backlog.md` — triaged defects, including an "Increment 2 — deferred"
-   section written at this increment's boundary.
+5. `docs/backlog.md` — triaged defects, now in three dated sections, one per
+   increment boundary. The newest is *Increment 5 — deferred*.
 
 ## Where things stand
 
@@ -136,6 +136,24 @@ permission on 2026-08-03, after a second device round caught the zoom reset on
 *Search here*.
 
 ## What to pick up next
+
+> **Start here: Truman wants a grilling session for Increment 6.** He asked for
+> it explicitly at the end of the 2026-08-04 session, before going to sleep and
+> before anything about Increment 6 had been decided.
+>
+> **Invoke the `grilling` skill, and do it before writing a spec, a plan, or a
+> line of code.** He is asking to have his *own* thinking stress-tested, not to
+> be handed a proposal — so the session's job is to grill him, not to arrive
+> with an answer and defend it. The *Candidates* list below is raw material for
+> that conversation and explicitly **not** a recommendation; leading with one
+> would pre-empt the thing he asked for.
+>
+> This is a pattern with him rather than a one-off. He approved Increment 4's
+> plan only "tentatively" and asked for an architecture conversation first, and
+> that conversation reversed four decisions and killed a fifth — including the
+> one that gave Increment 5 its bundled floor. The grilling is where this
+> project's design work actually happens; treat it as the increment's first
+> task, not as a preamble to it.
 
 **Increment 5 is merged. Nothing is outstanding, and the next increment is not
 yet chosen.**
@@ -475,13 +493,21 @@ does not.
 
 ## Suggested skills
 
-- **The boundary review is done** — `c7e5f2c..dev`, on 2026-08-04. Do not redo
-  it. One fix came out of it and the rest is triaged in `docs/backlog.md`.
+- **`grilling`, first, before anything else.** He asked for it by name for
+  Increment 6. See the note at the top of *What to pick up next*: it comes
+  before brainstorming, before a spec, and before any proposal of your own.
+- **`superpowers:brainstorming`, then `writing-plans`** — but only once the
+  grilling has settled what Increment 6 actually is. The order this project has
+  converged on is grill -> spec -> contract-level plan -> execute inline ->
+  review once at the boundary -> device round -> merge.
 - **`superpowers:systematic-debugging`** — if anything about the *appearance*
   of the app comes up. This project has repeatedly produced confident wrong
   claims by reasoning from source instead of observing a device.
 - **`superpowers:finishing-a-development-branch`** — for the merge conversation,
   which is Truman's call every time.
+- **The boundary review for Increment 5 is done** — `c7e5f2c..dev`, on
+  2026-08-04. Do not redo it. One fix came out of it and the rest is triaged in
+  `docs/backlog.md`.
 - **Not `superpowers:dispatching-parallel-agents` or
   `subagent-driven-development`.** `CLAUDE.md` is explicit: execute inline, and
   review once at the increment boundary. Increment 1 cost more in process than
