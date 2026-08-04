@@ -128,50 +128,44 @@ permission on 2026-08-03, after a second device round caught the zoom reset on
 
 ## What to pick up next
 
-**Device-verify Increment 4, then ask about merging.** In order:
+**Increment 4 is finished, verified and merged. Two things remain.**
 
-1. **Drive the `.ipa`. It is already built:** run **`30884750888`** off `dev`,
-   artifact `app-ipa`, 10.1 MB, green, expires 2026-09-03. Download it from
-   <https://github.com/choytr/where-da-bus/actions/runs/30884750888>.
+1. **Make `choytr/where-da-bus` public — Truman does this by hand.** He said on
+   2026-08-03 he intends to. Not code; no test will notice it being skipped, and
+   it cannot be undone once indexed.
 
-   The build itself already proves one thing: there is **no "Require the AppID"
-   step any more and it passed without one**, where the old guard would have
-   failed the build outright. Nothing in the pipeline depends on the key, and
-   `expo-secure-store`'s config plugin survives prebuild.
+   **Everything that gated it is done.** The key is out of the bundle, nothing
+   in app source reads `process.env` at all, the value appears nowhere in the
+   tree outside the gitignored `.env`, `git log --all -S` finds it in no commit,
+   the 16 key-bearing `.ipa` artifacts were deleted, and the repository secret
+   is gone. There is nothing left to check first.
 
-   What is left is the part only a device can answer: **a fresh install with
-   no key must reach onboarding**, accept a pasted key, and then show arrivals.
-   Expo Go carries a local `.env` that a real install does not, which is the
-   disagreement this project has already been bitten by once — and the first
-   launch is now exactly where it would bite. Deleting and reinstalling is what
-   produces a no-key state; there is no in-app way back to onboarding except
-   Settings → Remove key, which is itself worth trying.
-2. ~~**Review the whole diff.**~~ **Done — `/code-review ultra` on the whole
-   `dev` → `main` diff, 41 files, and it returned _zero findings_.**
-
-   Take that for exactly what it is worth. It is a real result, and it is not
-   evidence the increment works: nine review rounds, 90 Jest tests and a clean
-   typecheck all missed that `SafeAreaView` had no provider, because that class
-   of bug is invisible to everything except a device. A clean review moves none
-   of the risk that is actually left here, which is item 1.
-3. **Ask Truman about merging to `main`.** Needs his explicit permission.
-4. **Delete the `EXPO_PUBLIC_THEBUS_APP_ID` repository secret**, by hand, once
-   the `.ipa` is verified. It is deliberately still there: deleting it before
-   verification would turn a rollback into a re-registration.
-5. **Make `choytr/where-da-bus` public — by hand.** Not code, no test will
-   notice it being skipped, cannot be undone once indexed. **Increment 4 is what
-   made this safe**, and that is now done: the key is out of the bundle, absent
-   from the whole tree, and `git log --all -S` confirms it was never committed.
-   The 16 key-bearing artifacts were already deleted.
-6. **Increment 5 — the data refreshes itself.** Spec + plan both dated
+2. **Increment 5 — the data refreshes itself.** Spec + plan both dated
    2026-08-03. The spec's *Revision: keep the floor* is the version that gets
-   built; its headline decision was reversed.
+   built; its headline decision was reversed. Nothing blocks it.
 
-## Increment 4 is built, and not yet verified
+**One loose thread, small.** The onboarding field's masking (`c7e5f2c`) landed
+*after* Truman's device round, so that one change has not been on a phone. The
+`main` build from run `30892749009` contains it. Not worth a special trip; worth
+a glance next time an `.ipa` is installed for any reason.
+
+## Increment 4 is built, verified and merged
 
 All eight tasks of `docs/superpowers/plans/2026-08-03-increment-4-own-api-key.md`,
-inline on `dev`, one commit each. **330 Jest, 70 `node --test`, typecheck
-clean.** The plan's *What was built* section records where reality disagreed
+inline on `dev`, one commit each, plus Truman's one device finding. **333 Jest,
+70 `node --test`, typecheck clean.** `origin/main` is at **`c7e5f2c`**,
+fast-forwarded from `dev` with his explicit permission on 2026-08-03.
+
+**Device-verified** from run `30884750888`, driven by Truman. It works. His one
+change was that the onboarding key field showed the key in the clear while
+Settings masked it — now masked with a Show/Hide toggle, because a pasted GUID
+is unverifiable when masked and the only later feedback would be the arrival
+board saying the key was rejected, which the app cannot distinguish from a
+mistyped one.
+
+**The `EXPO_PUBLIC_THEBUS_APP_ID` repository secret is deleted.** The `.ipa`
+build on `main` (run `30892749009`) then went green *with no secret in the
+repository at all*, which is the claim proven rather than argued. The plan's *What was built* section records where reality disagreed
 with it; read that rather than the diff.
 
 The shape: `KeyGate` sits above the router in `AppShell`, so no screen mounts
