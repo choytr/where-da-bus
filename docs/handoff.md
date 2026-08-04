@@ -130,8 +130,16 @@ permission on 2026-08-03, after a second device round caught the zoom reset on
 
 **Device-verify Increment 4, then ask about merging.** In order:
 
-1. **Build and drive the `.ipa`.** `gh workflow run ios-ipa.yml --ref dev`,
-   sideload, and check the thing this increment changed: **a fresh install with
+1. **Drive the `.ipa`. It is already built:** run **`30884750888`** off `dev`,
+   artifact `app-ipa`, 10.1 MB, green, expires 2026-09-03. Download it from
+   <https://github.com/choytr/where-da-bus/actions/runs/30884750888>.
+
+   The build itself already proves one thing: there is **no "Require the AppID"
+   step any more and it passed without one**, where the old guard would have
+   failed the build outright. Nothing in the pipeline depends on the key, and
+   `expo-secure-store`'s config plugin survives prebuild.
+
+   What is left is the part only a device can answer: **a fresh install with
    no key must reach onboarding**, accept a pasted key, and then show arrivals.
    Expo Go carries a local `.env` that a real install does not, which is the
    disagreement this project has already been bitten by once — and the first
