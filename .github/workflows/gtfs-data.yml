@@ -14,6 +14,18 @@ on:
     # 12:00 UTC Monday — 02:00 in Honolulu, which is nobody's commute.
     - cron: '0 12 * * 1'
   workflow_dispatch:
+  # TEMPORARY — removed once this file is on `main`.
+  #
+  # `workflow_dispatch` and `schedule` only ever run a workflow that exists on
+  # the *default* branch; asking for either from a feature branch is a 404, not
+  # a permissions error. `push` is the exception — it runs the workflow as
+  # defined on the ref that was pushed, which is how tests.yml runs on `dev`.
+  #
+  # So this is the only way to prove the workflow works before merging it, and
+  # proving it after would mean merging an unrun workflow and a device build
+  # with nothing to download. Pushing `publish-data` runs it for real.
+  push:
+    branches: [publish-data]
 
 concurrency:
   group: gtfs-data
