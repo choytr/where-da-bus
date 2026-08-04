@@ -92,16 +92,6 @@ export function parseManifest(value: unknown): Manifest | null {
 }
 
 /**
- * The published build, if it is newer than the one in use and readable by this
- * binary. Null means there is nothing to do.
- *
- * Throws when the check itself failed — unreachable, an HTTP error, or a
- * manifest that will not parse. "Up to date" and "could not check" are
- * different facts and Settings shows them differently, so they must not come
- * back as the same value; this is the same rule the arrival board follows for
- * "no buses coming" versus "couldn't reach TheBus".
- */
-/**
  * The slice of `fetch` this needs. Narrower than `typeof fetch` on purpose:
  * the real thing satisfies it, and a test can hand over three fields instead of
  * standing up a whole `Response` — which is otherwise only possible with the
@@ -111,6 +101,16 @@ export type FetchManifest = (
   url: string,
 ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
+/**
+ * The published build, if it is newer than the one in use and readable by this
+ * binary. Null means there is nothing to do.
+ *
+ * Throws when the check itself failed — unreachable, an HTTP error, or a
+ * manifest that will not parse. "Up to date" and "could not check" are
+ * different facts and Settings shows them differently, so they must not come
+ * back as the same value; this is the same rule the arrival board follows for
+ * "no buses coming" versus "couldn't reach TheBus".
+ */
 export async function checkForUpdate(
   fetchImpl: FetchManifest,
   currentBuiltAt: string | null,

@@ -372,3 +372,42 @@ sentinel to null, and `docs/api/README.md` establishes that it co-occurs exactly
 with `estimated !== "1"` — 1,228 of 1,269 sampled. The rows that *have* a bus
 number show it; 96% of arrivals do not have one to show.
 
+
+## Increment 5 — deferred, from the boundary review of 2026-08-04
+
+One real defect was found and fixed on the branch rather than deferred: the
+launch sweep and the launch refresh were started concurrently, and a sweep
+landing between the refresh's rename and its pointer save would have deleted the
+file the pointer was about to name. See `AppShell`'s `useStopDataRefresh`, and
+the test named for it. The rest of the review's findings are here.
+
+- **A pointer naming a file that is not there is not guarded.** `AppShell`
+  passes the stored generation name to `SQLiteProvider` without checking it
+  exists. `openDatabaseAsync` *creates* what it cannot find, so the open
+  succeeds, `DatabaseGate` never fires, and every screen silently shows no
+  results — the worst failure shape in the app, since nothing anywhere says
+  anything is wrong.
+
+  Deferred because the sequencing fix removed the only path that reached it, and
+  because the state otherwise needs AsyncStorage and the SQLite directory to
+  disagree — they live in the same container and go together. The fix, if it is
+  ever wanted, is three lines: `databaseFiles.list()` in
+  `useCurrentDatabaseName` and fall back to `BUNDLED_DATABASE`. The cost is
+  pulling `expo-file-system` into the shell's module graph, which every suite
+  rendering `AppShell` would then have to double.
+
+- **`Manifest.bytes` is parsed, required, and never used.** It is checked for
+  presence and then ignored; `sha256` subsumes it. Kept because it documents the
+  manifest contract the Action writes, and because a size check is the cheap way
+  to reject a wrong-sized download *before* hashing it if that ever matters.
+
+- **Old generations accumulate in the `data` release forever.** Each weekly
+  build uploads a new ~1.2 MB asset and nothing prunes. That is ~62 MB a year,
+  and pruning would have to keep every schema version's newest build alive for
+  as long as a binary might still ask for it — which is exactly the discipline
+  the filename scheme exists to make cheap. Not worth automating at this scale.
+
+- **`publish.mjs check` downloads the whole 12 MB feed to decide it has not
+  changed.** A `HEAD` and `Last-Modified` would usually avoid it, but the spec
+  rejected inferring anything from dates, and the download is what the build
+  needs anyway when the answer is "yes". Weekly, on a GitHub runner. Left alone.

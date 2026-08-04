@@ -309,6 +309,48 @@ describe('AppShell', () => {
     }
   });
 
+  /**
+   * Started concurrently these two race, and the losing outcome is the worst
+   * state this increment can produce. The sweep deletes every generation the
+   * pointer does not name; the refresh saves the pointer only after renaming
+   * the file into place. A sweep landing between the two deletes the file the
+   * pointer is about to name — and the next launch opens an *empty* database
+   * there, because `openDatabaseAsync` creates what it cannot find. That open
+   * succeeds, so `DatabaseGate` never fires and every screen silently shows
+   * nothing.
+   */
+  it('does not start the refresh until the sweep has finished', async () => {
+    jest.useFakeTimers({ doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick'] });
+    const refresh = jest.requireMock('../data/gtfs/dataRefresh');
+
+    let sweepDone = () => {};
+    refresh.sweepStaleGenerations.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          sweepDone = resolve;
+        }),
+    );
+
+    try {
+      await render(<AppShell><InsetReader /></AppShell>);
+      await act(async () => {
+        jest.advanceTimersByTime(2000);
+      });
+
+      expect(refresh.sweepStaleGenerations).toHaveBeenCalled();
+      expect(refresh.refreshStopData).not.toHaveBeenCalled();
+
+      await act(async () => {
+        sweepDone();
+      });
+
+      expect(refresh.refreshStopData).toHaveBeenCalled();
+    } finally {
+      await cleanup();
+      jest.useRealTimers();
+    }
+  });
+
   it('says it is opening the database while the open is still running', async () => {
     // Suspending forever is how a slow open looks to React: the fallback is
     // what the user sits in front of, and it must not be a blank screen.

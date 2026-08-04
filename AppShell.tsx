@@ -175,16 +175,28 @@ const REFRESH_DELAY_MS = 2000;
  * database: generations accumulate precisely because a refresh refuses to reuse
  * a name, so the previous one is deleted here, on the launch after the pointer
  * moved off it, when nothing holds it open.
+ *
+ * **The two are sequenced, not merely ordered on the page.** Started
+ * concurrently they race, and the losing outcome is the worst state this
+ * increment can produce. The sweep deletes every generation the pointer does
+ * not name; the refresh saves the pointer only *after* renaming the file into
+ * place. A sweep whose `list()` falls between that rename and that save deletes
+ * the very file the pointer is about to name — and the next launch then opens
+ * an *empty* database at that name, because `openDatabaseAsync` creates what it
+ * cannot find. That open succeeds, so `DatabaseGate` never fires and every
+ * screen silently shows nothing. Awaiting the sweep costs a few filesystem
+ * milliseconds and removes the window entirely.
  */
 function useStopDataRefresh(): void {
   useEffect(
     () =>
       schedule(() => {
-        void sweepStaleGenerations();
         // Already silent — `refreshStopData` records the attempt itself — but
         // an unhandled rejection from a fire-and-forget call would still reach
         // the console and, in a release build, look like a crash report.
-        void refreshStopData().catch(() => {});
+        void sweepStaleGenerations()
+          .then(() => refreshStopData())
+          .catch(() => {});
       }, REFRESH_DELAY_MS),
     [],
   );
