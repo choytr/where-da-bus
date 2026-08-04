@@ -141,34 +141,38 @@ permission on 2026-08-03, after a second device round caught the zoom reset on
 
 ## What to pick up next
 
-**Increment 5 is code-complete and both of its remaining steps need Truman.**
-Neither is code, and neither can be worked around from a session.
+**Only the device round is left.** The workflow has run for real and the data
+is published.
 
-1. **`gtfs-data.yml` cannot be triggered until it is on `main`.**
-   `workflow_dispatch` only registers a workflow that exists on the **default
-   branch**, so `gh workflow run gtfs-data.yml --ref dev` answers `HTTP 404`.
-   This is the reverse of every previous increment's order: the publish has to
-   happen before a device can show the download working, and the publish needs
-   the merge. So either merge `dev` (his permission, as always — and it starts
-   an `.ipa` build too), or publish the release by hand from the artifacts in
-   `dist/` to test the app half first.
+**The device round, which is where the real risk is.** Install the `.ipa`,
+confirm it opens on the bundled floor, let it refresh, **force-quit**, relaunch,
+and confirm it opens the downloaded generation and the previous file is gone.
 
-   What that leaves unproven is the YAML and the upload ordering only. Both of
-   the workflow's node steps were run end to end locally: `check` downloaded and
-   hashed the live feed, `npm run build:gtfs` built from it, and `package`
-   floor-checked the result (3,830 stops / 118 routes / 8,629 stop_routes) and
-   wrote the manifest.
+**The force-quit is the point, not a formality.** The pointer is read once per
+launch, so a refresh is only ever observable across a restart — an app that
+never gets closed will look exactly like one that is not refreshing. Settings is
+where to check in between: it names the build in use and when it last looked.
 
-2. **The device round, which is where the real risk is.** Install, confirm it
-   opens on the bundled floor, let it refresh, **force-quit**, relaunch, and
-   confirm it opens the downloaded generation and the previous file is gone.
-   The force-quit is the point: the pointer is read once per launch, so a
-   refresh is only observable across a restart.
+What to expect on the first launch after installing: Settings says *Using the
+copy that came with the app*, then after a few seconds and a **Check now** it
+should say *New stop data downloaded. It will be used the next time you open the
+app.* After the force-quit and relaunch it should say *Using the copy published
+4 August 2026*.
 
-   **There is nothing published yet for a device to download**, so a build off
-   `dev` today exercises the failure path only — `checkForUpdate` gets a 404,
-   the app stays on the floor and says so in Settings. That is worth seeing, but
-   it is not the test.
+**The `gtfs-data.yml` half is done and does not need repeating.** It ran twice
+for real on 2026-08-04, from a temporary `push` trigger on a throwaway branch
+that has since been removed:
+
+- run `30901281396` built and published `gtfs-v1-20260804T103550Z.db` and then
+  `manifest.json`, in that order, into the `data` release;
+- run `30901405253` exited at the check with `changed=false`, the upstream zip
+  being byte-identical — which is the change detection working, not a failure.
+
+The published database was downloaded and checked independently: `sha256` and
+byte count match the manifest exactly, `meta.schema_version` is 1, and the
+counts are 3,830 stops / 118 routes / 8,629 stop_routes with a `generated_at`
+from the run itself. That last part is what proves it is a fresh build rather
+than the committed floor republished.
 
 **One loose thread, small.** The onboarding field's masking (`c7e5f2c`) landed
 *after* Truman's device round, so that one change has not been on a phone. The
@@ -500,6 +504,13 @@ does not.
   workflow added on a branch is invisible to `gh workflow run --ref <branch>`
   until it merges — 404, not a permissions error. `ios-ipa.yml` can be run
   against any branch precisely because it is already on `main`.
+
+  **`push` is the way round it**, and it is how `gtfs-data.yml` was proven
+  before merging: `push` runs a workflow *as defined on the ref that was
+  pushed*, which is the same mechanism by which `tests.yml` runs on `dev`. Add a
+  `push:` trigger scoped to a throwaway branch, push it, then take the trigger
+  back out. `schedule` and `repository_dispatch` are no help — both also run
+  only from the default branch.
 - **`expo-asset` is not resolvable from the project root.** npm nests it under
   `node_modules/expo/node_modules/`, so `require('expo-sqlite')` throws
   `Cannot find module 'expo-asset'` under Jest — anything importing
