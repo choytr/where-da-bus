@@ -4,10 +4,10 @@
 session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
-Last updated: **2026-08-03**, second session. **Increment 3 is complete,
-device-verified and merged** — `origin/main` is at `094d7f3`. **Increment 4 is
-code-complete on `dev` and has NOT been device-verified**; that is the one thing
-standing between it and a merge request. See *Increment 4 is built* below.
+Last updated: **2026-08-03**, second session. **Increment 4 is complete,
+device-verified and merged.** Truman drove the `.ipa` from run `30884750888`
+and reported it works; his one change was masking the onboarding key field,
+which is done. See *Increment 4 is built* below.
 
 The earlier session of 2026-08-03 wrote no app code — it revised the Increment 4
 and 5 specs, wrote both plans, and answered two questions by measurement. The

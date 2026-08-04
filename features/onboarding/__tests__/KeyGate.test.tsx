@@ -96,6 +96,32 @@ describe('KeyGate', () => {
     expect(screen.queryByText('the app')).toBeNull();
   });
 
+  it('hides the key as it is entered', async () => {
+    await show(fakeStorage());
+
+    const field = await screen.findByLabelText('API key');
+    expect(field.props.secureTextEntry).toBe(true);
+  });
+
+  it('reveals the key on request', async () => {
+    // A pasted GUID is unverifiable if it is masked with no way to look. The
+    // toggle is the same one Settings carries, for the same reason.
+    await show(fakeStorage());
+
+    await fireEvent.press(await screen.findByLabelText('Show key'));
+
+    expect(screen.getByLabelText('API key').props.secureTextEntry).toBe(false);
+  });
+
+  it('hides the key again', async () => {
+    await show(fakeStorage());
+
+    await fireEvent.press(await screen.findByLabelText('Show key'));
+    await fireEvent.press(screen.getByLabelText('Hide key'));
+
+    expect(screen.getByLabelText('API key').props.secureTextEntry).toBe(true);
+  });
+
   it('shows where to register', async () => {
     await show(fakeStorage());
 

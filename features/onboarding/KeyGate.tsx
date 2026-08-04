@@ -54,6 +54,7 @@ function Onboarding({ onSave }: { onSave: (key: string) => Promise<void> }) {
   const { palette } = useTheme();
   const [entered, setEntered] = useState('');
   const [failed, setFailed] = useState(false);
+  const [revealed, setRevealed] = useState(false);
 
   const trimmed = entered.trim();
   const canContinue = trimmed !== '';
@@ -101,7 +102,11 @@ function Onboarding({ onSave }: { onSave: (key: string) => Promise<void> }) {
 
         <Text style={[styles.sectionHeader, { color: palette.muted }]}>YOUR KEY</Text>
         <View
-          style={[styles.group, { backgroundColor: palette.section, borderColor: palette.border }]}
+          style={[
+            styles.group,
+            styles.keyRow,
+            { backgroundColor: palette.section, borderColor: palette.border },
+          ]}
         >
           <TextInput
             accessibilityLabel="API key"
@@ -112,17 +117,35 @@ function Onboarding({ onSave }: { onSave: (key: string) => Promise<void> }) {
               setEntered(next);
               setFailed(false);
             }}
+            // Masked by default: this is a credential, and it is entered in
+            // whatever public place someone happens to be setting the app up.
+            // With a reveal toggle, because a pasted GUID is otherwise
+            // unverifiable — the only feedback on a bad paste would come from
+            // the arrival board, much later. Same pair as Settings.
+            secureTextEntry={!revealed}
             // A key is a GUID pasted from an email. Every one of these is off
             // because the OS would otherwise capitalise it, autocorrect it, or
-            // offer to save it as a password.
+            // offer to save it as a password — the last of which `secureTextEntry`
+            // makes iOS especially keen to do.
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="off"
+            textContentType="none"
             spellCheck={false}
             onSubmitEditing={() => void save()}
             returnKeyType="done"
             style={[styles.input, { color: palette.text }]}
           />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={revealed ? 'Hide key' : 'Show key'}
+            onPress={() => setRevealed((was) => !was)}
+            style={styles.reveal}
+          >
+            <Text style={[styles.revealLabel, { color: palette.text }]}>
+              {revealed ? 'Hide' : 'Show'}
+            </Text>
+          </Pressable>
         </View>
 
         <Text style={[styles.footnote, { color: palette.muted }]}>
@@ -180,7 +203,11 @@ const styles = StyleSheet.create({
   },
   group: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   link: { fontSize: 15, padding: 14 },
-  input: { fontSize: 16, padding: 14, minHeight: 48 },
+  keyRow: { flexDirection: 'row', alignItems: 'center' },
+  // Takes the row's spare width so the reveal control keeps a fixed target.
+  input: { fontSize: 16, padding: 14, minHeight: 48, flex: 1 },
+  reveal: { paddingHorizontal: 14, paddingVertical: 14, minHeight: 48, justifyContent: 'center' },
+  revealLabel: { fontSize: 15, fontWeight: '600' },
   footnote: { fontSize: 12, lineHeight: 17, marginLeft: 4 },
   error: { fontSize: 13, lineHeight: 18, marginLeft: 4 },
   button: {
