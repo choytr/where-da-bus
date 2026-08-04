@@ -41,7 +41,7 @@ npm run typecheck      # tsc --noEmit
 npm run build:gtfs     # Rebuild assets/db/gtfs.db from the published feed
 ```
 
-You'll need a `.env` with `EXPO_PUBLIC_THEBUS_APP_ID` set to your own API key — see `.env.example`. Note that the `EXPO_PUBLIC_` prefix means it ships inside the bundle and can be extracted from the build, which is an accepted tradeoff for a personal project rather than something to copy.
+You don't need anything in `.env`. The app asks for an API key on first launch and keeps it in the device keychain — register a free one at <https://api.thebus.org/NewAccount/>. It used to read the key from `EXPO_PUBLIC_THEBUS_APP_ID`, which meant the key was baked into every build and extractable from the `.ipa`; each install now brings its own, so the quota isn't shared and there's nothing in the binary to extract.
 
 The Expo SDK is pinned to 54 on purpose. Expo Go on iOS 18 doesn't support anything newer, and Expo Go is the fast iteration loop, so install packages with `npx expo install` rather than plain `npm install`.
 

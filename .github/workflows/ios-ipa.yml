@@ -18,20 +18,19 @@ concurrency:
   group: ios-ipa-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # `.env` is gitignored, so the runner has no AppID unless one is put here.
-  # Without it the app builds and installs perfectly and then answers every
-  # arrivals request with "Invalid or unspecified API key" — a failure that
-  # cannot happen in Expo Go, which reads the developer's local `.env`.
-  #
-  # `EXPO_PUBLIC_` values are inlined into the bundle at build time, so this
-  # has to be present during `xcodebuild`, not merely at runtime.
-  #
-  # The AppID is not a secret in the cryptographic sense — it ships inside
-  # every .ipa and is extractable from one, which the design accepts. It lives
-  # in GitHub secrets so it stays out of the repository, not because storing
-  # it there makes it private.
-  EXPO_PUBLIC_THEBUS_APP_ID: ${{ secrets.EXPO_PUBLIC_THEBUS_APP_ID }}
+# No AppID here, and none in the bundle.
+#
+# Until Increment 4 this workflow injected EXPO_PUBLIC_THEBUS_APP_ID from a
+# repository secret, because `EXPO_PUBLIC_` values are inlined at build time and
+# a build without one produced an .ipa that installed perfectly and then failed
+# every arrivals request. Each user now registers their own key and pastes it
+# into the app, where it is stored in the keychain — so there is nothing for the
+# build to inject and nothing extractable from the artifact.
+#
+# The lesson that produced the old guard still stands, and is not about this
+# variable: anything that reaches the app through the environment is absent on a
+# CI runner in a way Expo Go cannot show you, because Expo Go reads the
+# developer's local `.env`. If such a value is ever added, guard it here.
 
 jobs:
   build:
@@ -45,21 +44,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      # Fail in five seconds rather than after a 4-minute build, a download and
-      # a sideload. The missing-AppID build is indistinguishable from a good one
-      # until you tap a stop on a physical phone, which is the most expensive
-      # place in this project to discover anything.
-      - name: Require the AppID
-        run: |
-          if [ -z "$EXPO_PUBLIC_THEBUS_APP_ID" ]; then
-            echo "::error::EXPO_PUBLIC_THEBUS_APP_ID is not set."
-            echo "The .ipa would build fine and then fail every arrivals request"
-            echo "with 'Invalid or unspecified API key'. Set it with:"
-            echo "  gh secret set EXPO_PUBLIC_THEBUS_APP_ID"
-            exit 1
-          fi
-          echo "AppID present (${#EXPO_PUBLIC_THEBUS_APP_ID} characters)."
 
       - name: Select newest available Xcode
         run: |

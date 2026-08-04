@@ -99,8 +99,15 @@ doing, and do not launder a reading of the source into a claim about the screen.
 the two.** `.env` is gitignored; CI had no AppID; every `.ipa` shipped an empty
 `EXPO_PUBLIC_THEBUS_APP_ID` and failed every arrivals request on device. 179
 tests, a clean typecheck, expo-doctor, a successful build and Expo Go all said
-fine. Any value reaching the app through the environment has this shape.
-`ios-ipa.yml` now reads it from a repository secret and guards against absence.
+fine. **Any value reaching the app through the environment has this shape, and
+that is the part to carry forward.**
+
+The variable itself is gone as of Increment 4 — each user pastes their own key
+and it lives in the keychain, so `ios-ipa.yml` injects nothing and there is no
+secret in the build to be absent. The *lesson* is not retired with it: Expo Go
+reads the developer's local `.env` and a CI runner has none, so the next value
+plumbed through the environment will fail exactly this way. `.env.example` and
+the workflow both carry a note saying so.
 
 A second, smaller one: `dev` was added to `tests.yml` this session and caught a
 `react-dom` peer conflict within one commit — three pushes had already gone up
@@ -387,13 +394,19 @@ does not.
 - Windows/WSL2, no Mac, no paid Apple Developer account. iOS builds run only on
   GitHub Actions. `/ios` and `/android` are prebuild output and must never be
   committed or hand-edited.
-- The AppID lives in `.env` locally and in a GitHub repository secret for CI.
-  **Not reproduced here.** `EXPO_PUBLIC_` means it ships inside the bundle and
-  is extractable from the `.ipa` — a documented, accepted tradeoff.
+- **There is no AppID in the repo, the build, or `.env` any more.** Increment 4
+  moved it to the device keychain, entered by the user on first launch. The
+  local `.env` still holds the old value and is gitignored; nothing reads it.
+  The GitHub repository secret is kept until the `.ipa` is device-verified,
+  then deleted by hand — deleting it first would turn a rollback into a
+  re-registration.
 - SDK pinned to 54 by the Expo Go ceiling. Install with `npx expo install`,
   never bare `npm install <pkg>`, never `npm audit fix --force`. The 12
   outstanding audit advisories are all in the web build and prebuild toolchains,
   none reach the device, and they have been triaged — do not "fix" them.
+  (The count reads 15 as of 2026-08-03, not 12. `expo-secure-store` added none:
+  it resolved with zero transitive dependencies, and every advisory root is
+  still `@expo/cli`, `@expo/config-plugins`, `xcode`, `postcss` or `jest-expo`.)
 - **WSL is in mirrored networking mode** (`%UserProfile%\.wslconfig`) so Expo Go
   on a physical iPhone can reach Metro, and a Hyper-V firewall rule named
   `ExpoGo8081` allows inbound TCP 8081. Without both, Metro binds an address the

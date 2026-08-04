@@ -70,6 +70,11 @@ account.** Consequences that are not obvious from reading the code:
   the same thing and must not be run.
 - **CI builds unsigned.** Signing happens on-device via SideStore with a free
   Apple ID. Never add signing steps or provisioning profiles to the workflow.
+- **No secret reaches the build any more.** Increment 4 removed
+  `EXPO_PUBLIC_THEBUS_APP_ID`; each user registers an AppID and pastes it into
+  the app, where it lives in the keychain. The workflow injects nothing. The
+  lesson that variable taught is not retired with it — see the environment
+  section below.
 - `/ios` and `/android` are gitignored — they are `expo prebuild` output and
   must never be committed or hand-edited. Native config goes through `app.json`.
 
@@ -83,13 +88,15 @@ app/_layout.tsx       ten lines: a Stack inside AppShell
 app/index.tsx         -> HomeScreen
 app/stop/[code].tsx   -> ArrivalsScreen        (/stop/596)
 app/route/[id].tsx    -> RouteScreen           (/route/1L)
-AppShell.tsx          SafeAreaProvider + database gate; takes children
+AppShell.tsx          SafeAreaProvider + key gate + database gate; takes children
 features/stops/       HomeScreen, StopRow, useLocation — nearby, search, favorites
 features/arrivals/    ArrivalsScreen, ArrivalRow, useArrivals, useNow, format.ts
 features/routes/      RouteScreen — ordered stop list, entirely offline
+features/onboarding/  KeyGate — no key, no app
 data/gtfs/            sql.ts (queries), db.ts (typed hooks), feedValidity.ts
-data/thebus/          TheBusClient: client.ts, parse.ts, time.ts, types.ts
-data/storage/         favorites persistence over AsyncStorage
+data/thebus/          TheBusClient: client.ts, parse.ts, time.ts, types.ts,
+                      provider.tsx (holds the user's key, builds the client)
+data/storage/         favorites + theme over AsyncStorage; apiKey.ts over the keychain
 lib/distance.ts       haversine metres between two coordinates
 lib/schedule.ts       timers that return a canceller, not a handle (see below)
 lib/legal.ts          the required attribution and disclaimer
@@ -130,7 +137,7 @@ Increment 3 adds the map. `data/thebus/` and `features/arrivals/` now exist.
 declares no `type`. It looks like cruft; deleting it breaks
 `npm run test:scripts`.
 
-Two boundaries carry real weight:
+Three boundaries carry real weight:
 
 **`TheBusClient` is an interface.** UI code never touches a raw API response.
 The live endpoints are documented and verified in `docs/api/README.md` — read
@@ -138,6 +145,16 @@ that before writing any client code. Their JSON is string-typed throughout,
 disagrees with its own field tables in three places, and uses `"0"` and `"???"`
 as sentinels, so the mapping into app types is real work that belongs behind
 this interface rather than in a screen.
+
+**The AppID belongs to the user, and there is no fallback.** `KeyGate` sits
+above the router in `AppShell`, so no screen mounts without a key — which is
+what keeps "no key yet" from being a state every data view has to render.
+`TheBusProvider` holds the key and rebuilds the client whenever it changes;
+that rebuild is also what clears `withCache`, whose entries are keyed by stop
+code alone and would otherwise outlive the key that fetched them. A rejected
+key is `ArrivalsFailure`'s `unauthorized`, recognised from the response body
+because this API reports every error as HTTP 200, and it must never render like
+`unreachable`: one is fixed by waiting and the other never is.
 
 **GTFS static data is reference-only.** Oahu's feed scores grade F on freshness,
 so bundled data supplies stop names, codes, coordinates, and which routes serve
