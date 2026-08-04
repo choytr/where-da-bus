@@ -41,11 +41,22 @@ the source of truth.
 **`origin/main` is at `c7e5f2c`** — Increments 1 through 4, all
 device-verified and merged.
 
-**`dev` is eight commits ahead**: two documentation commits closing out
-Increment 4, then Increment 5's six tasks, `08dc855`..`c20946e`.
-Code-complete, **not reviewed, not device-verified, not merged.**
+**`dev` is ten commits ahead**: two documentation commits closing out
+Increment 4, then Increment 5's six tasks, `08dc855`..`c20946e`, plus the
+handoff update and the boundary review's one fix. **Reviewed. Not
+device-verified, not merged.**
 
-Green: **387 Jest, 73 `node --test`, clean typecheck, clean `npm ci`.**
+Green: **388 Jest, 73 `node --test`, clean typecheck, clean `npm ci`**, and CI
+green on `dev`.
+
+**The boundary review found one real defect and it is fixed** (`6eca5e6`): the
+launch sweep and the launch refresh were started concurrently, and a sweep
+landing between the refresh's rename and its pointer save would have deleted the
+file the pointer was about to name — leaving the next launch opening an *empty*
+database at that name, silently, because `openDatabaseAsync` creates what it
+cannot find and `DatabaseGate` therefore never fires. It lived in the seam
+between task 4 and task 5, which is exactly what a per-task review cannot see.
+The rest of the review is in `docs/backlog.md` under *Increment 5 — deferred*.
 
 Commit messages carry the reasoning throughout this project. Read those rather
 than asking for a summary of what changed.
@@ -468,9 +479,8 @@ does not.
 
 ## Suggested skills
 
-- **`superpowers:requesting-code-review`** — Increment 5 is code-complete and
-  unreviewed. `CLAUDE.md`: review **once**, at the increment boundary, on the
-  whole diff `c7e5f2c..dev`. That is where the cross-cutting findings live.
+- **The boundary review is done** — `c7e5f2c..dev`, on 2026-08-04. Do not redo
+  it. One fix came out of it and the rest is triaged in `docs/backlog.md`.
 - **`superpowers:systematic-debugging`** — if anything about the *appearance*
   of the app comes up. This project has repeatedly produced confident wrong
   claims by reasoning from source instead of observing a device.
