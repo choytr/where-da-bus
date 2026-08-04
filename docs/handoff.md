@@ -4,14 +4,14 @@
 session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
-Last updated: **2026-08-03**, second session. **Increment 4 is complete,
-device-verified and merged.** Truman drove the `.ipa` from run `30884750888`
-and reported it works; his one change was masking the onboarding key field,
-which is done. See *Increment 4 is built* below.
+Last updated: **2026-08-04**. **Increment 4 is merged. Increment 5 is
+code-complete on `dev` and blocked on two things, both of which need Truman.**
+See *Increment 5 is built, and what it is waiting on* below.
 
-The earlier session of 2026-08-03 wrote no app code — it revised the Increment 4
-and 5 specs, wrote both plans, and answered two questions by measurement. The
-second session executed all eight tasks of the Increment 4 plan.
+Increment 4 was device-verified from run `30884750888` and merged on
+2026-08-03; his one change was masking the onboarding key field, which is done.
+He made the repository **public** on 2026-08-04, which is what unblocked
+Increment 5.
 
 **Everything durable is already in the repo.** This document exists only to
 carry what a transcript would otherwise lose. Read the repo docs first; they are
@@ -19,11 +19,12 @@ the source of truth.
 
 ## Read these, in this order
 
-1. `CLAUDE.md` — the traps. Updated this session.
-2. `docs/superpowers/plans/2026-08-03-increment-4-own-api-key.md` — **what was
-   just built**, annotated with where reality disagreed with it. Its spec is
-   `../specs/2026-08-02-increment-4-own-api-key.md`, with two revision sections
-   at the end.
+1. `CLAUDE.md` — the traps. Updated this session with a new Jest one.
+2. `docs/superpowers/plans/2026-08-03-increment-5-self-refreshing-data.md` —
+   **what was just built**, and its *What was built* section at the end records
+   where reality disagreed with it plus what verification is still outstanding.
+   Its spec is `../specs/2026-08-03-increment-5-self-refreshing-data.md`, and
+   the binding version of that spec is its *Revision: keep the floor* section.
 3. `docs/superpowers/specs/2026-07-29-wheredabus-design.md` — scope and
    sequencing. Its Increment 3 row is superseded by the spec above; three of
    its claims were corrected on 2026-08-02 and carry inline notes saying so.
@@ -37,13 +38,14 @@ the source of truth.
 
 ## Where things stand
 
-**`origin/main` is at `094d7f3`** — Increments 1 through 3, all
+**`origin/main` is at `c7e5f2c`** — Increments 1 through 4, all
 device-verified and merged.
 
-**`dev` is eight commits ahead** with Increment 4, `f7d715a`..`eec190d`.
-Code-complete, **not device-verified, not reviewed, not merged.**
+**`dev` is eight commits ahead**: two documentation commits closing out
+Increment 4, then Increment 5's six tasks, `08dc855`..`c20946e`.
+Code-complete, **not reviewed, not device-verified, not merged.**
 
-Green: **330 Jest, 70 `node --test`, clean typecheck.**
+Green: **387 Jest, 73 `node --test`, clean typecheck, clean `npm ci`.**
 
 Commit messages carry the reasoning throughout this project. Read those rather
 than asking for a summary of what changed.
@@ -128,26 +130,71 @@ permission on 2026-08-03, after a second device round caught the zoom reset on
 
 ## What to pick up next
 
-**Increment 4 is finished, verified and merged. Two things remain.**
+**Increment 5 is code-complete and both of its remaining steps need Truman.**
+Neither is code, and neither can be worked around from a session.
 
-1. **Make `choytr/where-da-bus` public — Truman does this by hand.** He said on
-   2026-08-03 he intends to. Not code; no test will notice it being skipped, and
-   it cannot be undone once indexed.
+1. **`gtfs-data.yml` cannot be triggered until it is on `main`.**
+   `workflow_dispatch` only registers a workflow that exists on the **default
+   branch**, so `gh workflow run gtfs-data.yml --ref dev` answers `HTTP 404`.
+   This is the reverse of every previous increment's order: the publish has to
+   happen before a device can show the download working, and the publish needs
+   the merge. So either merge `dev` (his permission, as always — and it starts
+   an `.ipa` build too), or publish the release by hand from the artifacts in
+   `dist/` to test the app half first.
 
-   **Everything that gated it is done.** The key is out of the bundle, nothing
-   in app source reads `process.env` at all, the value appears nowhere in the
-   tree outside the gitignored `.env`, `git log --all -S` finds it in no commit,
-   the 16 key-bearing `.ipa` artifacts were deleted, and the repository secret
-   is gone. There is nothing left to check first.
+   What that leaves unproven is the YAML and the upload ordering only. Both of
+   the workflow's node steps were run end to end locally: `check` downloaded and
+   hashed the live feed, `npm run build:gtfs` built from it, and `package`
+   floor-checked the result (3,830 stops / 118 routes / 8,629 stop_routes) and
+   wrote the manifest.
 
-2. **Increment 5 — the data refreshes itself.** Spec + plan both dated
-   2026-08-03. The spec's *Revision: keep the floor* is the version that gets
-   built; its headline decision was reversed. Nothing blocks it.
+2. **The device round, which is where the real risk is.** Install, confirm it
+   opens on the bundled floor, let it refresh, **force-quit**, relaunch, and
+   confirm it opens the downloaded generation and the previous file is gone.
+   The force-quit is the point: the pointer is read once per launch, so a
+   refresh is only observable across a restart.
+
+   **There is nothing published yet for a device to download**, so a build off
+   `dev` today exercises the failure path only — `checkForUpdate` gets a 404,
+   the app stays on the floor and says so in Settings. That is worth seeing, but
+   it is not the test.
 
 **One loose thread, small.** The onboarding field's masking (`c7e5f2c`) landed
 *after* Truman's device round, so that one change has not been on a phone. The
 `main` build from run `30892749009` contains it. Not worth a special trip; worth
 a glance next time an `.ipa` is installed for any reason.
+
+## Increment 5 is built, and what it is waiting on
+
+All six tasks of `docs/superpowers/plans/2026-08-03-increment-5-self-refreshing-data.md`,
+inline on `dev`, one commit each. **387 Jest, 73 `node --test`, typecheck clean,
+`npm ci` clean.** Read the plan's *What was built* section rather than the diff;
+it records seven places where reality disagreed with the plan.
+
+The shape: a weekly Action rebuilds the feed and uploads
+`gtfs-v1-<builtAt>.db` then `manifest.json` to the fixed `data` release tag. The
+app checks the manifest two seconds after first paint, verifies `sha256`, opens
+the download and counts its rows before trusting it, and moves a stored pointer.
+`assets/db/gtfs.db` stays in the bundle as the floor, so every failure in that
+chain degrades to stale data rather than none.
+
+**The one decision the plan got wrong, reversed here.** The plan had the pointer
+remounting `SQLiteProvider` onto the new file immediately. The router lives
+*underneath* that provider, so a background download completing would have
+thrown a rider halfway through an arrival board back to the home screen.
+`AppShell` now reads the pointer once at mount and never re-reads: a build
+fetched now is opened next launch. Settings says so in those words, and
+"installed" is a separate outcome from "up to date" for exactly this reason.
+
+**Change detection is by hash of the upstream zip**, never by `feed_end_date`.
+Expiry and republication are different things and the spec has the full
+argument; `feedEndDate` is carried in the manifest for display only and must
+never gate a download.
+
+**`assets/db/gtfs.db` was deliberately not rebuilt**, so the shipped floor has
+no `schema_version` column — it shipped inside the binary and is never asked
+what schema it is. Do not "fix" that by rebuilding it; that is the thing this
+increment exists to stop anyone doing by hand.
 
 ## Increment 4 is built, verified and merged
 
@@ -421,15 +468,14 @@ does not.
 
 ## Suggested skills
 
-- **`superpowers:executing-plans`** — Increment 4's spec and plan are both
-  written. Brainstorming and planning are *done*; do not redo them.
-- **`superpowers:test-driven-development`** — the key storage, the client
-  provider and the `unauthorized` parse are exactly the pure logic this project
-  TDDs. The onboarding screen is not.
+- **`superpowers:requesting-code-review`** — Increment 5 is code-complete and
+  unreviewed. `CLAUDE.md`: review **once**, at the increment boundary, on the
+  whole diff `c7e5f2c..dev`. That is where the cross-cutting findings live.
 - **`superpowers:systematic-debugging`** — if anything about the *appearance*
   of the app comes up. This project has repeatedly produced confident wrong
   claims by reasoning from source instead of observing a device.
-- **`simplify`** — a good fit for the palette cleanup specifically.
+- **`superpowers:finishing-a-development-branch`** — for the merge conversation,
+  which is Truman's call every time.
 - **Not `superpowers:dispatching-parallel-agents` or
   `subagent-driven-development`.** `CLAUDE.md` is explicit: execute inline, and
   review once at the increment boundary. Increment 1 cost more in process than
@@ -440,6 +486,15 @@ does not.
 - Windows/WSL2, no Mac, no paid Apple Developer account. iOS builds run only on
   GitHub Actions. `/ios` and `/android` are prebuild output and must never be
   committed or hand-edited.
+- **`workflow_dispatch` only works for a workflow that exists on `main`.** A
+  workflow added on a branch is invisible to `gh workflow run --ref <branch>`
+  until it merges — 404, not a permissions error. `ios-ipa.yml` can be run
+  against any branch precisely because it is already on `main`.
+- **`expo-asset` is not resolvable from the project root.** npm nests it under
+  `node_modules/expo/node_modules/`, so `require('expo-sqlite')` throws
+  `Cannot find module 'expo-asset'` under Jest — anything importing
+  `data/gtfs/files.ts` must double `expo-sqlite`. Pre-existing, not caused by
+  Increment 5, and it does not affect the device: Metro resolves it.
 - **There is no AppID in the repo, the build, or `.env` any more.** Increment 4
   moved it to the device keychain, entered by the user on first launch. The
   local `.env` still holds the old value and is gitignored; nothing reads it.

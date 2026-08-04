@@ -127,3 +127,72 @@ confirm it opens on the bundled floor, let it refresh, force-quit, relaunch,
 and confirm it opens the downloaded generation and the old file is gone.** The
 generation design exists so this cannot corrupt anything — that is a claim
 about a mechanism, and it has not been observed until it has been observed.
+
+---
+
+## What was built — 2026-08-04
+
+All six tasks, inline on `dev`, one commit each: `08dc855`..`c20946e`. **387
+Jest, 73 `node --test`, typecheck clean, `npm ci` clean.** Not reviewed, not
+device-verified, not merged.
+
+Where reality disagreed with the plan above:
+
+- **The pointer moves now; the app opens the new file on the *next* launch.**
+  Task 4 said "changing the pointer remounts the provider onto the new file",
+  and that is wrong for a reason the plan could not see: the router is
+  *underneath* `SQLiteProvider`. A changed `databaseName` remounts it and every
+  screen below, so a background download completing would throw a rider halfway
+  through an arrival board back to the home screen. `AppShell` reads the pointer
+  once at mount and never re-reads. Settings' wording says so outright, and
+  "installed" is a separate outcome from "up to date" because of it.
+- **`SCHEMA_VERSION` and the floor live in `data/gtfs/sql.ts`**, which
+  `emit.mjs` and `publish.mjs` both import directly — Node's type stripping
+  loads the `.ts`, the same route `sql.test.mjs` already took. The plan implied
+  a constant on each side plus a test tying them together; one constant needs no
+  tying.
+- **`assets/db/gtfs.db` was deliberately not rebuilt**, so the shipped floor has
+  no `schema_version` column. It shipped inside the binary and is never asked
+  what schema it is; `inspect` reports `null` for a missing column and
+  `installUpdate` only rejects a version that disagrees. The build's stamp is
+  asserted in `emit.test.mjs` against a synthetic build rather than against the
+  committed artifact, which tests the build rather than a file.
+- **The floor check needed a seam.** `data/gtfs/files.ts` is the only module in
+  the refresh path importing a native one, and it grew an `inspect(name)` beyond
+  the plan's file operations — opening a downloaded generation to count its rows
+  is what proves the build, and it has to happen before the pointer moves.
+- **`refreshStopData` coalesces concurrent callers.** Not in the plan, and not
+  optional: the launch check and Settings' **Check now** overlap by construction,
+  and two runs would download to the same `.part` file.
+- **Settings does not say "a fresher build is available".** Task 6 wanted
+  `feedValidity` to speak about data not yet downloaded. With the floor kept and
+  the refresh automatic, the app downloads what it finds rather than sitting on
+  the knowledge, so that state is transient. The section reports the build in
+  use and when it last looked.
+- **A missing generation file is not guarded.** If the pointer named a file that
+  had vanished, `SQLiteProvider` would create an empty database at that name.
+  Left unbuilt on purpose: AsyncStorage and the SQLite directory live in the
+  same container and go together, so the state needs a way to arise that nobody
+  has named. `staleGenerations` never sweeps the file the pointer names, which
+  is the path that could otherwise have caused it.
+
+**One Jest trap, new, and now in `CLAUDE.md`.** Turning fake timers on for a
+single test in a real-timer suite needs
+`doNotFake: ['setImmediate', 'queueMicrotask', 'nextTick']`. Without it the
+renderer stays wedged after that test unmounts: the next test to render times
+out in `waitFor`, and the one after hangs the run with no output at all. The
+offending test passes in isolation the whole time, so `-t` bisection says it is
+fine.
+
+### What verification is still outstanding
+
+- **`gtfs-data.yml` has not run.** `workflow_dispatch` requires the workflow
+  file on the **default branch**, so `gh workflow run gtfs-data.yml --ref dev`
+  is a 404 until `dev` merges. Its two node steps *were* run end to end locally
+  — `check` (feed downloaded and hashed), `npm run build:gtfs`, then `package`
+  (floor check passed at 3,830 stops / 118 routes / 8,629 stop_routes, manifest
+  written) — so what is unproven is the YAML and the upload ordering, not the
+  logic.
+- **Nothing has been on a device.** And there is nothing published for a device
+  to download: with no release, `checkForUpdate` gets a 404 and the app stays on
+  the floor. A build off `dev` would exercise the *failure* path only.
