@@ -14,18 +14,15 @@ on:
     # 12:00 UTC Monday — 02:00 in Honolulu, which is nobody's commute.
     - cron: '0 12 * * 1'
   workflow_dispatch:
-  # TEMPORARY — removed once this file is on `main`.
-  #
-  # `workflow_dispatch` and `schedule` only ever run a workflow that exists on
-  # the *default* branch; asking for either from a feature branch is a 404, not
-  # a permissions error. `push` is the exception — it runs the workflow as
-  # defined on the ref that was pushed, which is how tests.yml runs on `dev`.
-  #
-  # So this is the only way to prove the workflow works before merging it, and
-  # proving it after would mean merging an unrun workflow and a device build
-  # with nothing to download. Pushing `publish-data` runs it for real.
-  push:
-    branches: [publish-data]
+
+# Ran for real before this merged, twice, from a temporary `push` trigger on a
+# throwaway branch — `workflow_dispatch` and `schedule` only ever run a workflow
+# that exists on the *default* branch, so from a feature branch either is a 404,
+# while `push` runs the workflow as defined on the ref pushed. Run
+# `30901281396` built and published `gtfs-v1-20260804T103550Z.db`; run
+# `30901405253` then exited at the check, because the upstream zip had not
+# changed. That is the publish path and the skip path both observed rather than
+# argued. The trigger was removed afterwards.
 
 concurrency:
   group: gtfs-data

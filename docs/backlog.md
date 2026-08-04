@@ -411,3 +411,12 @@ the test named for it. The rest of the review's findings are here.
   changed.** A `HEAD` and `Last-Modified` would usually avoid it, but the spec
   rejected inferring anything from dates, and the download is what the build
   needs anyway when the answer is "yes". Weekly, on a GitHub runner. Left alone.
+
+**`publish.mjs package` reads `assets/db/gtfs.db` from the checkout**, which is
+also where the committed floor lives. If the build step were ever skipped while
+`package` ran, it would publish the floor as though it were a fresh build —
+correctly hashed, clearing the floor check, and stamped with a `builtAt` of now.
+The workflow's two `if:` conditions are identical, so it cannot happen today.
+Recorded because the failure is silent and would look like a feed that had
+stopped changing. The cheap guard, if it is ever wanted, is for `package` to
+refuse a database whose `meta.generated_at` predates the run.
