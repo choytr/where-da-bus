@@ -4,19 +4,14 @@
 session picks up. Update it at the end of a session rather than writing a fresh
 dated file each time — that is the whole point of it existing.
 
-Last updated: **2026-08-02**. **Increment 3's code is complete** — all ten
-tasks, plus an unplanned 6a — reviewed at the boundary, driven by hand on
-Truman's phone in Expo Go, and **verified from a sideloaded `.ipa`** (run
-`30775481303` off `dev`). His words: "the app looks good." **Not merged to
-`main`** — that needs his explicit permission.
+Last updated: **2026-08-03**. **Increment 3 is complete, device-verified and
+merged** — `origin/main` is at `094d7f3`. **Increment 4 is next and has not been
+started**; its spec and plan are both written and the architecture behind it has
+been stress-tested. See *What to pick up next*, then the plan.
 
-**Still Increment 3.** Using it produced a UX pass big enough to need its own
-plan but not its own increment: the map's shape survived the device, its
-interactions did not. **All eight tasks of
-`docs/superpowers/plans/2026-08-02-map-sheet-ux.md` are now built**, green on
-`npm test` / `npm run test:scripts` / `npm run typecheck`, and **not yet driven
-on a device** — which is the next thing, and the reason the plan ends with three
-questions rather than a checklist.
+The session of 2026-08-03 wrote no app code. It revised the Increment 4 and 5
+specs, wrote both plans, and answered two questions by measurement rather than
+by reasoning. Nothing under `app/`, `features/`, `data/` or `lib/` changed.
 
 **Everything durable is already in the repo.** This document exists only to
 carry what a transcript would otherwise lose. Read the repo docs first; they are
@@ -112,42 +107,97 @@ A second, smaller one: `dev` was added to `tests.yml` this session and caught a
 red, invisible locally because `npm install` tolerates what `npm ci` refuses.
 **Run `npm ci` after touching dependencies.**
 
-## What to pick up next
+## Increment 3 is done and merged
 
 **The UX pass is device-verified.** Built from run `30788262742` off `dev`,
 sideloaded, and driven by Truman on 2026-08-03. All three of the plan's
 questions are answered, in the plan's *What the device said* section; two
 produced work and both of those are now done.
 
-**Increment 3 is merged.** `origin/main` is at `094d7f3`, fast-forwarded from
-`dev` with his explicit permission on 2026-08-03, after a second device round
-caught the zoom reset on *Search here*.
+`origin/main` is at `094d7f3`, fast-forwarded from `dev` with his explicit
+permission on 2026-08-03, after a second device round caught the zoom reset on
+*Search here*.
 
 ## What to pick up next
 
-**Increments 4 and 5, in that order, with a manual step between them.** Both
-are specced; the decisions were settled with Truman in a grilling session on
-2026-08-03 and are written down. **Do not re-argue them** — read the specs.
+**Start Increment 4. The spec and the plan are both written; brainstorming and
+planning are done.**
 
-1. **Increment 4 — each user brings their own API key.**
-   `docs/superpowers/specs/2026-08-02-increment-4-own-api-key.md`, amended
-   2026-08-03. Both of its previously-open questions are now settled, and one
-   of its premises is dead; the amendment says which and why.
-2. **Make `choytr/where-da-bus` public — by hand.** This is not code, no test
-   will notice it being skipped, and it cannot be undone once indexed. It must
-   happen *after* Increment 4, because `EXPO_PUBLIC_` puts the AppID in every
-   `.ipa` and a public repo with CI republishes it on every build. History is
-   already verified clean and the 16 key-bearing artifacts are already deleted.
-3. **Increment 5 — the data refreshes itself.**
-   `docs/superpowers/specs/2026-08-03-increment-5-self-refreshing-data.md`. A
-   weekly GitHub Action builds and publishes the SQLite asset; the app fetches
-   it; nothing is bundled. Carries the measured feed numbers so nobody
-   re-downloads 12 MB to re-derive them.
+`docs/superpowers/plans/2026-08-03-increment-4-own-api-key.md` — eight tasks,
+executed inline, in order. **Task 0 is an investigation and blocks task 4**:
+nobody knows what the live API returns for a rejected AppID, and it must be
+observed rather than guessed.
 
-**Truman wants a broader architecture discussion before this is built.** He
-approved the plan "tentatively" and asked for that conversation in a fresh
-session. Treat the specs as settled decisions and the architecture as still
-open for discussion — not the reverse.
+Then, in order:
+
+1. **Increment 4 — each user brings their own API key.** Spec:
+   `2026-08-02-increment-4-own-api-key.md`, with **two** revision sections at
+   the end. The later one shrinks the work.
+2. **Make `choytr/where-da-bus` public — by hand.** Not code, no test will
+   notice it being skipped, cannot be undone once indexed. Must happen *after*
+   Increment 4, because `EXPO_PUBLIC_` puts the AppID in every `.ipa`. History
+   is verified clean; the 16 key-bearing artifacts are deleted.
+3. **Increment 5 — the data refreshes itself.** Spec + plan both dated
+   2026-08-03. The spec's *Revision: keep the floor* is the version that gets
+   built; its headline decision was reversed.
+
+### The architecture discussion happened — 2026-08-03
+
+Truman asked for it before any of this was built, and approved the original
+plan only "tentatively". It did not survive intact. **Four things changed, and
+one thing was confirmed by being attacked and holding.**
+
+- **The bundled `assets/db/gtfs.db` stays, as a floor.** Increment 5 originally
+  deleted it. Almost every hard problem in that spec — `sha256` as
+  load-bearing, publish-both-forever, a download step in onboarding, "what if
+  the asset was deleted" — was a consequence of having no fallback, not of
+  adding refresh. Keeping it degrades every one of those to "keep using what
+  you have", and the goal is untouched: the cron still builds, and **Truman
+  still never runs `npm run build:gtfs` by hand again.**
+- **Onboarding is a key gate, not a prerequisite list.** With the floor kept,
+  the list never gets a second item. Smaller than specced.
+- **The swap question is closed.** Generation-numbered files plus a stored
+  pointer; nothing ever overwrites a database SQLite has open. It was the
+  likeliest thing to fail on a device and the one no test here would catch.
+- **A floor check the hash cannot give you.** `sha256` proves the bytes
+  arrived, not that the build is right. A truncated upstream zip yields a
+  perfectly valid forty-stop database. `stops > 3000` runs in the Action and
+  again in the app.
+- **A separate public data repo was proposed and withdrawn.** It would have let
+  this repo stay private and severed the whole ordering chain. Truman rejected
+  the *premise*: **he wants this repo public.** The friction was never
+  reluctance to publish, only that publishing needs the key change first. So
+  the ordering above stands, and this idea should not be re-proposed.
+
+**His instruction for both increments: keep it as simple as possible, get it
+working with a reasonable architecture, handle edge cases after.** Increment
+5's spec has a *Deferred on purpose* list — ETags, signatures, backoff,
+blocklists — that is binding, not aspirational.
+
+### Two questions answered so they are not re-asked
+
+- **Can the phone parse the GTFS feed itself?** Measured on 2026-08-03 against
+  the live feed: parsing `stop_times.txt` with the existing `parseCsv` peaks at
+  **964 MB RSS** to produce ~18,000 derived rows, because it materialises 1.4M
+  row objects. iOS kills an app well before that. A streaming rewrite is
+  feasible — the accumulators are genuinely small — but needs two passes over
+  73.8 MB of inflated CSV on a phone, for 10× the bytes of the prebuilt asset.
+  **Still the endgame, still not now.** The numbers are in the Increment 5 spec.
+- **Is there a GTFS-Realtime feed that removes the need for a key?** Yes, and
+  no. It exists, served by **Swiftly**, and needs a Swiftly key instead — plus
+  it is a whole-system feed and its trip updates are delays against the
+  scheduled timetable this project deliberately never ships. Full finding, with
+  URLs and one explicitly-unverified licence reading, in Increment 4's spec
+  under *The realtime feed question*.
+
+### One thing reopened, and left for him
+
+The soft gate — search and favorites working without a key, arrivals gated — was
+killed by the argument that Increment 5 would leave a first launch with no
+database. **The floor revives that premise.** It is flagged in Increment 4's
+spec rather than quietly re-decided. The recommendation is to keep the hard
+gate anyway, because it is his stated product call *and* it is less work than
+two coherent app states — but the reason has changed, and he should know that.
 
 **The bundled `assets/db/gtfs.db` is not being refreshed by hand.** It expires
 2026-08-22 and that is deliberately not a deadline: he is the only user, he
@@ -318,11 +368,11 @@ does not.
 
 ## Suggested skills
 
-- **`superpowers:executing-plans`** — Increment 3's design and plan are both
+- **`superpowers:executing-plans`** — Increment 4's spec and plan are both
   written. Brainstorming and planning are *done*; do not redo them.
-- **`superpowers:test-driven-development`** — `useAnchoredStops`, the theme
-  resolution and the preference storage are exactly the pure logic this project
-  TDDs. The map view itself is not.
+- **`superpowers:test-driven-development`** — the key storage, the client
+  provider and the `unauthorized` parse are exactly the pure logic this project
+  TDDs. The onboarding screen is not.
 - **`superpowers:systematic-debugging`** — if anything about the *appearance*
   of the app comes up. This project has repeatedly produced confident wrong
   claims by reasoning from source instead of observing a device.

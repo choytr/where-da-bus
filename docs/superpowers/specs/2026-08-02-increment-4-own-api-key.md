@@ -2,14 +2,18 @@
 
 **Date:** 2026-08-02, **amended 2026-08-03** — see *Settled on 2026-08-03* at
 the end, which closes both of the open questions below and kills one of this
-spec's premises.
-**Status:** decided, not started. Increment 3 is finished and merged.
+spec's premises. **Amended again later on 2026-08-03** — see *Revision: the
+floor comes back* at the very end, which revives one of those killed premises
+and simplifies the onboarding gate.
+**Status:** decided, not started. Increment 3 is finished and merged. **This is
+the increment being built next.**
 
 **This is now the first of two increments**, not one. Increment 5
-(`2026-08-03-increment-5-self-refreshing-data.md`) removes the bundled GTFS
-asset and teaches the app to fetch its own. **The order is load-bearing and one
-step of it is manual** — see that spec's *Why this order* section before
-starting either.
+(`2026-08-03-increment-5-self-refreshing-data.md`) teaches the app to fetch a
+freshly built GTFS asset for itself — ~~and removes the bundled one~~ **keeping
+the bundled one as a floor**, revised later on 2026-08-03. **The order is
+load-bearing and one step of it is manual** — see that spec's *Why this order*
+section before starting either.
 
 ## The decision
 
@@ -139,6 +143,11 @@ after which the app starts calling itself stale — and this one does not.
   key → confirm → (Increment 5 adds: download the database) → the app works. No
   key, no app. Truman's call, 2026-08-03.
 
+  > **Superseded later on 2026-08-03.** Increment 5 keeps the bundled asset as
+  > a floor, so the list never grows past one item. **Build a key gate, not a
+  > general prerequisite list** — the abstraction below is now paying for a
+  > second item that will not arrive.
+
   It is built as *a list of unmet prerequisites*, not as a key-shaped screen.
   In Increment 4 the list is `[key]`; in Increment 5 it becomes
   `[key, database]`. That is an item added to a list rather than a rebuild,
@@ -173,3 +182,76 @@ decisions there that reach back into this one:
   be able to explain a key that *used to work*, not only one that was never
   set. A returning user meets a working install that has stopped working, and
   the wording has to reach them.
+
+## Revision: the floor comes back
+
+**2026-08-03, later the same day.** Increment 5 was revised to **keep the
+bundled `assets/db/gtfs.db` as a floor** rather than deleting it — see that
+spec's *Revision: keep the floor*. Two consequences reach back into this one.
+
+### The onboarding gate is a key gate, and stays one
+
+The *Not settled* section above designed onboarding as a **list of unmet
+prerequisites** so that Increment 5 could add `database` to it. With the floor
+kept, there is no download to gate on and the list never gets a second item.
+
+**Build a key gate.** No list abstraction, no generalisation for an item that
+is not coming. This is smaller than what was specced, not larger.
+
+### A dead premise is alive again, and it is now purely Truman's call
+
+The second *Not settled* question was answered by destroying its premise:
+search and favorites could not work without a key, because Increment 5 would
+leave a first launch with no database to search. **That is no longer true.** The
+floor means the GTFS database is present from the first launch, forever.
+
+So the **soft gate is technically possible again** — arrivals gated on a key,
+search and favorites working without one. It is flagged here rather than
+quietly decided, because the argument that killed it is gone.
+
+**The recommendation is to keep the hard gate anyway**, and it has nothing to
+do with the old reasoning:
+
+- Truman chose "no key, no app" on 2026-08-03 as a product call, before the
+  database argument was ever raised. That call stands on its own.
+- A soft gate is **more** work, not less — two coherent app states instead of
+  one, and every data surface has to decide which it is in. His instruction for
+  these increments was to keep them as simple as possible.
+
+What changed is only *why*: the hard gate now rests on his preference and on
+simplicity, not on a technical impossibility. If he ever wants the soft gate,
+nothing in the architecture prevents it.
+
+## The realtime feed question, answered so it is not re-searched
+
+Asked on 2026-08-03: does OTS publish a GTFS-Realtime feed that would make the
+HEA AppID unnecessary? **One exists, and it does not help.**
+
+Per Transitland (`f-thebus~hi~rt`), TheBus realtime is served by **Swiftly**, a
+commercial vendor:
+
+- `https://api.goswift.ly/real-time/thebus/gtfs-rt-vehicle-positions`
+- `https://api.goswift.ly/real-time/thebus/gtfs-rt-trip-updates`
+
+It requires an `Authorization` header with a Swiftly-issued key, requested
+through a form, free for public feeds. Three reasons it was set aside:
+
+1. **It trades one key for another.** The registration wall does not go away,
+   so this increment is needed either way.
+2. **It is a whole-system feed.** Every trip's predictions in one protobuf,
+   filtered client-side. That suits a server ingesting once and serving many;
+   HEA's per-stop query is the better shape for a phone with no backend. The
+   proprietary API is, ironically, the more appropriate one here.
+3. **Trip updates are typically delays against the scheduled timetable**, so
+   turning them into "next bus in 4 minutes" needs the scheduled stop times —
+   the 73.8 MB `stop_times.txt` this project deliberately never ships.
+   Adopting it would force the full timetable into the asset.
+
+**Unverified:** the Swiftly licence was read via a summarising fetch of
+`goswift.ly/api-license`, not line by line. It appears to permit distributing
+an integration to end users while forbidding exposure of the standalone API.
+Read it directly before relying on it. Flagged as a reading, per this project's
+rule about not laundering inference into fact.
+
+Worth knowing for later: if a backend is ever built, Swiftly + GTFS-RT is the
+more standard and more durable source than HEA.
