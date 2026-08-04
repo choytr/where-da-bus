@@ -175,6 +175,18 @@ describe('ArrivalsScreen', () => {
     expect(screen.queryByText(NOTICES.empty)).toBeNull();
   });
 
+  it('says the key was rejected, and does not say the service is unreachable', async () => {
+    // The third state that must not collapse into the other two. An outage is
+    // fixed by waiting; a rejected key never is, and a rider who is shown
+    // "could not reach the bus service" will stand at the stop and wait for
+    // an app that was never going to recover.
+    await show(clientOf({ ok: false, failure: { kind: 'unauthorized' } }));
+
+    screen.getByText(NOTICES.unauthorized);
+    expect(screen.queryByText(NOTICES.unreachable)).toBeNull();
+    expect(screen.queryByText(NOTICES.empty)).toBeNull();
+  });
+
   it('passes on the vendor error rather than inventing a friendlier one', async () => {
     await show(
       clientOf({ ok: false, failure: { kind: 'api', message: 'Invalid or unspecified stop ID' } }),

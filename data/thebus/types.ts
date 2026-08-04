@@ -64,6 +64,18 @@ export type ArrivalBoard = {
  * versus an `errorMessage` with neither).
  */
 export type ArrivalsFailure =
+  /**
+   * The key was rejected. Its own kind rather than an `api` failure carrying
+   * the vendor's sentence, because it is the only failure here the user can
+   * fix, and the fix is not "wait" — it is "go to Settings".
+   *
+   * Deliberately carries no message. Observed live on 2026-08-03: a key that
+   * was never registered, one that was mistyped, one deleted after six months
+   * of inactivity, and no key at all all produce byte-identical responses. The
+   * app cannot tell them apart, so a message field would only invite wording
+   * that pretends it can.
+   */
+  | { readonly kind: 'unauthorized' }
   /** The API answered, and said no. Always HTTP 200; the body carries the reason. */
   | { readonly kind: 'api'; readonly message: string }
   /** No usable answer: timeout, offline, DNS, a 404 HTML page, a 5xx. */

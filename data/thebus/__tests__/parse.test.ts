@@ -5,6 +5,7 @@ import empty from './fixtures/arrivals-empty.json';
 import errorBadKey from './fixtures/error-bad-key.json';
 import errorMissingStop from './fixtures/error-missing-stop.json';
 import errorUnspecified from './fixtures/error-unspecified.json';
+import errorRouteBadKey from './fixtures/error-route-bad-key.json';
 
 /**
  * These fixtures are real responses, captured from the live API on
@@ -105,15 +106,30 @@ describe('parseArrivals — an empty board is not an error', () => {
 });
 
 describe('parseArrivals — failures', () => {
-  it('reports the vendor error message, which arrives with HTTP 200', () => {
+  it('reports unauthorized for a rejected key', () => {
+    // Its own kind rather than a generic `api` failure, because it is the one
+    // the user can actually fix and the fix is not "wait". Observed live on
+    // 2026-08-03: HTTP 200, and this body for every wrong-key form there is.
     const result = parseArrivals(errorBadKey);
-    expect(result).toEqual({
-      ok: false,
-      failure: { kind: 'api', message: 'Invalid or unspecified API key' },
-    });
+    expect(result).toEqual({ ok: false, failure: { kind: 'unauthorized' } });
   });
 
-  it('reports the other two observed error bodies the same way', () => {
+  it('reports unauthorized for the route endpoint\'s different wording', () => {
+    // The vendor does not use one string. `arrivalsJSON` says "Invalid or
+    // unspecified API key" and `routeJSON` says this — both captured live on
+    // 2026-08-03. Nothing calls routeJSON today, so a matcher written against
+    // the arrivals wording alone would look right and fail silently the first
+    // time something does.
+    const result = parseArrivals(errorRouteBadKey);
+    expect(result).toEqual({ ok: false, failure: { kind: 'unauthorized' } });
+  });
+
+  it('does not report unauthorized for a service outage', () => {
+    // These two are what a *parameter* problem returns, and task 0 found the
+    // API validates parameters before the key -- so a bad key with a bad stop
+    // produces these rather than the key error. A looser match would relabel a
+    // parameter bug as "your key was rejected" and send the user to Settings
+    // to fix something that is not broken.
     for (const [fixture, message] of [
       [errorMissingStop, 'Invalid or unspecified stop ID'],
       [errorUnspecified, 'Unspecified API error'],

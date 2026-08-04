@@ -30,6 +30,14 @@ export const NOTICES = {
   empty: 'No buses are due at this stop right now.',
   emptyHint: 'Service may have finished for the night, or this stop may not be in use.',
   unreachable: 'Could not reach the bus service.',
+  /**
+   * Not worded as "your key is wrong". The vendor deletes an AppID after six
+   * months of inactivity, so this is also what a returning rider meets on an
+   * install that worked for a year — and telling them they mistyped something
+   * they pasted correctly in March sends them looking in the wrong place.
+   * "Rejected" is true in both cases, and Settings is where both are fixed.
+   */
+  unauthorized: 'Your API key was rejected. Check it in Settings.',
   malformed: 'The bus service sent a reply this app could not read.',
   stale: 'Showing the last times received.',
   retry: 'Try again',
@@ -41,6 +49,13 @@ const TICK_MS = 10_000;
 
 export function describe(failure: ArrivalsFailure): string {
   switch (failure.kind) {
+    case 'unauthorized':
+      // Separate from `unreachable` on purpose. Both mean "no times right
+      // now", and they have nothing else in common: one is the service being
+      // down and is fixed by waiting, the other is this install's credential
+      // and is fixed by the user. Rendering them alike would leave a rider
+      // waiting at a stop for an app that was never going to recover.
+      return NOTICES.unauthorized;
     case 'api':
       // The vendor's own wording. It is terse but accurate, and inventing a
       // friendlier sentence would hide which of several things went wrong.

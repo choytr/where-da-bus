@@ -14,6 +14,39 @@ import type { Arrival, ArrivalEstimate, ArrivalsResult, Coords } from './types';
  */
 
 const malformed: ArrivalsResult = { ok: false, failure: { kind: 'malformed' } };
+const unauthorized: ArrivalsResult = { ok: false, failure: { kind: 'unauthorized' } };
+
+/**
+ * How the vendor says "your key is no good", in the two wordings it is known
+ * to use. Both captured live on 2026-08-03 — see docs/api/README.md.
+ *
+ * There is no single string to match. `arrivalsJSON` answers with "Invalid or
+ * unspecified API key" and `routeJSON` with "Application key was not found",
+ * and nothing in the responses hints that the other exists. Only the first is
+ * reachable today, because the arrivals endpoint is the only one the app
+ * calls; the second is here so that stops being a silent trap the moment that
+ * changes.
+ *
+ * Matched as substrings on a lowercased message rather than by equality. The
+ * error body is framed differently from the success body — a space after the
+ * colon, a trailing CRLF on one endpoint and not the other — which is a
+ * different code path on the vendor's side, and the README's standing advice
+ * is not to depend on that framing.
+ */
+const KEY_REJECTED = ['invalid or unspecified api key', 'application key was not found'];
+
+/**
+ * Deliberately narrow. `"Invalid or unspecified stop ID"` and `"Unspecified
+ * API error"` are *parameter* failures, and task 0 established that the API
+ * validates parameters before the key — so a wrong key asked about a wrong
+ * stop returns those, not this. Matching them too would tell the user their
+ * key was rejected when it was not, and send them to Settings to fix
+ * something that is not broken.
+ */
+function isKeyRejection(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return KEY_REJECTED.some((known) => normalized.includes(known));
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -117,7 +150,7 @@ export function parseArrivals(body: unknown): ArrivalsResult {
 
   const message = str(body, 'errorMessage');
   if (message !== null) {
-    return { ok: false, failure: { kind: 'api', message } };
+    return isKeyRejection(message) ? unauthorized : { ok: false, failure: { kind: 'api', message } };
   }
 
   const stopCode = str(body, 'stop');

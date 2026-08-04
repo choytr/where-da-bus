@@ -96,17 +96,31 @@ describe('createTheBusClient', () => {
   });
 
   it('reads an error body even though it arrives as HTTP 200', async () => {
+    // The status line carries no signal at all on this API, which is the whole
+    // point of this test. A stop-shaped error keeps it about that rather than
+    // about the key: the key case is its own kind now, asserted below.
     const client = createTheBusClient({
       appId: APP_ID,
-      fetch: async () => json({ errorMessage: 'Invalid or unspecified API key' }),
+      fetch: async () => json({ errorMessage: 'Invalid or unspecified stop ID' }),
     });
 
     const result = await client.arrivals('45');
 
     expect(result).toEqual({
       ok: false,
-      failure: { kind: 'api', message: 'Invalid or unspecified API key' },
+      failure: { kind: 'api', message: 'Invalid or unspecified stop ID' },
     });
+  });
+
+  it('reports a rejected key as unauthorized, all the way through the client', async () => {
+    const client = createTheBusClient({
+      appId: 'not-a-registered-key',
+      fetch: async () => json({ errorMessage: 'Invalid or unspecified API key' }),
+    });
+
+    const result = await client.arrivals('45');
+
+    expect(result).toEqual({ ok: false, failure: { kind: 'unauthorized' } });
   });
 
   it('does not retry an API error, which is a definitive answer', async () => {
