@@ -229,6 +229,15 @@ symptom is `result.current` being `undefined`, or `screen` reporting
 "`render` function has not been called" — neither of which points at a missing
 keyword. Existing suites already do `await render(<App />)`; copy that shape.
 
+**`fireEvent` is in that set too.** `await fireEvent.press(...)` and
+`await fireEvent.changeText(...)`, and the failure is quieter than the render
+one: without the `await`, a press lands before the state from the previous
+event has flushed. A control that is `disabled` until a field is non-empty
+therefore never fires, the handler never runs, and the test fails on the
+*assertion* — with the component and the handler both perfectly correct. Four
+of `KeyGate.test.tsx`'s tests were written without it and failed exactly this
+way. Every existing suite already awaits it; copy that shape.
+
 Two more, both of which break the *next* test in the file rather than the one
 that caused them, which makes them look like a broken component:
 
