@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent, act } from '@testing-library/react-
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { StopsScreen } from '../StopsScreen';
 import type { RouteSummary, Stop } from '../../../data/gtfs/types';
+import type { FavoritesRead } from '../../../data/storage/favorites';
 import { TestTheme } from '../../../lib/testing/theme';
 
 /**
@@ -31,8 +32,16 @@ jest.mock('../../../data/gtfs/db', () => ({
   useStopQueries: () => mockQueries,
 }));
 
+/**
+ * `readFavorites` delegates to `loadFavorites` by default so the dozen tests
+ * that only care *which* favorites exist keep saying so in one line. A test
+ * about storage being unreadable overrides `readFavorites` directly — that is
+ * the state the lenient reader cannot express, which is why the screen uses
+ * the other one.
+ */
 const mockFavorites = {
   loadFavorites: jest.fn(async (): Promise<string[]> => []),
+  readFavorites: jest.fn(async (): Promise<FavoritesRead> => ({ available: true, ids: [] })),
   addFavorite: jest.fn(async (stopId: string): Promise<string[]> => [stopId]),
   removeFavorite: jest.fn(async (_stopId: string): Promise<string[]> => []),
   isFavorite: (ids: string[], id: string) => ids.includes(id),
@@ -40,6 +49,7 @@ const mockFavorites = {
 
 jest.mock('../../../data/storage/favorites', () => ({
   loadFavorites: () => mockFavorites.loadFavorites(),
+  readFavorites: () => mockFavorites.readFavorites(),
   addFavorite: (stopId: string) => mockFavorites.addFavorite(stopId),
   removeFavorite: (stopId: string) => mockFavorites.removeFavorite(stopId),
   isFavorite: (ids: string[], id: string) => mockFavorites.isFavorite(ids, id),
@@ -104,6 +114,12 @@ describe('StopsScreen', () => {
     mockQueries.routesForStops.mockResolvedValue(new Map());
     mockQueries.feedEndDate.mockResolvedValue(FEED_VALID_FOR_DECADES);
     mockFavorites.loadFavorites.mockResolvedValue([]);
+    // `clearAllMocks` clears call records, not implementations, so the default
+    // has to be re-established rather than merely declared above.
+    mockFavorites.readFavorites.mockImplementation(async () => ({
+      available: true,
+      ids: await mockFavorites.loadFavorites(),
+    }));
   });
 
   afterEach(() => {

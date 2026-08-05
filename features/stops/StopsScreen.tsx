@@ -15,7 +15,7 @@ import { feedValidity, formatFeedDate } from '../../data/gtfs/feedValidity';
 import {
   addFavorite,
   isFavorite,
-  loadFavorites,
+  readFavorites,
   removeFavorite,
 } from '../../data/storage/favorites';
 import { StopRow } from './StopRow';
@@ -179,12 +179,22 @@ export function StopsScreen() {
     };
   }, [feedEndDate]);
 
+  // `readFavorites` rather than `loadFavorites`, because this screen is the one
+  // with somewhere to put the difference. The lenient reader answers `[]` to
+  // both "you have none" and "storage would not answer", and this screen
+  // renders the first as "No saved stops yet" — which, over the second, tells a
+  // rider with twenty saved stops that they have none.
   useEffect(() => {
     let cancelled = false;
-    loadFavorites()
-      .then((ids) => {
-        if (!cancelled) setFavoriteIds(ids);
+    readFavorites()
+      .then((read) => {
+        if (cancelled) return;
+        if (read.available) setFavoriteIds(read.ids);
+        else setProblem(FAVORITES_PROBLEM);
       })
+      // `readFavorites` handles its own failures, so this is belt to braces —
+      // the same shape as the pointer read in AppShell, and for the same
+      // reason: an unhandled rejection out of an effect is worse than a notice.
       .catch(() => {
         if (!cancelled) setProblem(FAVORITES_PROBLEM);
       });
