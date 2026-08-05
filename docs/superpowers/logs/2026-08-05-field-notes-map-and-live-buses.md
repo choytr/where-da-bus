@@ -19,10 +19,10 @@ grilling, so it is written down rather than re-derived from a chat log.
 | 2 | Live bus position from an arrival | Increment 7 |
 | 3 | Bus detail sheet on row tap | Increment 7 |
 | 4 | "Track this bus" / "I'm on this bus" | Increment 7, partially |
-| 5 | Sectioned search (routes + stops) | Independent — **needs a placement call** |
+| 5 | Sectioned search (routes + stops) | Increment 7 — independent, but see below |
 | 6 | Route page → whole route on the map | Increment 7; depends on 1 **and on Increment 6's Task 3** |
 | 7 | Nearby list → map selected state | Increment 7, falls out of 1 |
-| 8 | Arrivals route filter | Independent — **needs a placement call** |
+| 8 | Arrivals route filter | Increment 7 — independent, but see below |
 | 9 | Crash repro | **Increment 6** — recorded in `docs/backlog.md` |
 
 ---
@@ -41,6 +41,13 @@ backlog now. Task 2 — narrowing `DatabaseGate` — is what stops the next
 occurrence being reported to the user as "reinstall the app", and it is what
 keeps the next one diagnosable. That was already Task 2's second-listed
 justification; this makes it the first.
+
+**#5 and #8 do not come into Increment 6, and this was asked.** Both are
+self-contained and could technically slot into the open UI half. Truman's call
+on 2026-08-05 was that **both wait for Increment 7** — the UI half is
+screenshot-driven polish with no stopping rule, and adding features to a diff
+that cannot close itself widens it for no gain. Features go through a grilling
+first. Do not re-propose slotting them in.
 
 **Task 3 is a prerequisite for #6**, which nobody planned. Drawing an entire
 route's stops on the map reads `route_stops`, and 18 of 236 directional
