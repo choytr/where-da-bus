@@ -91,6 +91,19 @@ const isNumericQuery = (value: string): boolean => /^\d+$/.test(value.trim());
  */
 const NO_STOPS: Stop[] = [];
 
+/**
+ * The four separate things this screen asks the database, tracked separately.
+ *
+ * They fail independently — `routesForStops` can fall over on a result set
+ * while `feedEndDate` answered fine at mount — so a single flag would be
+ * cleared by whichever of them happened to succeed last, taking a live problem
+ * off screen with it. Naming them is what lets a success clear only its own
+ * failure.
+ */
+type DatabaseQuery = 'feed' | 'search' | 'favorite-stops' | 'routes';
+
+const NOTHING_FAILING: ReadonlySet<DatabaseQuery> = new Set();
+
 const keptStops = (search: SearchState): Stop[] =>
   search.state === 'running' || search.state === 'done' ? search.stops : NO_STOPS;
 
@@ -139,10 +152,8 @@ export function StopsScreen() {
   const [favoriteStops, setFavoriteStops] = useState<Stop[]>([]);
   const [routesByStop, setRoutesByStop] = useState<Map<string, RouteSummary[]>>(new Map());
 
-  // Reading a bundled asset does not fail transiently: if it fails once it will
-  // keep failing, so the notice stays up rather than flickering away on the
-  // next query.
-  const [problem, setProblem] = useState<string | null>(null);
+  const [failedQueries, setFailedQueries] = useState<ReadonlySet<DatabaseQuery>>(NOTHING_FAILING);
+  const [favoritesFailed, setFavoritesFailed] = useState(false);
   // Read once: baked into the bundled asset, and it cannot change while the app
   // is running.
   const [feedEnd, setFeedEnd] = useState<string | null>(null);
@@ -165,19 +176,39 @@ export function StopsScreen() {
     router.push(`/route/${encodeURIComponent(route.route_id)}`);
   }, []);
 
+  /**
+   * Records how one query went, and clears its own past failure on success.
+   *
+   * Returning `current` unchanged when nothing moved is not a micro-
+   * optimisation: this is called from effects keyed on the visible list, and a
+   * fresh `Set` every time would be a new state value, a new render, and a new
+   * list identity feeding straight back into those effects.
+   */
+  const noteQuery = useCallback((query: DatabaseQuery, ok: boolean) => {
+    setFailedQueries((current) => {
+      if (current.has(query) === !ok) return current;
+      const next = new Set(current);
+      if (ok) next.delete(query);
+      else next.add(query);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     feedEndDate()
       .then((date) => {
-        if (!cancelled) setFeedEnd(date);
+        if (cancelled) return;
+        setFeedEnd(date);
+        noteQuery('feed', true);
       })
       .catch(() => {
-        if (!cancelled) setProblem(DATABASE_PROBLEM);
+        if (!cancelled) noteQuery('feed', false);
       });
     return () => {
       cancelled = true;
     };
-  }, [feedEndDate]);
+  }, [feedEndDate, noteQuery]);
 
   // `readFavorites` rather than `loadFavorites`, because this screen is the one
   // with somewhere to put the difference. The lenient reader answers `[]` to
@@ -189,14 +220,14 @@ export function StopsScreen() {
     readFavorites()
       .then((read) => {
         if (cancelled) return;
+        setFavoritesFailed(!read.available);
         if (read.available) setFavoriteIds(read.ids);
-        else setProblem(FAVORITES_PROBLEM);
       })
       // `readFavorites` handles its own failures, so this is belt to braces —
       // the same shape as the pointer read in AppShell, and for the same
       // reason: an unhandled rejection out of an effect is worse than a notice.
       .catch(() => {
-        if (!cancelled) setProblem(FAVORITES_PROBLEM);
+        if (!cancelled) setFavoritesFailed(true);
       });
     return () => {
       cancelled = true;
@@ -221,11 +252,15 @@ export function StopsScreen() {
     const run = async () => {
       if (isNumericQuery(trimmed)) {
         const stop = await searchByCode(trimmed);
-        if (!cancelled) setSearch({ state: 'done', stops: stop === null ? [] : [stop] });
+        if (cancelled) return;
+        setSearch({ state: 'done', stops: stop === null ? [] : [stop] });
+        noteQuery('search', true);
         return;
       }
       const found = await searchByName(trimmed);
-      if (!cancelled) setSearch({ state: 'done', stops: found });
+      if (cancelled) return;
+      setSearch({ state: 'done', stops: found });
+      noteQuery('search', true);
     };
 
     // React Native's setTimeout hands back a plain numeric id, but @types/node
@@ -238,7 +273,7 @@ export function StopsScreen() {
         run().catch(() => {
           if (cancelled) return;
           setSearch({ state: 'failed' });
-          setProblem(DATABASE_PROBLEM);
+          noteQuery('search', false);
         });
       }, SEARCH_DEBOUNCE_MS),
     );
@@ -247,7 +282,7 @@ export function StopsScreen() {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [query, searchByCode, searchByName]);
+  }, [query, searchByCode, searchByName, noteQuery]);
 
   useEffect(() => {
     // Resolved from the database rather than from any list already on screen: a
@@ -264,15 +299,16 @@ export function StopsScreen() {
           if (stop !== undefined) ordered.push(stop);
         }
         setFavoriteStops(ordered);
+        noteQuery('favorite-stops', true);
       })
       .catch(() => {
-        if (!cancelled) setProblem(DATABASE_PROBLEM);
+        if (!cancelled) noteQuery('favorite-stops', false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [favoriteIds, stopsByIds]);
+  }, [favoriteIds, stopsByIds, noteQuery]);
 
   // Compared against the clock at render rather than once at mount, so an app
   // left open across the expiry date starts saying so on the next redraw.
@@ -315,16 +351,18 @@ export function StopsScreen() {
     let cancelled = false;
     routesForStops(ids)
       .then((routes) => {
-        if (!cancelled) setRoutesByStop(routes);
+        if (cancelled) return;
+        setRoutesByStop(routes);
+        noteQuery('routes', true);
       })
       .catch(() => {
-        if (!cancelled) setProblem(DATABASE_PROBLEM);
+        if (!cancelled) noteQuery('routes', false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [visible, routesForStops]);
+  }, [visible, routesForStops, noteQuery]);
 
   const toggleFavorite = useCallback(
     async (stopId: string) => {
@@ -333,14 +371,35 @@ export function StopsScreen() {
           ? await removeFavorite(stopId)
           : await addFavorite(stopId);
         setFavoriteIds(next);
+        // A write is the only thing that asks storage again after the read at
+        // mount, so it is the only place a favorites problem can clear. That is
+        // also the failure this notice used to outlive: AsyncStorage can refuse
+        // one write and take the next.
+        setFavoritesFailed(false);
       } catch {
-        setProblem(FAVORITES_PROBLEM);
+        setFavoritesFailed(true);
       }
     },
     [favoriteIds],
   );
 
   const showEmptyState = !searching && favoriteStops.length === 0;
+
+  /**
+   * One line, ranked — not a stack of notices.
+   *
+   * The stop list is what this screen is for, so a database problem outranks a
+   * favorites one; a rider who cannot search at all does not need to hear about
+   * their stars first. The quieter problem is *displaced, not discarded*: its
+   * state is still set, so recovering from the database failure brings the
+   * favorites notice back rather than leaving the screen claiming all is well.
+   */
+  const problem =
+    failedQueries.size > 0
+      ? DATABASE_PROBLEM
+      : favoritesFailed
+        ? FAVORITES_PROBLEM
+        : null;
 
   return (
     // Top, left and right only. The bottom belongs to the tab bar, which React

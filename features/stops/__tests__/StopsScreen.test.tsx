@@ -334,6 +334,85 @@ describe('StopsScreen', () => {
     expect(screen.queryByText('LAGOON DR + KAPALULU PL')).toBeNull();
   });
 
+  /**
+   * The notice used to be one sticky slot that was never reset. Favorites come
+   * from AsyncStorage and *can* fail transiently, so one bad write pinned a
+   * notice for the rest of the session; and a database problem arriving later
+   * overwrote it rather than queueing, so recovering from the database problem
+   * left the screen claiming everything was fine while favorites were still
+   * broken.
+   *
+   * Each source now owns its own state. Only one line is ever on screen —
+   * the stop list is what the app is for and outranks a star — but the one not
+   * shown is displaced, not discarded.
+   */
+  describe('problem notices', () => {
+    const DATABASE_PROBLEM = 'Something went wrong reading the stop list on this device.';
+    const FAVORITES_PROBLEM = 'Something went wrong reading your saved favorites.';
+
+    it('clears the favorites notice once a favorites write succeeds', async () => {
+      mockFavorites.loadFavorites.mockResolvedValue(['6']);
+      mockQueries.stopsByIds.mockResolvedValue([stopB]);
+      // Once: the second press falls back to the working implementation, which
+      // is the transient failure this notice was outliving.
+      mockFavorites.removeFavorite.mockRejectedValueOnce(new Error('storage unavailable'));
+
+      await renderScreen();
+      await waitFor(() => screen.getByText('LAGOON DR + KAPALULU PL'));
+
+      const star = () => screen.getByLabelText('Remove LAGOON DR + KAPALULU PL from favorites');
+      await fireEvent.press(star());
+      await waitFor(() => screen.getByText(FAVORITES_PROBLEM));
+
+      await fireEvent.press(star());
+      await waitFor(() => {
+        expect(screen.queryByText(FAVORITES_PROBLEM)).toBeNull();
+      });
+    });
+
+    it('a database problem does not erase a favorites problem', async () => {
+      mockFavorites.readFavorites.mockResolvedValue({ available: false });
+
+      await renderScreen();
+      await waitFor(() => screen.getByText(FAVORITES_PROBLEM));
+
+      mockQueries.searchByName.mockRejectedValue(new Error('database is locked'));
+      await typeSearch('lagoon');
+      await waitFor(() => screen.getByText(DATABASE_PROBLEM));
+      // Displaced by the more severe one, which is the point of ranking them.
+      expect(screen.queryByText(FAVORITES_PROBLEM)).toBeNull();
+
+      // The database recovers. Favorites did not, and the screen must not have
+      // forgotten that while the louder problem was on top of it.
+      mockQueries.searchByName.mockResolvedValue([stopA]);
+      await typeSearch('iolana');
+      await waitFor(() => screen.getByText(FAVORITES_PROBLEM));
+    });
+
+    it('no notice renders when both recover', async () => {
+      mockFavorites.readFavorites.mockResolvedValue({ available: false });
+      mockQueries.searchByName.mockRejectedValue(new Error('database is locked'));
+
+      await renderScreen();
+      await typeSearch('lagoon');
+      await waitFor(() => screen.getByText(DATABASE_PROBLEM));
+
+      mockQueries.searchByName.mockResolvedValue([stopA]);
+      mockQueries.stopsByIds.mockResolvedValue([stopA]);
+      await typeSearch('iolana');
+      await waitFor(() => screen.getByText('LAGOON DR + IOLANA PL'));
+
+      // Favorites recover through a write, which is the only thing that asks
+      // storage again after the read at mount.
+      await fireEvent.press(screen.getByLabelText('Add LAGOON DR + IOLANA PL to favorites'));
+
+      await waitFor(() => {
+        expect(screen.queryByText(DATABASE_PROBLEM)).toBeNull();
+        expect(screen.queryByText(FAVORITES_PROBLEM)).toBeNull();
+      });
+    });
+  });
+
   it('never asks for location', async () => {
     // The whole reason the nearby list moved to the map tab: this screen works
     // identically with location switched off, and must not prompt for it.
