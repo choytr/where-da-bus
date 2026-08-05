@@ -14,6 +14,11 @@ on:
     # 12:00 UTC Monday — 02:00 in Honolulu, which is nobody's commute.
     - cron: '0 12 * * 1'
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Publish even if the upstream feed has not changed'
+        type: boolean
+        default: false
 
 # Ran for real before this merged, twice, from a temporary `push` trigger on a
 # throwaway branch — `workflow_dispatch` and `schedule` only ever run a workflow
@@ -58,24 +63,41 @@ jobs:
         id: check
         run: node scripts/build-gtfs/publish.mjs check
 
+      # `check` asks whether the *upstream feed* changed, which is the wrong
+      # question when the thing that changed is our own build script. Increment
+      # 6's route_stops fix produced different output from a byte-identical
+      # input, so the weekly cron would have exited `changed=false` forever and
+      # the corrected data would never have reached a device.
+      #
+      # Hashing the built artifact instead is the more correct answer and a
+      # bigger change; this is the smallest honest one. It is safe because
+      # `check` downloads and caches the feed either way, so a forced run builds
+      # from exactly the bytes it hashed.
+      #
+      # `inputs.force` is empty on a scheduled run, so this reduces to the old
+      # condition whenever nobody has asked for anything.
+      - name: Decide whether to publish
+        id: decide
+        run: echo "publish=${{ steps.check.outputs.changed == 'true' || inputs.force }}" >> "$GITHUB_OUTPUT"
+
       # Everything below is skipped when the feed is byte-identical to the one
       # behind the currently published manifest. Change detection is by hash
       # rather than by date because expiry and republication are different
       # things: a feed can be replaced long before it expires, and can expire
       # with nothing to replace it.
       - name: Build the SQLite asset
-        if: steps.check.outputs.changed == 'true'
+        if: steps.decide.outputs.publish == 'true'
         # Reads the zip publish.mjs just cached, so the build runs over exactly
         # the bytes that were hashed.
         run: npm run build:gtfs
 
       - name: Floor-check and stage the release
         id: package
-        if: steps.check.outputs.changed == 'true'
+        if: steps.decide.outputs.publish == 'true'
         run: node scripts/build-gtfs/publish.mjs package "${{ steps.check.outputs.source_sha256 }}"
 
       - name: Ensure the release exists
-        if: steps.check.outputs.changed == 'true'
+        if: steps.decide.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -89,13 +111,13 @@ jobs:
       # rather than one command because a single `gh release upload a b` gives
       # no ordering guarantee.
       - name: Upload the database
-        if: steps.check.outputs.changed == 'true'
+        if: steps.decide.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload data "dist/${{ steps.package.outputs.file }}" --clobber
 
       - name: Upload the manifest
-        if: steps.check.outputs.changed == 'true'
+        if: steps.decide.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload data dist/manifest.json --clobber

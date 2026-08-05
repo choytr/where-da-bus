@@ -104,24 +104,53 @@ export function assertEveryStopCodeSurvives(before, after) {
  * the code off the map entirely. Same for a `_merge` row with a blank code —
  * nothing else can be standing in for it.
  *
- * Returns the surviving rows and the dropped ones, in input order.
+ * Returns the surviving rows, the dropped ones — both in input order — and
+ * `remap`, from each dropped `stop_id` to the surviving row that now stands
+ * for it.
+ *
+ * **`remap` is not bookkeeping; it is the other half of the drop.** A dropped
+ * row's `route_stops` and `stop_routes` entries describe a relationship the
+ * *stop* really has, not one the duplicate row invented, so deleting them
+ * loses real information. This is what lets the caller move them across
+ * instead. See the comment on `emitDatabase`.
  */
 export function withoutMergedDuplicateStops(stops) {
-  const codesOnPlainRows = stopCodes(
-    stops.filter((stop) => !stopIdOf(stop).endsWith(MERGE_SUFFIX)),
-  );
+  const plainRows = stops.filter((stop) => !stopIdOf(stop).endsWith(MERGE_SUFFIX));
+  const codesOnPlainRows = stopCodes(plainRows);
 
   const kept = [];
   const dropped = [];
+  const remap = new Map();
   for (const stop of stops) {
     const code = stopCodeOf(stop);
     const duplicates =
       stopIdOf(stop).endsWith(MERGE_SUFFIX) && code !== '' && codesOnPlainRows.has(code);
-    (duplicates ? dropped : kept).push(stop);
+    if (!duplicates) {
+      kept.push(stop);
+      continue;
+    }
+    dropped.push(stop);
+    remap.set(stopIdOf(stop), survivingIdForCode(plainRows, code));
   }
 
   assertEveryStopCodeSurvives(stops, kept);
-  return { kept, dropped };
+  return { kept, dropped, remap };
+}
+
+/**
+ * The row a rider typing `code` actually gets, so a moved relationship lands
+ * on the same stop the search does.
+ *
+ * `SEARCH_BY_CODE` in data/gtfs/sql.ts is
+ * `ORDER BY LENGTH(stop_id), stop_id LIMIT 1`, and this reproduces it. The
+ * tie-break only bites if a future feed puts two plain rows on one code —
+ * which nothing forbids — and picking differently there would point the route
+ * list at one stop while the code lookup returned the other.
+ */
+function survivingIdForCode(plainRows, code) {
+  const ids = plainRows.filter((stop) => stopCodeOf(stop) === code).map(stopIdOf);
+  ids.sort((a, b) => a.length - b.length || (a < b ? -1 : a > b ? 1 : 0));
+  return ids[0];
 }
 
 /**
@@ -135,9 +164,21 @@ export function withoutMergedDuplicateStops(stops) {
  * silently-wrong `0`). `stopRoutes` and `routeStops` are already-derived
  * pairs/sequences from `deriveStopRoutes`/`deriveRouteStops`. Any pair or
  * sequence entry referencing a `stop_id`/`route_id` outside the validated
- * `stops`/`routes` rows is dropped rather than inserted — which is also what
- * keeps `withoutMergedDuplicateStops` from orphaning anything: a dropped stop
- * takes its `stop_routes`/`route_stops` rows with it.
+ * `stops`/`routes` rows is dropped rather than inserted.
+ *
+ * **Relationships pointing at a dropped `_merge` twin are moved, not
+ * discarded**, and getting that wrong put holes in the data. Discarding them
+ * looked safe — the stop still exists under its plain id, so nothing is
+ * orphaned — but `deriveRouteStops` picks *one representative trip* per
+ * direction, and where that trip visited the `_merge` id its `route_stops` row
+ * was the only entry for that `stop_code` in the pattern. Deleting it removed
+ * a stop the route genuinely serves: **18 of 236 directional patterns** on the
+ * real feed, silently, with every row count still looking healthy.
+ *
+ * `stop_routes` mostly escaped it by luck, being a union over every trip, so
+ * the same stop usually appeared under the plain id as well. That is precisely
+ * why remapping can now collide on its `(stop_id, route_id)` primary key, and
+ * why the pairs are de-duplicated below.
  *
  * Returns the row counts actually written per table plus how many duplicate
  * stops were dropped, and closes no resources — the caller owns `db`'s
@@ -146,7 +187,16 @@ export function withoutMergedDuplicateStops(stops) {
 export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedStartDate, feedEndDate }) {
   db.exec(SCHEMA_SQL);
 
-  const { dropped: droppedStops } = withoutMergedDuplicateStops(stops);
+  const { dropped: droppedStops, remap } = withoutMergedDuplicateStops(stops);
+
+  /**
+   * A relationship's stop, after a dropped twin has been accounted for.
+   *
+   * Applied *before* the known-stop check rather than after, which is the
+   * whole point: `5_merge` is not a known stop — it was just dropped — so
+   * checking first would discard the row before anything could move it.
+   */
+  const survivingStop = (stopId) => remap.get(stopId) ?? stopId;
 
   const insertStop = db.prepare(
     'INSERT INTO stops (stop_id, stop_code, stop_name, lat, lon) VALUES (?, ?, ?, ?, ?)',
@@ -189,16 +239,27 @@ export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedSt
   });
 
   let stopRoutesInserted = 0;
+  // Remapping merges two ids into one, so a pair the plain row already had can
+  // arrive a second time — and `(stop_id, route_id)` is this table's primary
+  // key, so the second insert would abort the build rather than be ignored.
+  const insertedPairs = new Set();
   for (const pair of stopRoutes) {
-    if (!knownStops.has(pair.stop_id) || !knownRoutes.has(pair.route_id)) continue;
-    insertStopRoute.run(pair.stop_id, pair.route_id);
+    const stopId = survivingStop(pair.stop_id);
+    if (!knownStops.has(stopId) || !knownRoutes.has(pair.route_id)) continue;
+    const key = `${stopId} ${pair.route_id}`;
+    if (insertedPairs.has(key)) continue;
+    insertedPairs.add(key);
+    insertStopRoute.run(stopId, pair.route_id);
     stopRoutesInserted += 1;
   }
 
   let routeStopsInserted = 0;
+  // No de-duplication needed here: this table is keyed on
+  // `(route_id, direction_id, seq)`, and remapping changes only `stop_id`.
   for (const rs of routeStops) {
-    if (!knownStops.has(rs.stop_id) || !knownRoutes.has(rs.route_id)) continue;
-    insertRouteStop.run(rs.route_id, rs.direction_id, rs.seq, rs.stop_id);
+    const stopId = survivingStop(rs.stop_id);
+    if (!knownStops.has(stopId) || !knownRoutes.has(rs.route_id)) continue;
+    insertRouteStop.run(rs.route_id, rs.direction_id, rs.seq, stopId);
     routeStopsInserted += 1;
   }
 

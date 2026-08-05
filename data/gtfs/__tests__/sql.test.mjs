@@ -313,6 +313,40 @@ describe('route detail', () => {
     assert.deepEqual(db.prepare(ROUTE_STOPS).all('no-such-route'), []);
   });
 
+  /**
+   * The invariant that the duplicate-stop filter broke, checked against the
+   * real asset because that is the only place it was ever wrong.
+   *
+   * `deriveRouteStops` numbers one representative trip per direction `0..n-1`,
+   * so a pattern's `seq` values are a contiguous run starting at zero **by
+   * construction**. Nothing that legitimately shortens a route can dent that —
+   * a short-turn trip simply is not the representative one. A hole can
+   * therefore only mean a row was removed after numbering, which is exactly
+   * what dropping a `_merge` twin's `route_stops` entry used to do: 17 of 236
+   * patterns had a gap, and one more lost its last stop, where a missing row
+   * leaves the run contiguous and merely short.
+   *
+   * The stop was still in the feed and still served by the route. It simply
+   * vanished from the route's own list — which is the one screen a rider uses
+   * to check whether a bus goes where they are going.
+   */
+  test('every directional pattern in the built asset covers every stop the route serves', () => {
+    const patterns = db
+      .prepare(
+        'SELECT route_id, direction_id, COUNT(*) AS n, MIN(seq) AS lo, MAX(seq) AS hi ' +
+          'FROM route_stops GROUP BY route_id, direction_id',
+      )
+      .all();
+
+    assert.ok(patterns.length > 0, 'the asset should carry directional patterns at all');
+
+    const holed = patterns
+      .filter((p) => p.lo !== 0 || p.hi - p.lo + 1 !== p.n)
+      .map((p) => `${p.route_id}/${p.direction_id}: ${p.n} stops numbered ${p.lo}..${p.hi}`);
+
+    assert.deepEqual(holed, [], 'a gap in seq means a stop was dropped after numbering');
+  });
+
   test('every route_stops row points at a stop that exists', () => {
     // A dangling stop_id would make the join silently drop stops from a route,
     // which reads as a short route rather than as a broken build.
