@@ -142,10 +142,21 @@ but that'll come later. Functionality first."
   distance and route-number chips; `/stop/[code]` shows neither. He prefers the
   card's. Adding chips to `ArrivalsScreen` costs it a `routesForStops` query it
   does not currently make.
-- **Occasional crash after interacting with a lot of things.** No reproduction
-  and no stack. Seen once in Expo Go and not reproduced on the `.ipa` — which is
-  weaker evidence than it sounds, since there is no reproduction to run either
-  way. Record what was being touched when it happens.
+- **Occasional crash, narrowed to the tap-hold *Search here* interaction.** No
+  stack yet. Originally logged as "after interacting with a lot of things",
+  seen once in Expo Go and not reproduced on the `.ipa` — weaker evidence than
+  it sounds, since there was no reproduction to run either way. **Truman
+  narrowed it on 2026-08-05, from field use, with moderate confidence**: the
+  long press on the map that raises the *Search here* callout
+  (`MapScreen.tsx:462`, `onLongPress` → `setPending` → `setAnchor`). Exact
+  repro conditions still want writing down the next time it fires — how many
+  long presses, whether the sheet was open, whether a previous callout was
+  still up.
+
+  **Increment 6's Task 2 is what makes the next one legible.** Today
+  `DatabaseGate` catches it and tells the user to reinstall the app over a
+  render error in the map, which both misinforms them and destroys the
+  evidence.
 
 ## Tests
 

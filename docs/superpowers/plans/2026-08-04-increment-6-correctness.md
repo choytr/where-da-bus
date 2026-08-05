@@ -53,6 +53,11 @@ diagnosing it as missing stop data. Both keep `getDerivedStateFromError`; no
 **Settled:** copy for the new boundary is provisional and goes to Truman with a
 screenshot. It must not say "reinstall".
 
+**Added 2026-08-05:** the backlog crash is now narrowed to the map's tap-hold
+*Search here* interaction. That is below this boundary, so this task is what
+decides whether its next occurrence is legible or is reported as missing stop
+data.
+
 **Watch:** `__tests__/App.test.tsx`'s `InsetReader` exists solely to call
 `useSafeAreaInsets` so that removing `SafeAreaProvider` fails a test. Do not
 disturb it. `DatabaseGate` swallowing that throw is why the "rather than the
@@ -96,6 +101,10 @@ not taken.
 
 **Verify against the real asset**, not a fixture: the 18 patterns must become 0,
 and `stops`/`routes`/`stop_routes` counts must stay above `FLOOR`.
+
+**Added 2026-08-05 — this is a prerequisite, not just a fix.** "Show an entire
+route and all its stops on the map" reads `route_stops`. Built before this
+ships, it draws routes with holes in them. See the field notes.
 
 **Tests:** `remaps a dropped _merge stop's route_stops rows onto its surviving
 twin`; `remaps stop_routes and does not duplicate a pair the twin already had`;

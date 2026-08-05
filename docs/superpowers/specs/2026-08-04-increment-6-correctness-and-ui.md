@@ -18,13 +18,22 @@ appearance three times, every time by reasoning from source.
 
 ## What this is not
 
-**Live vehicle positions are a later increment.** The feed is proven — the
-`vehicle/` endpoint with no parameters returns ~1,184 vehicles in one 333 KB XML
-response, 235 of them fresh at midday — but it needs an XML parser and it
-changes what the map must hold. See `docs/api/README.md`.
+**Live vehicle positions are a later increment.** A *fleet-wide* layer is proven
+— the `vehicle/` endpoint with no parameters returns ~1,184 vehicles in one
+333 KB XML response, 235 of them fresh at midday — but it needs an XML parser
+and it changes what the map must hold. See `docs/api/README.md`.
+
+> **Corrected 2026-08-05.** The XML cost is real for a fleet layer and not for
+> the smaller feature. `Arrival` already carries `tripId`, `vehicle` and
+> `position`, so showing the bus behind *one arrival on one board* needs no
+> parser and no second request. Live vehicles stay deferred, but the reason
+> above is bigger than the one that applies. See
+> `docs/superpowers/logs/2026-08-05-field-notes-map-and-live-buses.md`.
 
 **Route polylines are not in scope either**, and were cut from the vehicle work
-as decoration next to a moving dot.
+as decoration next to a moving dot. Still cut as of 2026-08-05: nothing in the
+GTFS asset carries shapes, so a polyline is a new table, a schema bump and a
+republished generation rather than a shared asset.
 
 **New persistent chrome at the map's edges is deferred into the vehicle
 increment.** A route filter or a "following bus 42" banner will want the map's
@@ -45,8 +54,10 @@ Each is an existing `docs/backlog.md` entry. The plan carries contracts.
    shows no results. The worst failure shape in the app.
 2. **`DatabaseGate` misdiagnoses every render error**, telling users to
    reinstall over any crash anywhere below it. It also destroys evidence: the
-   unreproduced crash in the backlog would currently present as a database
-   failure.
+   crash in the backlog would currently present as a database failure. As of
+   2026-08-05 that crash is narrowed to the tap-hold *Search here*
+   interaction, which makes this the fix that keeps the next occurrence
+   diagnosable rather than a tidy-up.
 3. **`route_stops` has holes** — 18 of 236 directional patterns skip a stop the
    route genuinely serves, because dropping `_merge` duplicates discards their
    relationship rows instead of remapping them onto the surviving twin.

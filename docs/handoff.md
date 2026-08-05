@@ -22,6 +22,10 @@ written down — **do not re-open it, and do not re-grill.**
    tasks, contract level
 3. `docs/superpowers/logs/2026-08-04-increment-6-ui.md` — 32 findings from the
    first screenshot round
+4. `docs/superpowers/logs/2026-08-05-field-notes-map-and-live-buses.md` — field
+   notes from a chat session, reconciled against the code. **Mostly Increment
+   7**, and the seed for its grilling; four items touch Increment 6 and are
+   named at the top. Two placements are still Truman's call.
 
 **Increment 6 is two halves, in this order.** Six known-broken things from
 `docs/backlog.md` first, then a UI pass driven by screenshots from Truman's
