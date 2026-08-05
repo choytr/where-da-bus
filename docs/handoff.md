@@ -7,15 +7,33 @@ up. Update it in place rather than adding a dated section each time.
 `CLAUDE.md` are the record; anything already in them belongs there, not here.
 When an increment ships, its write-up in this file collapses to a pointer.
 
-Last updated: **2026-08-04**. Increments 1–5 are shipped, device-verified and
-merged. Increment 6 is **specced and planned, with no code written yet**.
+Last updated: **2026-08-05**. Increments 1–5 are shipped, device-verified and
+merged. **Increment 6's correctness half is done** — all seven tasks, one
+commit each, on `dev`. The UI half has not started.
 
 ---
 
-## Start here: execute the Increment 6 plan
+## Start here: the UI half, and one thing owed
 
-The grilling happened on 2026-08-04 and is closed. Everything it settled is
-written down — **do not re-open it, and do not re-grill.**
+**All seven correctness tasks are complete.** Their write-up, including five
+places where reality disagreed with the plan, is in the plan's *What was built*
+section. Do not re-execute them.
+
+**Two things must not be forgotten at merge:**
+
+1. **Delete the geocoder probe.** `features/settings/GeocoderProbe.tsx`, plus
+   its import and one line of JSX in `SettingsScreen.tsx`. It is marked
+   THROWAWAY in all three places.
+2. **The forced publish, immediately after merging.**
+   `gh workflow run gtfs-data.yml -f force=true`. The corrected floor is
+   committed but the corrected *generation* is not published, and
+   `workflow_dispatch` cannot fire from `dev`. Shipping the new floor without
+   republishing means every device downloads the old broken generation and
+   moves straight off the corrected data — see the plan for the mechanism.
+
+Then the UI half begins. It is screenshot-driven and Truman calls when it is
+done; the grilling from 2026-08-04 is closed, so **do not re-open it and do not
+re-grill.**
 
 1. `docs/superpowers/specs/2026-08-04-increment-6-correctness-and-ui.md`
 2. `docs/superpowers/plans/2026-08-04-increment-6-correctness.md` — seven
@@ -57,20 +75,28 @@ arrive — **images do not survive a context compaction and text does.**
 
 ### What he owes, and what he does not
 
-Nothing in the correctness half needs him. When he is next free, the useful
-things are: **arrivals scrolled to the very bottom** (settles whether the list
-clears the home indicator — do not reason about that one from source, see the
-backlog), the **Task 7 geocoder probe** results, and the remaining unseen states
-(empty arrivals, unauthorized, denied location, no search results, `KeyGate`).
+The correctness half needed nothing from him and is done. When he is next free,
+the useful things are: **the geocoder probe results** (six queries — a street
+address, a mall, a school, a restaurant, a beach, a neighbourhood — screenshot
+the raw output), **arrivals scrolled to the very bottom** (settles whether the
+list clears the home indicator — do not reason about that one from source, see
+the backlog), **the new "Something went wrong" screen** (reachable by throwing
+in any screen; its copy is provisional), and the remaining unseen states (empty
+arrivals, unauthorized, denied location, no search results, `KeyGate`).
 
 **Light theme is deprioritised** — his words, 2026-08-04: "honestly light is not
 that important rn. They looked fine when I last checked."
 
 ## Where things stand
 
-`dev` is one commit ahead of `main` — `5c56192`, the spec, plan and UI log. No
-source has been touched. **388 Jest, 73 `node --test`, clean typecheck, clean
+`dev` is ahead of `main` by the spec, plan and UI log, the field notes, and
+seven correctness commits. **401 Jest, 80 `node --test`, clean typecheck, clean
 `npm ci`.**
+
+**Nothing in the correctness half has been seen on a device.** Two of its
+changes are visible: the new "Something went wrong" screen (provisional copy,
+wants a screenshot) and the geocoder probe in Settings. Both are for the next
+device round.
 
 **The one thing genuinely unproven: nothing has run unattended yet.** Every
 `gtfs-data.yml` run so far was hand-started. The first scheduled firing is

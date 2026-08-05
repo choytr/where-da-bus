@@ -200,6 +200,82 @@ accepted address-only if places do not resolve.
 
 ---
 
+## What was built
+
+All seven tasks shipped on 2026-08-05, one commit each (Tasks 4 and 6 share
+one, as the plan directed). **401 Jest, 80 `node --test`, clean typecheck,
+clean `npm ci`.** Where reality disagreed:
+
+**Task 1 — cheaper than budgeted.** The plan warned that every suite rendering
+`AppShell` would have to double `expo-sqlite`. Only one does, and doubling
+`data/gtfs/files` instead keeps the real module — which reaches `expo-sqlite`
+at import time — from loading at all.
+
+**Task 2 — one boundary was not enough.** "Wrap `SQLiteProvider` only" cannot
+be done by nesting: the router lives *inside* `SQLiteProvider`, so any boundary
+around the provider is also around every screen. `AppErrorGate` is therefore
+mounted **twice** — inside the provider around the router, and above `KeyGate`
+— leaving `DatabaseGate` between them holding the open. React's
+nearest-boundary rule then decides the diagnosis structurally.
+
+The plan flagged that this might change which gate swallows a missing
+`SafeAreaProvider`. It does: `InsetReader`'s throw now lands on `AppErrorGate`.
+**Verified by removing the provider and watching five tests fail**, not by
+reading. The guard test asserts both screens and is renamed to
+`renders its children rather than an error screen`.
+
+**Task 3 — the asset-level assertion had to be re-derived.** "Every directional
+pattern covers every stop the route serves" is not checkable against the built
+asset: `deriveRouteStops` keeps one representative trip per direction, so
+short-turn patterns legitimately omit stops that `stop_routes` lists, and 233
+of 236 patterns fail that reading. The invariant that *is* exact is
+**`seq` being a contiguous run from zero**, which holds by construction and can
+only be dented by a row removed after numbering. 17 patterns had a hole; the
+18th lost its last stop, where a missing row leaves the run contiguous and
+merely short. Test name kept.
+
+One existing test, `takes the dropped duplicate rows in stop_routes and
+route_stops with it`, asserted the bug outright. Rewritten to the new truth,
+keeping the half still worth holding.
+
+Measured against the real asset, before → after: `route_stops` 9209 → 9235,
+patterns with a `seq` gap 17 → 0, stop_codes gained by a pattern 26 and lost 0,
+`stops`/`routes`/`stop_routes` unchanged.
+
+**Task 6 — the shape, as the plan left it to be settled.** Two readers.
+`readFavorites(): Promise<FavoritesRead>` carries `{ available: true; ids } |
+{ available: false }`; `loadFavorites` is the lenient form over it and now
+truthfully never throws. Corrupt content stays on the *success* branch — the
+read worked and what came back was not a list. Writes stay unguarded on
+purpose: a caught write returning the list would light the star over nothing.
+Choosing between the two is now a real decision — `StopsScreen` takes the
+honest reader because it has a notice to put the difference in, `MapScreen`
+keeps the lenient one because it swallows favorites failures deliberately.
+
+**Task 5 — one test renamed.** The plan's `clears the favorites notice once
+favorites load` describes something that cannot happen: favorites are read once
+at mount with no retry, so a failed read has nothing to clear it. A write is
+the only thing that asks storage again. The test is named for what it proves.
+
+The four database queries are tracked **by name** rather than as one flag,
+because they fail independently and a single flag would be cleared by whichever
+succeeded last — taking a live problem off screen with it.
+
+### Still owed on Task 3
+
+**The forced publish has not run, and cannot run from `dev`.**
+`workflow_dispatch` only ever fires for a workflow that exists on `main`, so
+the `force` input is unreachable until this merges. The corrected floor is
+committed; the corrected *generation* is not published.
+
+That is safe as long as both happen together. `dataRefresh.ts` passes
+`current?.builtAt ?? null`, so a device with no pointer takes whatever the
+manifest offers — ship the new floor in an `.ipa` without republishing and
+every device immediately downloads the old broken generation and moves off the
+corrected data. **So: merge, then immediately
+`gh workflow run gtfs-data.yml -f force=true`, and confirm the new asset before
+any build reaches a phone.**
+
 ## Closing the correctness half
 
 `npm test`, `npm run test:scripts`, `npm run typecheck`, and **`npm ci`** — the

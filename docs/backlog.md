@@ -8,30 +8,10 @@ Resolved entries are deleted rather than struck through; commit messages hold
 that history. If something here names a file that no longer exists, the entry is
 stale and should be re-checked rather than trusted.
 
-## Correctness
-
-**`DatabaseGate` misdiagnoses every render error.** `AppShell.tsx`'s error
-boundary sits above everything and reports any failure below it as "Stop data
-unavailable… Reinstalling the app is the usual fix." A crash anywhere in a
-screen therefore gives the user confidently wrong instructions. Needs a second,
-narrower boundary inside the provider.
-
-**Favorites have a read-modify-write race.** `toggleFavorite` does
-load → mutate → save, so two stars tapped inside one AsyncStorage round-trip
-silently lose one. No test covers interleaved `addFavorite`/`removeFavorite`.
-
-**The error notice never clears.** `StopsScreen`'s `problem` is a single sticky
-slot that is never reset. `FAVORITES_PROBLEM` comes from AsyncStorage and can
-fail transiently, pinning a notice for the whole session; a later
-`DATABASE_PROBLEM` silently overwrites it rather than queueing.
-
-**`route_stops` has holes.** Dropping the 17 `<n>_merge` duplicate stops removed
-26 `route_stops` rows, each the only entry for its `stop_code` in its
-`(route_id, direction_id)` pattern — so **18 of 236 directional patterns skip a
-stop the route genuinely serves**. `deriveRouteStops` picks one representative
-trip per direction and that trip visited the `_merge` id, while `stop_routes` —
-a union over all trips — also saw the plain id. The fix is to remap a dropped id
-onto its surviving twin rather than deleting the row.
+Increment 6 emptied the **Correctness** section — all six of its entries are
+fixed, so the heading is gone rather than left standing over nothing. That is
+not a claim that nothing is broken; it means nothing *known* is, and the
+sections below are still full.
 
 ## The live API
 
@@ -65,9 +45,6 @@ onto its surviving twin rather than deleting the row.
 
 ## Robustness
 
-- AsyncStorage `getItem`/`setItem` calls in `favorites.ts` are unwrapped, so a
-  native-module I/O rejection propagates uncaught. Corrupt content is handled;
-  hard I/O failure is not distinguished from it.
 - `useLocation`'s bare `catch {}` leaves `'error'` undiagnosable — a permission
   race, a GPS timeout and services-off are indistinguishable. Logging was
   proposed and **explicitly declined**; recorded rather than re-litigated.
@@ -79,24 +56,11 @@ onto its surviving twin rather than deleting the row.
   `''` rather than null.
 - `routesForStopsSql(0)` would emit `IN ()`, which SQLite rejects. Unreachable
   today (guarded in `db.ts`); `stopsByIdsSql` shares the shape.
-- `AppShell`'s `Waiting` and `Unavailable` consume no insets. Safe only because
-  their content is vertically centred, and `Unavailable` is the screen every
-  render error currently lands on.
+- `AppShell`'s `Waiting`, `Unavailable` and `Unexpected` consume no insets. Safe
+  only because their content is vertically centred.
 
 ## Self-refreshing data (Increment 5)
 
-- **A pointer naming a file that is not there is not guarded.** `AppShell`
-  passes the stored generation name to `SQLiteProvider` without checking it
-  exists, and `openDatabaseAsync` *creates* what it cannot find — so the open
-  succeeds, `DatabaseGate` never fires, and every screen silently shows no
-  results. That is the worst failure shape in the app.
-
-  Deferred because sequencing the sweep before the refresh removed the only path
-  that reached it, and because the state otherwise needs AsyncStorage and the
-  SQLite directory to disagree, which live in the same container. The fix is
-  three lines: `databaseFiles.list()` in `useCurrentDatabaseName`, falling back
-  to `BUNDLED_DATABASE`. The cost is pulling `expo-file-system` into the shell's
-  module graph, which every suite rendering `AppShell` would then have to double.
 - **`publish.mjs package` reads `assets/db/gtfs.db` from the checkout**, which
   is also where the committed floor lives. A skipped build step would publish
   the floor as a fresh build — correctly hashed, clearing the floor check,
@@ -153,10 +117,10 @@ but that'll come later. Functionality first."
   long presses, whether the sheet was open, whether a previous callout was
   still up.
 
-  **Increment 6's Task 2 is what makes the next one legible.** Today
-  `DatabaseGate` catches it and tells the user to reinstall the app over a
-  render error in the map, which both misinforms them and destroys the
-  evidence.
+  **Increment 6's Task 2 made the next one legible.** `DatabaseGate` used to
+  catch it and tell the user to reinstall the app over a render error in the
+  map, which both misinformed them and destroyed the evidence. It now reaches
+  `AppErrorGate` and reads as an unexpected error, which is what it is.
 
 ## Tests
 
