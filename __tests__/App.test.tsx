@@ -52,6 +52,34 @@ jest.mock('../data/gtfs/dataRefresh', () => ({
 }));
 
 /**
+ * The SQLite directory listing, doubled.
+ *
+ * `AppShell` now asks whether the file its pointer names is actually there,
+ * because `openDatabaseAsync` *creates* what it cannot find — so an absent
+ * generation opens as an empty database, the gate never fires, and every screen
+ * silently shows nothing. That check is the only reason `data/gtfs/files.ts` is
+ * in the shell's module graph at all.
+ *
+ * Doubling the module rather than `expo-file-system` keeps the real one from
+ * loading here: it reaches `expo-sqlite` at import time, which is not resolvable
+ * from the project root under Jest (see the `expo-asset` note in
+ * docs/handoff.md).
+ *
+ * The default is a directory holding only the floor, which is what a fresh
+ * install looks like.
+ */
+let mockDatabaseDirectory: string[] = ['gtfs.db'];
+let mockListFails = false;
+jest.mock('../data/gtfs/files', () => ({
+  databaseFiles: {
+    list: jest.fn(() => {
+      if (mockListFails) throw new Error('database directory could not be listed');
+      return mockDatabaseDirectory;
+    }),
+  },
+}));
+
+/**
  * The keychain, which has no native module under Jest.
  *
  * Most of this file is about the *database* gate, and `KeyGate` now stands in
@@ -142,6 +170,8 @@ describe('AppShell', () => {
     // Reset, so the two gate tests below cannot leak a null key into whichever
     // test happens to run next.
     mockStoredKey = '3f7c1e92-8a4b-4d16-9f03-c5e28b71da40';
+    mockDatabaseDirectory = ['gtfs.db'];
+    mockListFails = false;
     sqlite().SQLiteProvider.mockImplementation((props: { children: unknown }) => props.children);
     sqlite().useSQLiteContext.mockReturnValue({
       getAllAsync: jest.fn(async () => []),
@@ -216,6 +246,7 @@ describe('AppShell', () => {
       'gtfs.current.v1',
       JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
     );
+    mockDatabaseDirectory = ['gtfs.db', 'gtfs-v1-20260810T120000Z.db'];
 
     await render(<AppShell><InsetReader /></AppShell>);
 
@@ -237,6 +268,7 @@ describe('AppShell', () => {
       'gtfs.current.v1',
       JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
     );
+    mockDatabaseDirectory = ['gtfs.db', 'gtfs-v1-20260810T120000Z.db'];
 
     await render(<AppShell><InsetReader /></AppShell>);
 
@@ -245,6 +277,71 @@ describe('AppShell', () => {
       expect(props.databaseName).not.toBe('gtfs.db');
       expect(props.assetSource).toBeUndefined();
     });
+  });
+
+  /**
+   * The worst failure shape in the app, and the reason this check exists at
+   * all: `openDatabaseAsync` **creates** a database it cannot find. So a
+   * pointer naming a file that is gone — swept by the losing side of a race,
+   * or lost to an OS cache eviction — opens an empty one *successfully*. The
+   * gate never fires, nothing throws, nothing is logged, and every screen in
+   * the app quietly reports that Oahu has no bus stops.
+   *
+   * The floor is in the bundle precisely so this degrades to stale data.
+   */
+  it('falls back to the bundled database when the stored pointer names a file that is not there', async () => {
+    await AsyncStorage.setItem(
+      'gtfs.current.v1',
+      JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
+    );
+    // The pointer survived; the file did not.
+    mockDatabaseDirectory = ['gtfs.db'];
+
+    await render(<AppShell><InsetReader /></AppShell>);
+
+    await waitFor(() => screen.getByText('inside the shell'));
+    const props = sqlite().SQLiteProvider.mock.calls.at(-1)[0];
+    expect(props.databaseName).toBe('gtfs.db');
+    // And it must arrive by the floor's own path, or the copy never happens.
+    expect(props.assetSource.forceOverwrite).toBe(true);
+  });
+
+  it('opens the stored generation when it exists', async () => {
+    await AsyncStorage.setItem(
+      'gtfs.current.v1',
+      JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
+    );
+    mockDatabaseDirectory = ['gtfs.db', 'gtfs-v1-20260810T120000Z.db'];
+
+    await render(<AppShell><InsetReader /></AppShell>);
+
+    await waitFor(() => {
+      const props = sqlite().SQLiteProvider.mock.calls.at(-1)[0];
+      expect(props.databaseName).toBe('gtfs-v1-20260810T120000Z.db');
+    });
+    // The distinguishing assertion: the directory was actually consulted,
+    // rather than the name being taken on the pointer's word as before.
+    expect(jest.requireMock('../data/gtfs/files').databaseFiles.list).toHaveBeenCalled();
+  });
+
+  /**
+   * The check is an optimisation on trust, not a prerequisite. If the directory
+   * cannot be listed the app still has to open something, and the floor is the
+   * answer that is always available — the same reasoning as the unreadable
+   * pointer above.
+   */
+  it('falls back when listing the directory throws', async () => {
+    await AsyncStorage.setItem(
+      'gtfs.current.v1',
+      JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
+    );
+    mockListFails = true;
+
+    await render(<AppShell><InsetReader /></AppShell>);
+
+    await waitFor(() => screen.getByText('inside the shell'));
+    const props = sqlite().SQLiteProvider.mock.calls.at(-1)[0];
+    expect(props.databaseName).toBe('gtfs.db');
   });
 
   /**

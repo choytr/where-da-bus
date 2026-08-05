@@ -10,6 +10,7 @@ import { themeStorage } from './data/storage/preferences';
 import { TheBusProvider } from './data/thebus';
 import { apiKeyStorage } from './data/storage/apiKey';
 import { BUNDLED_DATABASE, loadCurrentDatabase } from './data/storage/database';
+import { databaseFiles } from './data/gtfs/files';
 import { refreshStopData, sweepStaleGenerations } from './data/gtfs/dataRefresh';
 import { schedule } from './lib/schedule';
 import { KeyGate } from './features/onboarding/KeyGate';
@@ -68,7 +69,8 @@ function useCurrentDatabaseName(): string | null {
     let cancelled = false;
     loadCurrentDatabase()
       .then((current) => {
-        if (!cancelled) setName(current?.file ?? BUNDLED_DATABASE);
+        if (cancelled) return;
+        setName(current === null ? BUNDLED_DATABASE : generationOnDisk(current.file));
       })
       // `loadCurrentDatabase` swallows its own failures, so this is belt to
       // braces — but a shell that never resolves would hang on the spinner
@@ -82,6 +84,33 @@ function useCurrentDatabaseName(): string | null {
   }, []);
 
   return name;
+}
+
+/**
+ * `file` if it is really in the database directory, and the floor if it is not.
+ *
+ * **The pointer is not evidence that the file exists**, and believing it is was
+ * the worst failure shape in the app. `openDatabaseAsync` *creates* a database
+ * it cannot find, so a pointer naming a file that has gone opens an empty one
+ * and **succeeds** — `DatabaseGate` never fires, nothing is logged, and every
+ * screen calmly reports that Oahu has no bus stops. A missing file is not
+ * hypothetical: the sweep and the refresh could race into exactly this state
+ * before they were sequenced, and an OS that reclaims space under a
+ * `Documents` directory would produce it again.
+ *
+ * The listing is the only reason `data/gtfs/files.ts` is in this file's module
+ * graph, which costs every suite rendering `AppShell` a doubled `expo-sqlite`
+ * (see the `expo-asset` note in docs/handoff.md). That was accepted knowingly.
+ *
+ * A directory that will not list falls back too. The check exists to stop the
+ * app trusting a pointer, so failing to *run* it is not a reason to start.
+ */
+function generationOnDisk(file: string): string {
+  try {
+    return databaseFiles.list().includes(file) ? file : BUNDLED_DATABASE;
+  } catch {
+    return BUNDLED_DATABASE;
+  }
 }
 
 /**
