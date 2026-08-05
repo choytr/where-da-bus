@@ -154,13 +154,18 @@ export function AppShell({ children }: { children: ReactNode }) {
             have one and not the other, and each has its own screen to say so.
           */}
           <TheBusProvider storage={apiKeyStorage}>
-            <DatabaseGate>
+            {/*
+              Two error boundaries, and which one catches a given throw is the
+              whole design — see `AppErrorGate` below. This outer one covers
+              onboarding and the status bar; the inner one, inside the database
+              provider, covers every screen. `DatabaseGate` is left holding
+              exactly one thing: the open itself.
+            */}
+            <AppErrorGate>
               {/*
-                Inside the database gate so onboarding is themed and the status
-                bar below still renders, but *outside* the SQLiteProvider: with
-                no key there is no app to open a database for, so the copy and
-                open never happen and the first launch goes straight to asking
-                for a key.
+                Outside the SQLiteProvider: with no key there is no app to open
+                a database for, so the copy and open never happen and the first
+                launch goes straight to asking for a key.
 
                 Above the router, which is the point. No screen can mount
                 without a key, so "no key yet" never becomes a fourth state
@@ -169,11 +174,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               */}
               <KeyGate>
                 <Suspense fallback={<Waiting />}>
-                  <StopData>{children}</StopData>
+                  <DatabaseGate>
+                    <StopData>
+                      <AppErrorGate>{children}</AppErrorGate>
+                    </StopData>
+                  </DatabaseGate>
                 </Suspense>
               </KeyGate>
               <ThemedStatusBar />
-            </DatabaseGate>
+            </AppErrorGate>
           </TheBusProvider>
         </ThemeProvider>
       </SafeAreaProvider>
@@ -273,6 +282,18 @@ function StopData({ children }: { children: ReactNode }) {
  * `onError` is not an option: `SQLiteProvider` throws outright when it is
  * combined with `useSuspense` (see its source), and dropping suspense would
  * mean rendering nothing at all while the database opens.
+ *
+ * **It used to sit above everything, and that was a bug.** Any error thrown
+ * anywhere below — a screen, a hook, a missing `SafeAreaProvider` — landed on
+ * `Unavailable`, which tells the user to reinstall. That is confidently wrong
+ * advice about a working database, and a reinstall throws away their API key,
+ * their favorites and their downloaded generation to fix a bug none of those
+ * caused. It also destroyed evidence: the map crash in docs/backlog.md
+ * presented as a database failure, which is why it went so long unexplained.
+ *
+ * So it wraps `StopData` and nothing else. It is still *outside*
+ * `SQLiteProvider`'s children, which is what leaves it holding the open —
+ * children get their own boundary, nearer, so their throws never reach here.
  */
 class DatabaseGate extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -283,6 +304,38 @@ class DatabaseGate extends Component<{ children: ReactNode }, { failed: boolean 
 
   render() {
     return this.state.failed ? <Unavailable /> : this.props.children;
+  }
+}
+
+/**
+ * Everything that goes wrong which is *not* the database open.
+ *
+ * Mounted twice, deliberately rather than by accident. React sends a throw to
+ * the nearest boundary above it, so the copy on screen is decided purely by
+ * where the gates sit:
+ *
+ * - inside `SQLiteProvider`, wrapping the router — a screen crashing is not
+ *   evidence about the database, and this is the instance that catches it;
+ * - above `KeyGate` — onboarding and the status bar, which render before any
+ *   database exists and so can never be its fault either.
+ *
+ * `DatabaseGate` is left between them holding one thing. That is the point of
+ * the arrangement: the diagnosis a user reads is now a structural fact rather
+ * than a guess made by whichever boundary happened to be highest.
+ *
+ * It says less than `Unavailable` on purpose. A render error has no known
+ * cause at this level, and this project does not render two different facts
+ * alike — inventing a remedy here is exactly the mistake being fixed.
+ */
+class AppErrorGate extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? <Unexpected /> : this.props.children;
   }
 }
 
@@ -316,6 +369,30 @@ function Unavailable() {
       <Text style={[styles.body, { color: palette.muted }]}>
         The stop information bundled with this app could not be opened, so there is
         nothing to search or list. Reinstalling the app is the usual fix.
+      </Text>
+      <Text style={[styles.legal, { color: palette.muted }]}>{DISCLAIMER}</Text>
+    </View>
+  );
+}
+
+/**
+ * **Provisional copy.** Goes to Truman with a screenshot during the UI half.
+ *
+ * What it must not do is name a cause. "Reinstall" belongs on `Unavailable`,
+ * where the app genuinely knows the stop data would not open; here it knows
+ * only that something threw. Reopening is the honest suggestion because it is
+ * the one thing that is true of every render error, and it costs the user
+ * nothing if it does not help.
+ */
+function Unexpected() {
+  const { palette } = useTheme();
+  return (
+    <View style={[styles.center, { backgroundColor: palette.background }]}>
+      <Text style={[styles.title, { color: palette.text }]}>Something went wrong</Text>
+      <Text style={[styles.body, { color: palette.muted }]}>
+        The app ran into a problem it did not expect and could not finish drawing this
+        screen. Your saved key, favorites and stop data are untouched — closing the app
+        and opening it again is the thing to try.
       </Text>
       <Text style={[styles.legal, { color: palette.muted }]}>{DISCLAIMER}</Text>
     </View>

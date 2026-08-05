@@ -158,6 +158,17 @@ function ClientReader() {
   return <Text>read the client</Text>;
 }
 
+/**
+ * A screen that crashes while rendering — which is the whole point of the
+ * boundary split. Before it, this landed on "Stop data unavailable…
+ * Reinstalling the app is the usual fix", which is confidently wrong advice
+ * *and* destroys the evidence: the map crash in docs/backlog.md would be
+ * reported to the user as a database problem.
+ */
+function Boom(): never {
+  throw new Error('a screen crashed while rendering');
+}
+
 const sqlite = () => jest.requireMock('expo-sqlite');
 
 describe('AppShell', () => {
@@ -190,15 +201,23 @@ describe('AppShell', () => {
    * `SafeAreaProvider` from `AppShell` fails the suite.
    *
    * This assertion exists because of *how* it would otherwise fail. The throw
-   * is swallowed by `DatabaseGate`, so the test above just times out in
+   * is swallowed by an error boundary, so the test above just times out in
    * `waitFor` — the same test name and the same failure shape as the
    * cold-cache flake in docs/backlog.md, which trains a reader to dismiss it.
    * Naming the wrong screen makes the real cause legible.
+   *
+   * **Which screen that is changed with the boundary split.** `InsetReader` is
+   * a child, so its throw now lands on the nearer `AppErrorGate` and shows
+   * "Something went wrong" — no longer the database screen. Both are asserted:
+   * the database one so this keeps proving the split has not quietly regressed,
+   * and the new one so the guard still names the real cause. Verified by
+   * removing the provider and watching five tests fail, not by reading.
    */
-  it('renders its children rather than the database-failure screen', async () => {
+  it('renders its children rather than an error screen', async () => {
     await render(<AppShell><InsetReader /></AppShell>);
     await waitFor(() => screen.getByText('inside the shell'));
     expect(screen.queryByText(/stop data unavailable/i)).toBeNull();
+    expect(screen.queryByText(/something went wrong/i)).toBeNull();
   });
 
   /**
@@ -475,6 +494,24 @@ describe('AppShell', () => {
     screen.getByText(/could not be opened/i);
     expect(screen.queryByPlaceholderText(/stop number or name/i)).toBeNull();
     expect(reported).toHaveBeenCalled();
+    reported.mockRestore();
+  });
+
+  /**
+   * The other side of the same split. A render error anywhere below the shell
+   * is not evidence about the database, and telling the user to reinstall over
+   * one is both wrong and expensive — a reinstall throws away their API key,
+   * their favorites and their downloaded generation to fix a bug that none of
+   * those caused.
+   */
+  it('reports an unexpected error without blaming the stop data', async () => {
+    const reported = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    await render(<AppShell><Boom /></AppShell>);
+
+    await screen.findByText(/something went wrong/i);
+    expect(screen.queryByText(/stop data unavailable/i)).toBeNull();
+    expect(screen.queryByText(/reinstall/i)).toBeNull();
     reported.mockRestore();
   });
 
