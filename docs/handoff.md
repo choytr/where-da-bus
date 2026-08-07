@@ -35,6 +35,29 @@ Then the UI half begins. It is screenshot-driven and Truman calls when it is
 done; the grilling from 2026-08-04 is closed, so **do not re-open it and do not
 re-grill.**
 
+### A bug-hunting pass landed after the correctness half (2026-08-06)
+
+Not part of the plan; done with spare time and kept because one of the finds
+was serious.
+
+- **The arrival board broke on the last evening of every month.** Hawaii is
+  UTC−10, so everything from 2 PM belongs to the next UTC day and — on a
+  month's last day — the next UTC month. `hawaiiDateTime` validated its
+  calendar *after* applying that offset, so it rejected correct values. Because
+  `serverTime` runs through the same function, `parseArrivals` called the whole
+  response `malformed`: the screen failed outright, looking exactly like the API
+  being down. Ten hours, twelve times a year. Fixed, with the calendar now
+  checked at midnight before the offset moves it.
+- **The map crash's JavaScript is ruled out**, by six tests that try to
+  reproduce it and cannot. The backlog entry names the two remaining
+  device-only candidates and says what evidence would settle it: the crash log
+  off Truman's phone.
+- **CI's cold-cache failures are fixed, and their recorded cause was wrong** —
+  three tests failing on Jest's 5 s per-test timeout, every run, not two
+  `waitFor` calls flaking at 1 s. `testTimeout: 20000`.
+- **The build now reports rows it throws away**, which is the class of silent
+  loss Task 3 turned out to be. Currently 29 de-duplicated, 0 orphaned.
+
 1. `docs/superpowers/specs/2026-08-04-increment-6-correctness-and-ui.md`
 2. `docs/superpowers/plans/2026-08-04-increment-6-correctness.md` — seven
    tasks, contract level

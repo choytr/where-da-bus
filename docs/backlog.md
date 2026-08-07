@@ -90,6 +90,19 @@ sections below are still full.
   URL-shaped (`/stop/596`), but nothing has opened one from outside the app.
 - **`useNow` re-renders the whole board every 10 seconds** to move the
   countdowns. Fine at 25 rows; worth memoising if it grows.
+- **`useArrivals` treats iOS's `inactive` exactly like `background`.** Its
+  `AppState` handler branches on `status === 'active'` and sends everything else
+  down the pause-and-abort path, so a Control Centre pull, the app-switcher
+  gesture, or a system dialog (including the location prompt) aborts the request
+  in flight and then refetches the moment it is dismissed. One extra request per
+  peek, against a quota shared by every install of the app.
+
+  **This is a reading of documented `AppState` semantics, not something
+  observed** — no one has counted requests on a device. It is also not obviously
+  wrong: coming back from a ten-second glance at Control Centre and seeing
+  ten-second-old times is the behaviour the immediate refetch exists for. Worth
+  measuring before changing, and worth changing only with a device to check it
+  on.
 - Route chips flicker for one frame when search clears, and stale entries
   persist when the id list is empty.
 - The favorite `Pressable` lacks `accessibilityState={{ selected: isFavorite }}`.
