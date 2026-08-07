@@ -95,10 +95,20 @@ async function main() {
   db.close();
 
   console.log('--- built ---');
+  // Silence when there is nothing to say, so the line that appears means
+  // something. `orphaned` is the one to look at: it is rows the build threw
+  // away, and it is how a feed that changes id format loses data without any
+  // headline count moving. `deduplicated` is the _merge remap working.
+  const relationshipNote = (orphaned, deduplicated) => {
+    const notes = [];
+    if (orphaned > 0) notes.push(`${orphaned} orphaned`);
+    if (deduplicated > 0) notes.push(`${deduplicated} de-duplicated`);
+    return notes.length === 0 ? '' : `(${notes.join(', ')})`;
+  };
   console.log('stops       ', counts.stops, `(dropped ${counts.duplicateStopsDropped} duplicate _merge rows)`);
   console.log('routes      ', counts.routes);
-  console.log('stop_routes ', counts.stopRoutes);
-  console.log('route_stops ', counts.routeStops);
+  console.log(`stop_routes  ${counts.stopRoutes} ${relationshipNote(counts.stopRoutesOrphaned, counts.stopRoutesDeduplicated)}`.trimEnd());
+  console.log(`route_stops  ${counts.routeStops} ${relationshipNote(counts.routeStopsOrphaned, 0)}`.trimEnd());
   console.log('feed valid  ', feed.feedInfo[0]?.feed_start_date, '->', feed.feedInfo[0]?.feed_end_date);
   console.log(`wrote ${OUT}`);
 }

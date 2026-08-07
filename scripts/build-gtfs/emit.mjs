@@ -238,27 +238,54 @@ export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedSt
     knownRoutes.add(routeId);
   });
 
+  /**
+   * Two different reasons a relationship row is not inserted, counted apart
+   * because they mean opposite things.
+   *
+   * **Orphaned** is a row naming an id this feed does not contain. Dropping it
+   * is right; dropping it silently is not. Rows disappearing during a build
+   * while every headline count still looks healthy is exactly the shape of the
+   * `route_stops` bug that survived five increments — and `publish.mjs`'s floor
+   * check only catches a *total* collapse. A partial one clears the floor and
+   * ships.
+   *
+   * **De-duplicated** is the remap working: one relationship arriving under
+   * both of a stop's ids. Counting that as loss would report a problem on
+   * every build.
+   */
   let stopRoutesInserted = 0;
+  let stopRoutesOrphaned = 0;
+  let stopRoutesDeduplicated = 0;
   // Remapping merges two ids into one, so a pair the plain row already had can
   // arrive a second time — and `(stop_id, route_id)` is this table's primary
   // key, so the second insert would abort the build rather than be ignored.
   const insertedPairs = new Set();
   for (const pair of stopRoutes) {
     const stopId = survivingStop(pair.stop_id);
-    if (!knownStops.has(stopId) || !knownRoutes.has(pair.route_id)) continue;
+    if (!knownStops.has(stopId) || !knownRoutes.has(pair.route_id)) {
+      stopRoutesOrphaned += 1;
+      continue;
+    }
     const key = `${stopId} ${pair.route_id}`;
-    if (insertedPairs.has(key)) continue;
+    if (insertedPairs.has(key)) {
+      stopRoutesDeduplicated += 1;
+      continue;
+    }
     insertedPairs.add(key);
     insertStopRoute.run(stopId, pair.route_id);
     stopRoutesInserted += 1;
   }
 
   let routeStopsInserted = 0;
+  let routeStopsOrphaned = 0;
   // No de-duplication needed here: this table is keyed on
   // `(route_id, direction_id, seq)`, and remapping changes only `stop_id`.
   for (const rs of routeStops) {
     const stopId = survivingStop(rs.stop_id);
-    if (!knownStops.has(stopId) || !knownRoutes.has(rs.route_id)) continue;
+    if (!knownStops.has(stopId) || !knownRoutes.has(rs.route_id)) {
+      routeStopsOrphaned += 1;
+      continue;
+    }
     insertRouteStop.run(rs.route_id, rs.direction_id, rs.seq, stopId);
     routeStopsInserted += 1;
   }
@@ -275,5 +302,8 @@ export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedSt
     stopRoutes: stopRoutesInserted,
     routeStops: routeStopsInserted,
     duplicateStopsDropped: droppedStops.length,
+    stopRoutesOrphaned,
+    routeStopsOrphaned,
+    stopRoutesDeduplicated,
   };
 }

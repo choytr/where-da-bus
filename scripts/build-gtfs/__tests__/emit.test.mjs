@@ -73,6 +73,9 @@ describe('emitDatabase', () => {
       stopRoutes: 2,
       routeStops: 2,
       duplicateStopsDropped: 0,
+      stopRoutesOrphaned: 0,
+      routeStopsOrphaned: 0,
+      stopRoutesDeduplicated: 0,
     });
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM stops').get().n, 2);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM routes').get().n, 2);
@@ -468,6 +471,56 @@ describe('emitDatabase remaps a dropped stop’s relationships', () => {
     );
     assert.equal(counts.stopRoutes, 1);
     db.close();
+  });
+
+  /**
+   * Dropping a relationship whose id is not in the feed is right, and doing it
+   * silently is not. Increment 6's `route_stops` bug was exactly this shape —
+   * rows vanishing during the build with every reported count still looking
+   * healthy — and it survived five increments because nothing ever said a
+   * number had gone down.
+   *
+   * The floor check in `publish.mjs` catches a *total* collapse. A partial one
+   * — a feed that changes id format for some rows, say — clears the floor and
+   * ships.
+   */
+  test('reports how many relationship rows referenced an id that is not in the feed', () => {
+    const { counts } = emit({
+      stopRoutes: [
+        { stop_id: '5', route_id: '8' },
+        { stop_id: 'ghost', route_id: '8' },
+        { stop_id: '6', route_id: 'no-such-route' },
+      ],
+      routeStops: [
+        { route_id: '8', direction_id: '0', seq: 0, stop_id: '5' },
+        { route_id: '8', direction_id: '0', seq: 1, stop_id: 'ghost' },
+      ],
+    });
+
+    assert.equal(counts.stopRoutesOrphaned, 2);
+    assert.equal(counts.routeStopsOrphaned, 1);
+    // And the good rows still went in.
+    assert.equal(counts.stopRoutes, 1);
+    assert.equal(counts.routeStops, 1);
+  });
+
+  /**
+   * The two have to be told apart or the log lies in the other direction. A
+   * remap collision is the fix working — the same relationship arriving under
+   * two ids — and counting it as a lost row would report data loss every build.
+   */
+  test('counts a remap collision as a de-duplication, not as a lost row', () => {
+    const { counts } = emit({
+      stopRoutes: [
+        { stop_id: '5', route_id: '8' },
+        { stop_id: '5_merge', route_id: '8' },
+      ],
+      routeStops: [],
+    });
+
+    assert.equal(counts.stopRoutesDeduplicated, 1);
+    assert.equal(counts.stopRoutesOrphaned, 0);
+    assert.equal(counts.stopRoutes, 1);
   });
 
   test('still drops a relationship pointing at a stop that is not in the feed', () => {
