@@ -54,7 +54,8 @@
     ],
     "modulePathIgnorePatterns": [
       "/\\.claude/"
-    ]
+    ],
+    "testTimeout": 20000
   },
   "private": true
 }

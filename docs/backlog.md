@@ -40,8 +40,11 @@ sections below are still full.
   `PALI HWY + 2627`, `PALI HWY + 2702`. Searching "radford" returns 6 stops
   instead of 8. Unavoidable while one row carries one name, and three of the
   five lost names are the lower-quality half of their pair.
-- **Orphaned rows are dropped silently** during the build with no count logged.
-  A future feed with an id-format change would lose rows invisibly.
+- **`meta` inserts use `?? null`, so a present-but-blank `feed_start_date`
+  stores `''` rather than null. Verified inert 2026-08-06**: `parseFeedDate('')`
+  fails its `^\d{8}$` test and returns null, so `feedValidity` reads `''`
+  exactly as it reads null — `unknown`. Recorded as checked so the next reader
+  does not have to look.
 
 ## Robustness
 
@@ -52,8 +55,6 @@ sections below are still full.
   GTFS exempts these for `location_type` 3/4. Harmless on this feed; would
   hard-fail on a future one.
 - `build.mjs` skips `db.close()` if `emitDatabase` throws.
-- `meta` inserts use `?? null`, so a present-but-blank `feed_start_date` stores
-  `''` rather than null.
 - `routesForStopsSql(0)` would emit `IN ()`, which SQLite rejects. Unreachable
   today (guarded in `db.ts`); `stopsByIdsSql` shares the shape.
 - `AppShell`'s `Waiting`, `Unavailable` and `Unexpected` consume no insets. Safe
@@ -158,12 +159,23 @@ but that'll come later. Functionality first."
 
 ## Tests
 
-- **The suite flakes on a cold Jest cache — observed, not predicted.** Two
-  `waitFor` calls have timed out at the 1 s default while the transform cache
-  was still building (~4 s warm versus ~20 s cold). **This is a CI problem
-  specifically**, because the workflow runs `npm ci` then `npm test` — a cold
-  cache every time. Expect occasional red. The honest fix is that those
-  assertions should not be racing a timer at all.
+- **The cold-cache failure is fixed, and its recorded cause was wrong.**
+  Measured 2026-08-06 across five `--clearCache` runs: the same **three** tests
+  failed **every** time, not occasionally, and none of them failed in a
+  `waitFor` at the 1 s default. They exceeded **Jest's own 5 s per-test
+  timeout**. Cold they take 6.7 s, 7.9 s and 8.3 s — `AppShell › asks for a key
+  …`, `KeyGate › shows onboarding …`, `ArrivalsScreen › shows the stop it is
+  about` — while all 404 others finish inside 1.03 s.
+
+  `testTimeout: 20000` in `package.json` fixes it: three cold runs, zero
+  failures. Raising RNTL's `asyncUtilTimeout` was tried first and is **not** in
+  the fix — it was aimed at the wrong lever, and setting it to 5 s made things
+  strictly worse by turning a fast assertion failure into a whole-test timeout
+  at the very limit that was already being hit.
+
+  The cost is that a genuinely hung test now takes 20 s to admit it instead of
+  5 s. The fake-timer wedge described in `CLAUDE.md` — the one that hangs the
+  run with no output — is slower to surface as a result.
 - **The debounce test is real-timer dependent**, two-sidedly: too slow and it
   sees 2+ calls, too fast and a sibling test fails.
 - `App.test.tsx` reads mocked props through `jest.requireMock` with `any` all
