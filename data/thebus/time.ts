@@ -54,23 +54,31 @@ export function hawaiiDateTime(date: string, time: string): Date | null {
   // PM adjustment rather than after it.
   const hour = (h % 12) + (meridiem?.toUpperCase() === 'PM' ? 12 : 0);
 
-  const stamp = Date.UTC(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    hour + HST_OFFSET_HOURS,
-    m,
-    s,
-  );
-
-  // Date.UTC rolls impossible dates over rather than rejecting them — 2/31
-  // becomes 3/3 — so the components are read back to confirm the calendar
-  // accepted what it was given.
-  const parsed = new Date(stamp);
+  // `Date.UTC` rolls an impossible date forward rather than rejecting it — 2/31
+  // becomes 3/3 — so the calendar has to be checked. It is checked **at
+  // midnight, before the offset is applied**, which is the only point at which
+  // the date is still the one the API sent.
+  //
+  // Reading the components back *after* adding the offset is the obvious
+  // version and is wrong, because Hawaii is UTC−10: every time from 2 PM
+  // onwards legitimately belongs to the next UTC day, and on the last day of a
+  // month to the next UTC month. Comparing the resulting month against the
+  // month that was parsed therefore fails for a correct value, and it rejected
+  // the whole evening — 2 PM to midnight — on the last day of every month.
+  // Twelve times a year the board did not thin out, it broke: `serverTime`
+  // comes through here too, and `parseArrivals` calls an unreadable timestamp
+  // `malformed` and abandons the response.
+  const y = Number(year);
+  const mo = Number(month) - 1;
+  const d2 = Number(day);
+  const midnight = new Date(Date.UTC(y, mo, d2));
   const rolled =
-    parsed.getUTCFullYear() !== Number(year) ||
-    parsed.getUTCMonth() !== Number(month) - 1;
-  return rolled ? null : parsed;
+    midnight.getUTCFullYear() !== y ||
+    midnight.getUTCMonth() !== mo ||
+    midnight.getUTCDate() !== d2;
+  if (rolled) return null;
+
+  return new Date(Date.UTC(y, mo, d2, hour + HST_OFFSET_HOURS, m, s));
 }
 
 /**
