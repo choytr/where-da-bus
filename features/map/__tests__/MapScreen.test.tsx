@@ -721,4 +721,124 @@ describe('MapScreen', () => {
       expect(screen.queryByText(NOTICES.empty)).toBeNull();
     });
   });
+
+  /**
+   * The long-press state machine, driven hard on purpose.
+   *
+   * These exist because of the crash in docs/backlog.md, which Truman narrowed
+   * to the tap-hold *Search here* gesture. They were written to *reproduce* it
+   * and they do not: the JavaScript survives every order and repetition below.
+   * That is the finding they record. Keeping them means the ruling-out stays
+   * true rather than being a claim someone made once — and the paths they cover
+   * (a stale `pending` captured by a callout, a marker replaced without being
+   * dismissed) are ones nothing else exercises.
+   *
+   * **What they structurally cannot reach is `showCallout()`.** The `Marker`
+   * double is not a `forwardRef`, so `pendingMarker.current` is null for the
+   * whole suite and the optional call is a no-op. That is the one line on this
+   * gesture that only ever runs on a device, and it is where the remaining
+   * suspicion sits. Do not read these tests as clearing it.
+   */
+  describe('the long-press anchor gesture, under abuse', () => {
+    const longPress = () => fireEvent.press(screen.getByLabelText('long press the map'));
+    const callout = () => fireEvent.press(screen.getByLabelText('callout'));
+    const tapMap = () => fireEvent.press(screen.getByLabelText('map surface'));
+    const panAway = () => fireEvent.press(screen.getByLabelText('pan the camera away'));
+
+    it('survives twenty long presses each taken up in turn', async () => {
+      mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+      await show();
+      await waitFor(() => screen.getByLabelText('pin 5'));
+
+      for (let i = 0; i < 20; i++) {
+        await longPress();
+        await callout();
+      }
+
+      // Each one is a real anchor move, so each one pans. The count is the point:
+      // nothing is being swallowed or doubled.
+      expect(mockCameraMoves).toHaveLength(20);
+    });
+
+    it('replaces an undismissed marker rather than stacking a second one', async () => {
+      await show();
+      await longPress();
+      await longPress();
+      await longPress();
+
+      // One marker, one offer — three presses do not leave two callouts to tap.
+      expect(screen.getAllByLabelText('callout')).toHaveLength(1);
+      await callout();
+      expect(mockCameraMoves).toHaveLength(1);
+    });
+
+    it('takes up an offer that the camera has since moved away from', async () => {
+      // The callout closes over the coordinate the press landed on, and a pan in
+      // between must not change which point gets searched.
+      await show();
+      await longPress();
+      await panAway();
+      await callout();
+
+      expect(mockCameraMoves).toHaveLength(1);
+    });
+
+    it('keeps a pending offer alive across a selection, and clears the card when it is taken', async () => {
+      mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+      await show();
+      await waitFor(() => screen.getByLabelText('pin 5'));
+
+      await longPress();
+      await fireEvent.press(screen.getByLabelText('pin 5'));
+
+      // Selecting a stop does not dismiss the marker — only a map tap and
+      // taking the offer do — so the offer is still there to take.
+      await waitFor(() => screen.getByLabelText('Back to nearby stops'));
+      screen.getByLabelText('callout');
+
+      await callout();
+
+      // And taking it drops the card on purpose: the stop set behind that card
+      // is about to be replaced, and a card for a stop no longer in the list
+      // would go on polling for it.
+      await waitFor(() => {
+        expect(screen.queryByLabelText('Back to nearby stops')).toBeNull();
+      });
+      expect(mockCameraMoves).toHaveLength(1);
+    });
+
+    it('survives ten offers dismissed without being taken', async () => {
+      await show();
+      for (let i = 0; i < 10; i++) {
+        await longPress();
+        await tapMap();
+      }
+
+      expect(screen.queryByLabelText('callout')).toBeNull();
+      expect(mockCameraMoves).toHaveLength(0);
+
+      await longPress();
+      await callout();
+      expect(mockCameraMoves).toHaveLength(1);
+    });
+
+    it('survives the gesture interleaved with everything else on the screen', async () => {
+      mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120), stop('6', 'KAPALULU PL', 340)]);
+      await show();
+      await waitFor(() => screen.getByLabelText('pin 5'));
+
+      for (let i = 0; i < 8; i++) {
+        await longPress();
+        await panAway();
+        await callout();
+        await fireEvent.press(screen.getByLabelText('pin 5'));
+        await tapMap();
+        await fireEvent.press(screen.getByLabelText('Centre on my location'));
+      }
+
+      // Still usable at the end of all that, which is the whole assertion.
+      await longPress();
+      screen.getByLabelText('callout');
+    });
+  });
 });

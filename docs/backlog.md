@@ -122,6 +122,40 @@ but that'll come later. Functionality first."
   map, which both misinformed them and destroyed the evidence. It now reaches
   `AppErrorGate` and reads as an unexpected error, which is what it is.
 
+  **The JavaScript is ruled out, by attempted reproduction rather than by
+  reading** (2026-08-06). Six tests in `MapScreen.test.tsx` drive the gesture
+  every way it can be driven — twenty presses each taken up, three presses
+  without a dismissal, an offer taken after the camera has moved off it, an
+  offer surviving a selection, ten dismissals, and the whole thing interleaved
+  with pin taps, pans and ⌖. Nothing throws. Those tests are kept as the
+  evidence, not as a fix.
+
+  **Two candidates remain, both device-only, and neither is confirmed.**
+
+  1. **`pendingMarker.current?.showCallout()`** in `MapScreen.tsx`'s effect on
+     `pending`. This is the one line on the whole gesture that a test cannot
+     reach: the `Marker` double is not a `forwardRef`, so `.current` is null for
+     the entire suite and the optional call is a no-op. On a device it is a real
+     native command, dispatched immediately after mount — and again on a
+     *second* long press, when React updates the marker in place and the
+     callout is already presenting. `MapMarker.showCallout` guards on
+     `this.marker.current`, so the obvious null-dispatch is not it.
+  2. **Unmounting the marker from inside its own callout's press handler.**
+     `searchHere` runs `setPending(null)` while MapKit is delivering the tap.
+
+  **Do not "fix" either from this description.** Both are readings of native
+  behaviour, which is the exact move that produced three wrong claims in this
+  repo already. The next step is evidence from a device: what is needed is the
+  crash log off the phone (Settings → Privacy & Security → Analytics &
+  Improvements → Analytics Data, entries named `WhereDaBus-…`), which says
+  whether the process died in JavaScript or in MapKit and settles it in one
+  look.
+
+  **A JS throw here would not be caught by anything.** React error boundaries
+  cover render, not event handlers or effect callbacks, so `AppErrorGate` does
+  not see a throw inside `onMapLongPress` or `searchHere`. If the log says
+  JavaScript, that gap is where to start.
+
 ## Tests
 
 - **The suite flakes on a cold Jest cache — observed, not predicted.** Two
