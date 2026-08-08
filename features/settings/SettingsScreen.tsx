@@ -160,9 +160,17 @@ function ApiKeySection() {
               setReplacement(next);
               setFailed(false);
             }}
+            // Masked, on the same toggle that reveals the stored key above.
+            // One control for "show me the key material on this screen" is
+            // what makes the pair legible; two would beg the question of why
+            // the field a credential is typed *into* is the readable one.
+            secureTextEntry={!revealed}
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="off"
+            // iOS is especially keen to offer to save a `secureTextEntry`
+            // field as a password. This is a GUID pasted from an email.
+            textContentType="none"
             spellCheck={false}
             onSubmitEditing={() => void saveReplacement()}
             returnKeyType="done"
