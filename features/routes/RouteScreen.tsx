@@ -81,61 +81,66 @@ export function RouteScreen({ routeId }: { routeId: string }) {
   }
 
   return (
-    <SectionList
-      style={{ backgroundColor: palette.background }}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
-      sections={sections}
-      keyExtractor={(stop, index) => `${stop.stop_id}-${index}`}
-      stickySectionHeadersEnabled={false}
-      ListFooterComponent={<Attribution />}
-      ListHeaderComponent={
-        <View style={styles.header}>
-          <Text style={[styles.routeName, { color: palette.text }]}>
-            {route === null ? NOTICES.unknownRoute : `Route ${route.short_name}`}
-          </Text>
-          {route === null ? null : (
-            <Text style={[styles.routeLong, { color: palette.muted }]}>{route.long_name}</Text>
-          )}
-        </View>
-      }
-      renderSectionHeader={({ section }) => (
-        <Text
-          style={[
-            styles.sectionHeader,
-            { color: palette.muted, backgroundColor: palette.section },
-          ]}
-        >
-          {section.title}
-        </Text>
-      )}
-      renderItem={({ item, index }) => (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Arrivals at ${item.stop_name}`}
-          onPress={() =>
-            router.push(`/stop/${encodeURIComponent(item.stop_code || item.stop_id)}`)
-          }
-          style={[styles.row, { borderBottomColor: palette.border }]}
-        >
-          <Text style={[styles.seq, { color: palette.muted }]}>{index + 1}</Text>
-          <View style={styles.rowMain}>
-            <Text style={[styles.stopName, { color: palette.text }]}>{item.stop_name}</Text>
-            <Text style={[styles.stopCode, { color: palette.muted }]}>
-              Stop {item.stop_code || item.stop_id}
+    <View style={[styles.fill, { backgroundColor: palette.background }]}>
+      <SectionList
+        style={{ backgroundColor: palette.background }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        sections={sections}
+        keyExtractor={(stop, index) => `${stop.stop_id}-${index}`}
+        stickySectionHeadersEnabled={false}
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <Text style={[styles.routeName, { color: palette.text }]}>
+              {route === null ? NOTICES.unknownRoute : `Route ${route.short_name}`}
             </Text>
+            {route === null ? null : (
+              <Text style={[styles.routeLong, { color: palette.muted }]}>{route.long_name}</Text>
+            )}
           </View>
-        </Pressable>
-      )}
-      ListEmptyComponent={
-        route === null ? null : (
-          <Text style={[styles.empty, { color: palette.muted }]}>{NOTICES.noStops}</Text>
-        )
-      }
-    />
+        }
+        renderSectionHeader={({ section }) => (
+          <Text
+            style={[
+              styles.sectionHeader,
+              { color: palette.muted, backgroundColor: palette.section },
+            ]}
+          >
+            {section.title}
+          </Text>
+        )}
+        renderItem={({ item, index }) => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Arrivals at ${item.stop_name}`}
+            onPress={() =>
+              router.push(`/stop/${encodeURIComponent(item.stop_code || item.stop_id)}`)
+            }
+            style={[styles.row, { borderBottomColor: palette.border }]}
+          >
+            <Text style={[styles.seq, { color: palette.muted }]}>{index + 1}</Text>
+            <View style={styles.rowMain}>
+              <Text style={[styles.stopName, { color: palette.text }]}>{item.stop_name}</Text>
+              <Text style={[styles.stopCode, { color: palette.muted }]}>
+                Stop {item.stop_code || item.stop_id}
+              </Text>
+            </View>
+          </Pressable>
+        )}
+        ListEmptyComponent={
+          route === null ? null : (
+            <Text style={[styles.empty, { color: palette.muted }]}>{NOTICES.noStops}</Text>
+          )
+        }
+      />
+
+      {/* Outside the list, so it shows without a scroll. See lib/Attribution.tsx. */}
+      <Attribution />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   centerText: { fontSize: 14 },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },

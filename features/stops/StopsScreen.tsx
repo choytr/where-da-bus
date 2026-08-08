@@ -477,20 +477,23 @@ export function StopsScreen() {
             onPressRoute={openRoute}
           />
         )}
-        // At the foot of the list, not the head. The argument for the head was
-        // that "under twenty-five rows is not prominent", which is fair and is
-        // recorded in `lib/Attribution.tsx` along with what settled it the
-        // other way. The disclaimer travels with it: nothing in the terms asks
-        // for one at all, so its placement was never the obligation's to fix.
+        // The disclaimer is required by nothing and can live at the end of the
+        // scroll. The legend cannot — see below.
         ListFooterComponent={
-          <View>
-            <Attribution />
-            <Text style={[styles.legal, styles.disclaimer, { color: palette.muted }]}>
-              {DISCLAIMER}
-            </Text>
-          </View>
+          <Text style={[styles.legal, styles.disclaimer, { color: palette.muted }]}>
+            {DISCLAIMER}
+          </Text>
         }
       />
+
+      {/*
+        Outside the list, so it is on screen whether or not anyone scrolls.
+        Truman's idea, and it is the better answer: moving the legend to the
+        foot of a scroll traded away the prominence the terms ask for, and a
+        sticky footer gives it back without putting legal text above the
+        content again. See `lib/Attribution.tsx`.
+      */}
+      <Attribution />
     </SafeAreaView>
   );
 }

@@ -19,17 +19,22 @@ import { ATTRIBUTION } from './legal';
  * head of Settings no longer carry it, and why Settings carries it in About
  * instead, as the app's one fixed statement of provenance.
  *
- * On the screens that *do* present the Data it now closes the content rather
- * than leading it. **This trades prominence and the trade is deliberate**, so
- * the argument against is recorded rather than lost: the previous placement
- * was argued for in `StopsScreen` as "under twenty-five rows is not
- * prominent", which is a fair reading. What settled it was the collapsed map
- * sheet, where a two-line legend plus a clipped stop name was the *entire*
- * visible content — legal text had become the product. Truman asked for less
- * of it on 2026-08-08 having seen exactly that.
+ * On the screens that *do* present the Data it closes the content rather than
+ * leading it. That was first done by putting it at the foot of each list,
+ * which traded away real prominence: `StopsScreen` had argued for the head on
+ * the grounds that "under twenty-five rows is not prominent", and that reading
+ * is fair.
  *
- * If this reading is ever judged too thin, the fix is to make this component
- * render a pinned strip rather than to scatter the text back up five screens.
+ * **Truman's answer was better than either, and is what ships**: outside the
+ * list entirely, pinned under it. The stops list, the arrival board and route
+ * detail each render this as a sibling of their scroll view, so the legend is
+ * on screen from the first frame and stays there — more prominent than the
+ * header it replaced, without putting legal text above the content.
+ *
+ * The two sheet surfaces are the exception and stay scroll-footers. A pinned
+ * strip inside the bottom sheet would sit at the sheet's own bottom edge,
+ * which at the collapsed detent is precisely the sliver the legend was
+ * evicted from.
  */
 export function Attribution() {
   const { palette } = useTheme();
