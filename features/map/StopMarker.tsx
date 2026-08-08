@@ -44,12 +44,13 @@ const WIDTH = 124;
  * The coordinate sits at the centre of the tile, not the centre of the view —
  * the name hangs below and is not part of where the stop *is*.
  *
- * Two of them because the view has two shapes. Both are constants rather than
- * arithmetic on a measured height: `LABEL_HEIGHT` is fixed precisely so a
- * one-line name and a two-line name cannot move the pin off its stop.
+ * One constant, for a view that is always the same size. `LABEL_HEIGHT` is
+ * fixed so a one-line name and a two-line name cannot move the pin off its
+ * stop, and the label's *slot* is now always present so an unlabelled stop
+ * cannot either. See the note on `showLabel` below for why that matters more
+ * than it sounds.
  */
-const ANCHOR_WITH_LABEL = { x: 0.5, y: SLOT / 2 / (SLOT + GAP + LABEL_HEIGHT) };
-const ANCHOR_TILE_ONLY = { x: 0.5, y: 0.5 };
+const ANCHOR = { x: 0.5, y: SLOT / 2 / (SLOT + GAP + LABEL_HEIGHT) };
 
 /**
  * How long the marker keeps re-snapshotting itself after its appearance
@@ -67,9 +68,12 @@ export type StopMarkerProps = {
   stop: StopWithDistance;
   selected: boolean;
   /**
-   * Whether this stop's name is drawn under its tile. Decided for the whole set
-   * at once by `labelledStopIds` — labelling every stop produced an unreadable
-   * heap on a device, see that module.
+   * Whether this stop's name is *visible* under its tile. Decided for the whole
+   * set at once by `labelledStopIds` — labelling every stop produced an
+   * unreadable heap on a device, see that module.
+   *
+   * Visible, not present: the label is always mounted and this only changes its
+   * opacity. The reason is in the render below and it is not cosmetic.
    */
   showLabel: boolean;
   /**
@@ -107,7 +111,7 @@ export const StopMarker = memo(function StopMarker({
     <Marker
       identifier={stop.stop_id}
       coordinate={{ latitude: stop.lat, longitude: stop.lon }}
-      anchor={showLabel ? ANCHOR_WITH_LABEL : ANCHOR_TILE_ONLY}
+      anchor={ANCHOR}
       /*
         **No `zIndex`, and the crash log says why.**
 
@@ -141,7 +145,7 @@ export const StopMarker = memo(function StopMarker({
       accessibilityLabel={stop.stop_name}
       onPress={handlePress}
     >
-      <View style={showLabel ? styles.wrap : styles.wrapTileOnly} pointerEvents="none">
+      <View style={styles.wrap} pointerEvents="none">
         <View style={styles.slot}>
           <View
             style={[
@@ -159,13 +163,32 @@ export const StopMarker = memo(function StopMarker({
           </View>
         </View>
 
-        {!showLabel ? null : (
+        {/*
+          **Always mounted, hidden with opacity.** It rendered conditionally
+          for one build, and on a device markers whose label appeared or
+          disappeared jumped bodily to the screen's top-left corner —
+          `IMG_4524`, two tiles and their names piled at the origin over the
+          status bar, one minute after `IMG_4523` had them in the right places.
+
+          Same root as the crash: adding or removing a child inside a
+          `react-native-maps` marker is a mount instruction against a component
+          view whose subviews have been handed to MapKit, and RN's bookkeeping
+          and the real hierarchy come apart. There the array insert went out of
+          range and threw; here the view survives with no position and lands at
+          the origin.
+
+          So the tree is structurally constant and only styles change. It costs
+          a tap target as wide as the widest label even on a tile with no label
+          showing, which is a real trade against pins that stay where the stops
+          are.
+        */}
         <Text
           numberOfLines={2}
           style={[
             styles.label,
             selected && styles.labelSelected,
             {
+              opacity: showLabel ? 1 : 0,
               color: palette.text,
               // A halo rather than a plate. Map tiles run from pale sand to
               // dark green under the same label, and a shadow in the screen's
@@ -177,7 +200,6 @@ export const StopMarker = memo(function StopMarker({
         >
           {stop.stop_name}
         </Text>
-        )}
       </View>
     </Marker>
   );
@@ -209,7 +231,6 @@ function Bus({ scale, tint, cut }: { scale: number; tint: string; cut: string })
 
 const styles = StyleSheet.create({
   wrap: { width: WIDTH, alignItems: 'center' },
-  wrapTileOnly: { width: SLOT, alignItems: 'center' },
   slot: { height: SLOT, justifyContent: 'center' },
   tile: {
     alignItems: 'center',

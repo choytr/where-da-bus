@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { MapScreen } from '../MapScreen';
@@ -246,6 +247,24 @@ const client: TheBusClient = {
   }),
 };
 
+/**
+ * The opacity of the name drawn under a pin, or null if no marker carries that
+ * name at all.
+ *
+ * Presence is the wrong question now. `StopMarker` keeps its label mounted at
+ * all times and hides it with opacity, because adding and removing that child
+ * threw markers to the top-left corner of a real device — see the note in that
+ * file. So the sheet's row and the map's label are both always in the tree, and
+ * the one under the pin is the one whose style carries an opacity.
+ */
+const labelOpacity = (name: string): number | null => {
+  for (const node of screen.queryAllByText(name)) {
+    const style = StyleSheet.flatten(node.props.style);
+    if (style !== undefined && typeof style.opacity === 'number') return style.opacity;
+  }
+  return null;
+};
+
 const stop = (id: string, name: string, meters: number): StopWithDistance => ({
   stop_id: id,
   stop_code: id,
@@ -314,8 +333,7 @@ describe('MapScreen', () => {
     await waitFor(() => screen.getByLabelText('pin 5'));
     await fireEvent.press(screen.getByLabelText('zoom in close'));
 
-    // Twice over: once under the pin, once in the sheet's row.
-    await waitFor(() => expect(screen.getAllByText('LAGOON DR')).toHaveLength(2));
+    await waitFor(() => expect(labelOpacity('LAGOON DR')).toBe(1));
   });
 
   it('writes no names at the zoom the map opens on', async () => {
@@ -327,7 +345,27 @@ describe('MapScreen', () => {
     await show();
 
     await waitFor(() => screen.getByLabelText('pin 5'));
-    expect(screen.getAllByText('LAGOON DR')).toHaveLength(1);
+    // Mounted, and invisible. Unmounting it is what moved the pins.
+    expect(labelOpacity('LAGOON DR')).toBe(0);
+  });
+
+  it('keeps the label mounted when its visibility changes', async () => {
+    // The regression that put two markers in the top-left corner of a real
+    // device, IMG_4524. Adding or removing a child inside a react-native-maps
+    // marker is a mount instruction against a view whose subviews belong to
+    // MapKit, and the two come apart; hidden-with-opacity never mounts or
+    // unmounts anything. Counted rather than inspected, because what must not
+    // happen is the node going away.
+    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+
+    await show();
+    await waitFor(() => screen.getByLabelText('pin 5'));
+    const before = screen.getAllByText('LAGOON DR').length;
+
+    await fireEvent.press(screen.getByLabelText('zoom in close'));
+    await waitFor(() => expect(labelOpacity('LAGOON DR')).toBe(1));
+
+    expect(screen.getAllByText('LAGOON DR')).toHaveLength(before);
   });
 
   it('leaves MapKit no callout of its own to open', async () => {
@@ -695,10 +733,12 @@ describe('MapScreen', () => {
       await waitFor(() => {
         expect(screen.queryByLabelText('Back to nearby stops')).toBeNull();
       });
-      // Both stops are rows again, not just the one that was open. One match
-      // apiece: at the zoom the map opens on, no pin carries a name.
-      expect(screen.getAllByText('LAGOON DR')).toHaveLength(1);
-      expect(screen.getAllByText('KAPALULU PL')).toHaveLength(1);
+      // Both stops are rows again, not just the one that was open, and at the
+      // zoom the map opens on neither pin is showing its name.
+      expect(screen.getAllByText('LAGOON DR').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('KAPALULU PL').length).toBeGreaterThan(0);
+      expect(labelOpacity('LAGOON DR')).toBe(0);
+      expect(labelOpacity('KAPALULU PL')).toBe(0);
     });
 
     it('raises the sheet to medium when a stop is selected from peek', async () => {

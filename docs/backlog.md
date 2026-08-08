@@ -173,6 +173,43 @@ but that'll come later. Functionality first."
   React insert, remove or reorder a child view inside a `react-native-maps`
   component is a suspect, and marker *children* are the whole design here.
 
+- **The same bug, in a second non-fatal form: markers jumping to the screen's
+  top-left corner.** *Observed* `IMG_4524`, 2026-08-08 — two tiles and their
+  names piled at the origin over the status bar, one minute after `IMG_4523`
+  had the same stops in the right places, while repeatedly tapping pins to
+  change the selection.
+
+  The two displaced markers were the two whose labels had just become visible.
+  `StopMarker` was rendering its label conditionally, so a change in the label
+  set added or removed a child *inside* a marker — the same mount instruction
+  against the same component view as the crash, and the same disagreement
+  between React's bookkeeping and a hierarchy MapKit owns. Where the array
+  insert threw, this one leaves the view alive with no position, and a view
+  with no position is at the origin.
+
+  **Fixed by never changing the tree**: the label is always mounted and hidden
+  with `opacity`. Three crash-family symptoms now trace to one rule — *do not
+  mount, unmount or reorder children inside a `react-native-maps` component* —
+  which is worth more than any of the three fixes.
+
+  **The cost is a tap target as wide as the widest label**, on every tile,
+  whether or not its name is showing. Two stops close together on screen may
+  therefore be hard to tap apart. Not yet seen on a device; watch for it.
+
+- **Tapping a pin counts toward Apple Maps' double-tap-to-zoom.** *Observed*
+  2026-08-08: switching selection by tapping pins in quick succession zooms the
+  map. **There is no supported way to turn this off on Apple Maps** —
+  `react-native-maps` exposes `zoomTapEnabled`, and its own type definitions say
+  *iOS: Google Maps only*. Verified in
+  `node_modules/react-native-maps/lib/MapView.d.ts`, not inferred.
+
+  The gesture recogniser belongs to MapKit and sits on the map view; our marker
+  presses are handled by MapKit's annotation selection and evidently still feed
+  it. Untried idea, cheap to test in Expo Go and **not to be shipped as a
+  reading of native behaviour**: let the marker's own child view take the press
+  instead of `pointerEvents="none"`, so React Native's touch system claims the
+  touch first.
+
 ## Tests
 
 - **The cold-cache failure is fixed, and its recorded cause was wrong.**
