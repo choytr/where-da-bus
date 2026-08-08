@@ -86,6 +86,21 @@ const SEARCH_HERE_LABEL = 'Search here';
  */
 const DRIFT_FRACTION = 0.25;
 
+/**
+ * How far below the safe area the two map controls sit.
+ *
+ * It was `+ 64`, which put them ~123 pt down a Dynamic Island phone and read as
+ * floating in the middle of the map — observed 2026-08-08. The 64 was reserving
+ * room for the location banner, which mounts only while there is no fix to
+ * show. Reserving it unconditionally paid for an absent view on every launch.
+ *
+ * The banner now pushes the controls down itself, so the common case is tight
+ * to the safe area and the rare case still does not collide.
+ */
+const CONTROL_INSET = 12;
+/** Cleared only when the banner is actually up. Its height plus its gap. */
+const BANNER_ALLOWANCE = 52;
+
 /** Long enough to read as travel rather than a cut, short enough not to wait. */
 const CAMERA_MS = 350;
 
@@ -438,6 +453,10 @@ export function MapScreen({ client }: MapScreenProps) {
         ? LOCATION_ERROR
         : LOCATION_PROMPT;
 
+  /** Whether the banner is on screen, which is what the controls clear. */
+  const bannerShowing = source === 'fallback' && locationStatus !== 'loading';
+  const controlsTop = insets.top + CONTROL_INSET + (bannerShowing ? BANNER_ALLOWANCE : 0);
+
   return (
     // No SafeAreaView around the map. A map is one of the few things that
     // should run under the status bar and behind the tab bar; insetting it
@@ -509,8 +528,10 @@ export function MapScreen({ client }: MapScreenProps) {
         </MapView>
       </View>
 
-      {source === 'fallback' && locationStatus !== 'loading' ? (
-        <View style={[styles.prompt, { top: insets.top + 12, backgroundColor: palette.background }]}>
+      {bannerShowing ? (
+        <View
+          style={[styles.prompt, { top: insets.top + CONTROL_INSET, backgroundColor: palette.background }]}
+        >
           <Text style={[styles.promptText, { color: palette.text }]}>{banner}</Text>
         </View>
       ) : null}
@@ -525,7 +546,7 @@ export function MapScreen({ client }: MapScreenProps) {
         onPress={onRecentre}
         style={[
           styles.recentre,
-          { top: insets.top + 64, backgroundColor: palette.background, borderColor: palette.border },
+          { top: controlsTop, backgroundColor: palette.background, borderColor: palette.border },
         ]}
       >
         {locating ? (
@@ -548,7 +569,7 @@ export function MapScreen({ client }: MapScreenProps) {
           onPress={searchThisArea}
           style={[
             styles.searchArea,
-            { top: insets.top + 64, backgroundColor: palette.background, borderColor: palette.border },
+            { top: controlsTop, backgroundColor: palette.background, borderColor: palette.border },
           ]}
         >
           <Text style={[styles.searchAreaText, { color: palette.text }]}>{SEARCH_AREA_LABEL}</Text>
