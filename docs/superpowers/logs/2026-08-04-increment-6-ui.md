@@ -398,3 +398,106 @@ cause: **the attribution block is what eats the peek**, not the detent height.
 `docs/backlog.md` says the 45% detent must not be raised and gives the reason;
 that entry is about 45% and does not cover 14%. Raising the peek and moving the
 attribution are two different fixes and only one of them is constrained.
+
+### What Truman decided, 2026-08-08
+
+Four questions were put to him after the findings above were written up. His
+answers, so they are not re-asked:
+
+- **K34, checking the key before entry — no.** "Leave it — not worth the
+  complexity." His own instinct in the note ("might be overkill") stood.
+- **R41, the route page — leave it until live vehicles.** Not a scope
+  expansion, not a partial one. The screen stays as it is this increment.
+- **M38, the callouts** — "I actually like a label corresponding to an icon.
+  But how it's implemented right now, with the big bubble and the rectangle of
+  text on the top half of it, looks stupid." He sent `IMG_4475` (Apple Maps)
+  and `IMG_4477` (Google Maps), both showing bus stops. "Take some inspiration
+  from those. If you still can't get it to look good, don't worry, I'll step in
+  for that."
+- **G2/M42, the attribution** — "Is it possible to not show the attribution in
+  every goddamn screen? It's literally everywhere and it's excessive."
+
+### The two reference screenshots, described so they survive
+
+*Observed*, both from his phone, dark theme, the same neighbourhood.
+
+**`IMG_4475`, Apple Maps.** Each stop is a small blue rounded-square tile with a
+white bus glyph. The stop's name is written **beneath** the tile in white with a
+dark halo, centred, wrapping to three lines, always visible — no tap, no bubble.
+Tiles carrying more than one stop show a number in place of the glyph and a
+`+1 more` line under the name. Nothing on that map is a teardrop.
+
+**`IMG_4477`, Google Maps.** Each stop is a red circle with a dark bus glyph and
+the name written **beside** it, white, one or two lines, always visible. The
+*selected* stop is different in kind: a large plain teardrop with no glyph, its
+name larger, and a bottom sheet with the stop's name and actions. Selection is
+shown by changing the marker, never by floating a bubble over it.
+
+The common lesson, and the one taken: **the name belongs on the map, and
+selection belongs in the marker.** Neither app uses a callout for either job.
+
+---
+
+## Round 2 — what was built
+
+Six commits, `66c3755` through `c8f39b5`, one per surface. Everything below is
+*inference until Truman confirms it on a device* — none of it has been seen.
+
+**T39, the key field — done.** `secureTextEntry` on the replacement field,
+sharing the reveal toggle the stored key already had. Two tests.
+
+**G2/M42, the attribution — moved, not removed.** The clause is "You must
+present the Data with the following legend, prominently displayed", which
+attaches to *presenting the Data*: not the top of a screen, not repetition
+within one, and not a screen presenting no Data. So `KeyGate` loses it outright
+and Settings keeps it in About; the four data surfaces keep it at the foot of
+their content. `lib/Attribution.tsx` now owns placement and records the
+argument against. **Two documented claims were wrong and are corrected**: the
+terms require no non-affiliation disclaimer at all — the document runs four
+obligations and contains no form of *affiliate* or *endorse* — so the
+disclaimer is ours by choice, which `legal.ts` had flagged as pending and
+`CLAUDE.md` had asserted as fact.
+
+**M35, the top controls — done.** `insets.top + 12`, with the banner's
+allowance added only while the banner is up.
+
+**M36, the jumping label — half done.** The sheet now reports its live top edge
+and `mapPadding` follows it, so the label travels with the drag instead of
+snapping when it lands. **The gap at the half detent is untouched** and
+deliberately so: closing it means picking a constant against MapKit's own inset
+above `layoutMargins`, and this repo has three wrong claims on record from
+reasoning about native layout rather than looking at it.
+
+**M37/M38, the pins — rebuilt.** `StopMarker` draws a tinted tile with a bus
+mark and the stop's name beneath it, in two lines with a halo; selection grows
+the tile rather than recolouring it. `PendingMarker` replaces the *Search here*
+callout with a pill drawn in the marker's own view.
+
+**No stop marker passes `title` any more, and that is the substantive fix.** A
+`title` is what gave MapKit a callout and an annotation selection of its own —
+the second selection behind every pin symptom in M37. A test asserts its
+absence.
+
+**This deletes one of the backlog's two crash candidates without testing it,
+and that is not a fix.** `showCallout()` is gone because the offer no longer
+needs raising imperatively, which is a design reason that stands alone. The
+second candidate — unmounting the marker from inside its own press handler — is
+untouched: taking up the offer still does exactly that.
+
+### What round 3 should look at
+
+The four changed surfaces, unseen: the map's new markers and labels at a couple
+of zoom levels, the *Search here* pill, the peek detent now that the legend has
+left it, and the foot of the stops list, arrivals and route detail.
+
+**The peek's height was deliberately not changed.** Its *contents* changed, and
+changing the number in the same round would make it impossible to tell which of
+the two fixed it. M42 stays open pending one look.
+
+**Label collision is the known risk and has not been seen.** Apple and Google
+both cull and reposition labels when pins crowd; this does not. Twelve stops
+within a block, as in `IMG_4470`, is the case to photograph.
+
+Still unseen from Round 1: light theme, arrivals empty, unauthorized, location
+denied, no search results, database-unavailable, and arrivals scrolled to the
+true bottom (A21, which must not be reasoned about from source).
