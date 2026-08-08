@@ -146,13 +146,22 @@ but that'll come later. Functionality first."
   the fewer taps it takes. Marker icons also blank out when selecting one stop
   while another is selected.
 
-  **The mechanism.** `zIndex` on a Fabric view is implemented by *reordering
-  sibling views*. `StopMarker` was passing `selected ? 2 : 1`, so every change
-  of selection emitted a reorder against `react-native-maps`' component view —
-  which does not keep its marker subviews in the ordinary child array, having
-  handed them to MapKit. React's index and the real array disagree and the
-  insert goes out of range. The non-fatal form of the same mismatch is a view
-  removed and never re-inserted, which is the disappearing icons.
+  **What is established.** `AIRMap.m`'s `insertReactSubview:` intercepts
+  markers, hands them to MapKit as annotations, and *deliberately never calls
+  super* — there is a `#pragma` silencing the missing-super warning. So the
+  map's real subview list and React's model of it are different things by
+  construction, and an out-of-range insert is what you would expect the seam to
+  produce. Read from source.
+
+  **What is not.** *Why `zIndex` in particular* triggered it. An earlier version
+  of this entry — and of the comments in `StopMarker` — asserted that `zIndex`
+  is implemented by reordering sibling views. `AIRMapMarkerManager.m` exports it
+  as a plain native prop that becomes `layer.zPosition`, which is an assignment
+  and not a reorder. Whether React Native's own ordering also reacted to it is
+  unread: those sources are prebuild output this project never generates.
+  **Correlation, a plausible route through a seam that is real, and no proof.**
+  Corrected here rather than left standing, because a confident wrong mechanism
+  in a comment is exactly what this file exists to stop.
 
   **`zIndex` is gone from both marker components** and Truman could no longer
   reproduce the crash, "no matter how aggressively I abuse the map". Mechanism,
@@ -192,9 +201,14 @@ but that'll come later. Functionality first."
   mount, unmount or reorder children inside a `react-native-maps` component* —
   which is worth more than any of the three fixes.
 
-  **The cost is a tap target as wide as the widest label**, on every tile,
-  whether or not its name is showing. Two stops close together on screen may
-  therefore be hard to tap apart. Not yet seen on a device; watch for it.
+  **That cost arrived, and is fixed.** *Observed* 2026-08-08: "sometimes they
+  can be on top of other icons and I think they're eating the press on those
+  icons." `AIRMapMarker.reactSetFrame:` sets the annotation view's `bounds` from
+  the React layout size and MapKit hit-tests by frame, so a label counted in the
+  layout is a label that swallows taps aimed at its neighbours. The label is now
+  `position: 'absolute'` and outside the layout box, leaving the marker's frame
+  the size of its tile. Source-read, not guessed — but the drawing of a subview
+  outside its parent's bounds is native behaviour and wants a look on a device.
 
 - **Tapping a pin counts toward Apple Maps' double-tap-to-zoom.** *Observed*
   2026-08-08: switching selection by tapping pins in quick succession zooms the
@@ -203,12 +217,20 @@ but that'll come later. Functionality first."
   *iOS: Google Maps only*. Verified in
   `node_modules/react-native-maps/lib/MapView.d.ts`, not inferred.
 
-  The gesture recogniser belongs to MapKit and sits on the map view; our marker
-  presses are handled by MapKit's annotation selection and evidently still feed
-  it. Untried idea, cheap to test in Expo Go and **not to be shipped as a
-  reading of native behaviour**: let the marker's own child view take the press
-  instead of `pointerEvents="none"`, so React Native's touch system claims the
-  touch first.
+  **The zooming recogniser is MapKit's own and is not exposed.** Confirmed by
+  reading `AIRMapManager.m`: `react-native-maps` attaches its *own* single- and
+  double-tap recognisers to the map, but the double-tap one only fires
+  `onDoublePress` — it does not zoom — and both are created with
+  `cancelsTouchesInView = NO` so that marker selection keeps working. The zoom
+  therefore comes from `MKMapView`'s internal recogniser, which nothing in this
+  library reaches.
+
+  Options, none good: `zoomEnabled={false}` kills pinch as well as double-tap;
+  toggling `zoomEnabled` off for a few hundred milliseconds after a marker press
+  would swallow the offending second tap and is a plain prop change on the map
+  rather than a child mutation, so it is safe with respect to the seam above,
+  but it also deadens a deliberate pinch in that window. A real fix is native
+  and therefore leaves the Expo Go loop. **Not attempted; Truman's call.**
 
 ## Tests
 

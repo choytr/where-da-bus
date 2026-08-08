@@ -36,21 +36,32 @@ const SLOT = 34;
 const TILE = 24;
 const TILE_SELECTED = 32;
 const GAP = 3;
-/** Fixed so the anchor below is a constant: a one-line name must not shift the pin. */
+/**
+ * Two lines' worth, fixed. It no longer decides the anchor — the label is out
+ * of the layout entirely — but `labels.ts` measures collisions against this
+ * number, so the box the culler reasons about and the box drawn here have to be
+ * the same box.
+ */
 const LABEL_HEIGHT = 28;
 const WIDTH = 124;
 
 /**
- * The coordinate sits at the centre of the tile, not the centre of the view —
- * the name hangs below and is not part of where the stop *is*.
+ * The view is the size of the tile and nothing else, so the coordinate sits at
+ * its centre.
  *
- * One constant, for a view that is always the same size. `LABEL_HEIGHT` is
- * fixed so a one-line name and a two-line name cannot move the pin off its
- * stop, and the label's *slot* is now always present so an unlabelled stop
- * cannot either. See the note on `showLabel` below for why that matters more
- * than it sounds.
+ * **The name is positioned absolutely, outside that box, on purpose.**
+ * `AIRMapMarker.reactSetFrame:` sets the annotation view's `bounds` from the
+ * React layout size, and MapKit hit-tests annotation views by their frame — so
+ * a label counted in the layout is a label that swallows taps meant for the
+ * tile next to it. Truman: "sometimes they can be on top of other icons and I
+ * think they're eating the press on those icons." Read out of the library's own
+ * source, `ios/AirMaps/AIRMapMarker.m`, rather than guessed.
+ *
+ * That same method also shifts the marker's centre whenever the view's height
+ * changes, to keep its bottom edge over the same spot — a second, independent
+ * reason this box must not grow and shrink as labels come and go.
  */
-const ANCHOR = { x: 0.5, y: SLOT / 2 / (SLOT + GAP + LABEL_HEIGHT) };
+const ANCHOR = { x: 0.5, y: 0.5 };
 
 /**
  * How long the marker keeps re-snapshotting itself after its appearance
@@ -113,41 +124,37 @@ export const StopMarker = memo(function StopMarker({
       coordinate={{ latitude: stop.lat, longitude: stop.lon }}
       anchor={ANCHOR}
       /*
-        **No `zIndex`, and the crash log says why.**
+        **No `zIndex`.** It was `selected ? 2 : 1`, and selecting stops quickly
+        crashed the app reliably — the faster the fewer taps — with marker icons
+        blanking out alongside. `Expo Go-2026-08-08-011041.ips` is an uncaught
+        `-[__NSArrayM insertObject:atIndex:]` raised on the main thread inside
+        React Native's Fabric mounting transaction. SIGABRT. Removing this prop
+        is what made the crash stop reproducing.
 
-        It was `selected ? 2 : 1`. Selecting stops quickly crashed the app
-        reliably — the faster the fewer taps — with marker icons blanking out
-        alongside. `Expo Go-2026-08-08-011041.ips` is an uncaught Objective-C
-        exception from `-[__NSArrayM insertObject:atIndex:]`, raised on the main
-        thread inside React Native's Fabric mounting transaction
-        (`TelemetryController::pullTransaction`). SIGABRT. Not JavaScript, and
-        not MapKit either — the *view mounting* layer, inserting a child
-        component view at an index its backing array does not have.
+        **What is established, and what is not.** The log is certain: something
+        asked the mounting layer to insert a child view at an index its array
+        did not have. `AIRMap.m` is certain too — `insertReactSubview:`
+        intercepts markers, hands them to MapKit as annotations, and
+        deliberately never calls super, so the map's real subview list and
+        React's model of it are different things by construction.
 
-        `zIndex` on a Fabric view is implemented by **reordering sibling views**,
-        so changing it emitted exactly that kind of mount instruction against
-        `react-native-maps`' component view — which does not keep its marker
-        subviews in the ordinary child array, having handed them to MapKit. The
-        index React had and the array actually there disagree, and the insert
-        goes out of range. The same bookkeeping mismatch, in its non-fatal form,
-        is a view that is removed and never re-inserted: the disappearing icons.
+        *Why this prop in particular* is **not** established, and an earlier
+        version of this comment claimed it was. It said `zIndex` is implemented
+        by reordering sibling views. `AIRMapMarkerManager.m` exports `zIndex` as
+        a plain native prop that becomes `layer.zPosition` — an assignment, not
+        a reorder. Whether React Native's own view ordering reacted to it as
+        well is unread, those sources being prebuild output this project never
+        generates. So: correlation, a plausible route, and no proof.
 
-        Truman could no longer reproduce the crash once this prop was gone. That
-        is a mechanism, three matching symptoms, and a failure to reproduce —
-        **but a race that cannot be reproduced is not a race that is proven
-        gone**, so this stays written down.
-
-        The cost is that a selected tile can sit behind a neighbour it has grown
-        past. Do not reintroduce `zIndex` to fix that; give the tile a form that
-        reads when overlapped instead.
+        Do not reintroduce it to make a selected tile draw above its neighbours.
+        Give the tile a form that reads when overlapped instead.
       */
       tracksViewChanges={tracking}
       accessibilityLabel={stop.stop_name}
       onPress={handlePress}
     >
       <View style={styles.wrap} pointerEvents="none">
-        <View style={styles.slot}>
-          <View
+        <View
             style={[
               styles.tile,
               {
@@ -160,27 +167,23 @@ export const StopMarker = memo(function StopMarker({
             ]}
           >
             <Bus scale={size / TILE} tint={palette.pinGlyph} cut={palette.pin} />
-          </View>
         </View>
 
         {/*
-          **Always mounted, hidden with opacity.** It rendered conditionally
-          for one build, and on a device markers whose label appeared or
-          disappeared jumped bodily to the screen's top-left corner —
-          `IMG_4524`, two tiles and their names piled at the origin over the
-          status bar, one minute after `IMG_4523` had them in the right places.
+          **Always mounted, hidden with opacity, and outside the layout box.**
 
-          Same root as the crash: adding or removing a child inside a
-          `react-native-maps` marker is a mount instruction against a component
-          view whose subviews have been handed to MapKit, and RN's bookkeeping
-          and the real hierarchy come apart. There the array insert went out of
-          range and threw; here the view survives with no position and lands at
-          the origin.
+          It rendered conditionally for one build, and on a device the markers
+          whose label appeared or disappeared jumped bodily to the screen's
+          top-left corner — `IMG_4524`, two tiles and their names piled at the
+          origin over the status bar, a minute after `IMG_4523` had them in the
+          right places. Mounting and unmounting a child inside a
+          `react-native-maps` marker is a mount instruction against a view whose
+          subviews belong to MapKit, and it is the same family as the crash.
 
-          So the tree is structurally constant and only styles change. It costs
-          a tap target as wide as the widest label even on a tile with no label
-          showing, which is a real trade against pins that stay where the stops
-          are.
+          Absolutely positioned for a second and independent reason — see
+          `ANCHOR`. A label counted in the layout makes the annotation view that
+          wide, and MapKit hit-tests by frame, so the label eats taps aimed at
+          the tile beside it.
         */}
         <Text
           numberOfLines={2}
@@ -230,15 +233,19 @@ function Bus({ scale, tint, cut }: { scale: number; tint: string; cut: string })
 }
 
 const styles = StyleSheet.create({
-  wrap: { width: WIDTH, alignItems: 'center' },
-  slot: { height: SLOT, justifyContent: 'center' },
+  // Tile-sized: the label below is absolute and adds nothing to it.
+  wrap: { width: SLOT, height: SLOT, alignItems: 'center', justifyContent: 'center' },
   tile: {
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1.5,
   },
   label: {
-    marginTop: GAP,
+    position: 'absolute',
+    top: SLOT + GAP,
+    // Centred on the tile by hanging equally off both sides.
+    left: (SLOT - WIDTH) / 2,
+    width: WIDTH,
     height: LABEL_HEIGHT,
     fontSize: 11,
     lineHeight: 14,
