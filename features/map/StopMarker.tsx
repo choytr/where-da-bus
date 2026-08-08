@@ -109,18 +109,33 @@ export const StopMarker = memo(function StopMarker({
       coordinate={{ latitude: stop.lat, longitude: stop.lon }}
       anchor={showLabel ? ANCHOR_WITH_LABEL : ANCHOR_TILE_ONLY}
       /*
-        **No `zIndex`.** It was `selected ? 2 : 1`, which meant every change of
-        selection reordered two annotation views on the iOS map. Truman then
-        found that selecting stops quickly crashes the app reliably — the faster
-        the fewer taps it takes — and that icons often blank out when selecting
-        one stop while another is selected. Both symptoms point at annotation
-        views being reordered and recycled underneath a map that is still
-        drawing them, and `zIndex` was the only thing here doing that.
+        **No `zIndex`, and the crash log says why.**
 
-        **This is a candidate, not a diagnosis.** It has not been confirmed on a
-        device and the crash log has not been read yet. The cost of dropping the
-        prop is that a selected tile can sit behind a neighbour it has grown
-        past, which is worth trading for a build that does not die.
+        It was `selected ? 2 : 1`. Selecting stops quickly crashed the app
+        reliably — the faster the fewer taps — with marker icons blanking out
+        alongside. `Expo Go-2026-08-08-011041.ips` is an uncaught Objective-C
+        exception from `-[__NSArrayM insertObject:atIndex:]`, raised on the main
+        thread inside React Native's Fabric mounting transaction
+        (`TelemetryController::pullTransaction`). SIGABRT. Not JavaScript, and
+        not MapKit either — the *view mounting* layer, inserting a child
+        component view at an index its backing array does not have.
+
+        `zIndex` on a Fabric view is implemented by **reordering sibling views**,
+        so changing it emitted exactly that kind of mount instruction against
+        `react-native-maps`' component view — which does not keep its marker
+        subviews in the ordinary child array, having handed them to MapKit. The
+        index React had and the array actually there disagree, and the insert
+        goes out of range. The same bookkeeping mismatch, in its non-fatal form,
+        is a view that is removed and never re-inserted: the disappearing icons.
+
+        Truman could no longer reproduce the crash once this prop was gone. That
+        is a mechanism, three matching symptoms, and a failure to reproduce —
+        **but a race that cannot be reproduced is not a race that is proven
+        gone**, so this stays written down.
+
+        The cost is that a selected tile can sit behind a neighbour it has grown
+        past. Do not reintroduce `zIndex` to fix that; give the tile a form that
+        reads when overlapped instead.
       */
       tracksViewChanges={tracking}
       accessibilityLabel={stop.stop_name}

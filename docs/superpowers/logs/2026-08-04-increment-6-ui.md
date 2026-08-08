@@ -602,3 +602,36 @@ names the state or city, then tests whatever comes back against an Oahu bounding
 box, keeping *nothing matched* and *matched somewhere off the island* apart. No
 UI consumes it yet; the throwaway probe shows its verdict beside the raw reply
 so it can be checked on a device before the probe is deleted.
+
+---
+
+## The crash, diagnosed — 2026-08-08
+
+**Settled by evidence, not by reading.** Full write-up in `docs/backlog.md`;
+the short version, because it corrected three things at once.
+
+`Expo Go-2026-08-08-011041.ips`: uncaught Objective-C exception,
+`-[__NSArrayM insertObject:atIndex:]`, main thread, inside Fabric's mounting
+transaction. **Neither JavaScript nor MapKit — React Native's view-mounting
+layer.** `zIndex` on Fabric means reordering sibling views, and reordering
+`react-native-maps`' marker subviews is what threw.
+
+Three corrections worth carrying:
+
+1. **Both candidates the backlog had named were wrong**, and both were readings
+   of native source rather than measurements. That is now four wrong claims in
+   this repo produced the same way. The rule in `docs/backlog.md` — trust the
+   symptoms, measure the causes — held again.
+2. **My own first guess was wrong too.** I removed `zIndex` for the right
+   reason by accident: I said it was MapKit recycling annotation views, and the
+   log says it was RN's child-view bookkeeping. Same prop, wrong layer. The
+   comment in `StopMarker` asserting the wrong mechanism has been rewritten
+   against the log.
+3. **Expo Go crashes are logged, under `Expo Go-…` rather than the app's name.**
+   Earlier advice in this file and in the backlog implied a standalone build was
+   needed to get one. It is not, and that cost several days of "no stack yet".
+
+**Not closed.** A race that stops reproducing is not a race proven gone, and
+`tracksViewChanges` still toggles a prop on those same components. If it
+returns: another `.ips`, then look at anything that makes React insert, remove
+or reorder a child view inside a `react-native-maps` component.

@@ -57,9 +57,20 @@ export function PendingMarker({ at, onTake }: PendingMarkerProps) {
       identifier="pending-anchor"
       coordinate={{ latitude: at.lat, longitude: at.lon }}
       anchor={ANCHOR}
-      // Above every stop marker: it is the thing the rider just created and is
-      // reaching for, and it is transient.
-      zIndex={3}
+      /*
+        No `zIndex` here either, though this one never changed value.
+        `StopMarker` explains what the crash log showed: on Fabric, `zIndex`
+        means reordering sibling views, and reordering `react-native-maps`'
+        marker subviews is what threw. A constant cannot emit a *change*, but it
+        still participates in ordering when the marker mounts — and the older
+        crash in `docs/backlog.md`, the one Truman narrowed to the tap-hold
+        gesture, fires exactly when this component mounts. Cheap insurance
+        against a suspect that has already been caught once.
+
+        The offer therefore draws in whatever order MapKit gives it. It is one
+        marker against a dozen and it is the largest thing on the map, so being
+        overlapped is survivable in a way that being the crash was not.
+      */
       tracksViewChanges={tracking}
       accessibilityRole="button"
       accessibilityLabel={LABEL}

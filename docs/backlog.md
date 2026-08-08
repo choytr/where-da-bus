@@ -129,55 +129,49 @@ but that'll come later. Functionality first."
   distance and route-number chips; `/stop/[code]` shows neither. He prefers the
   card's. Adding chips to `ArrivalsScreen` costs it a `routesForStops` query it
   does not currently make.
-- **Occasional crash, narrowed to the tap-hold *Search here* interaction.** No
-  stack yet. Originally logged as "after interacting with a lot of things",
-  seen once in Expo Go and not reproduced on the `.ipa` — weaker evidence than
-  it sounds, since there was no reproduction to run either way. **Truman
-  narrowed it on 2026-08-05, from field use, with moderate confidence**: the
-  long press on the map that raises the *Search here* callout
-  (`MapScreen.tsx:462`, `onLongPress` → `setPending` → `setAnchor`). Exact
-  repro conditions still want writing down the next time it fires — how many
-  long presses, whether the sheet was open, whether a previous callout was
-  still up.
+- **The map crash is diagnosed, and both previously recorded causes were
+  wrong.** Kept rather than deleted because a race that stopped reproducing is
+  not a race proven gone.
 
-  **Increment 6's Task 2 made the next one legible.** `DatabaseGate` used to
-  catch it and tell the user to reinstall the app over a render error in the
-  map, which both misinformed them and destroyed the evidence. It now reaches
-  `AppErrorGate` and reads as an unexpected error, which is what it is.
+  **The evidence.** `Expo Go-2026-08-08-011041.ips`, off Truman's phone: an
+  uncaught Objective-C exception from `-[__NSArrayM insertObject:atIndex:]`,
+  raised on the main thread inside React Native's Fabric mounting transaction
+  (`TelemetryController::pullTransaction`), terminating on SIGABRT. **Neither
+  JavaScript nor MapKit** — the RN view-*mounting* layer, inserting a child
+  component view at an index its backing array does not have. SDK 54 runs the
+  New Architecture, so every map child goes through this path.
 
-  **The JavaScript is ruled out, by attempted reproduction rather than by
-  reading** (2026-08-06). Six tests in `MapScreen.test.tsx` drive the gesture
-  every way it can be driven — twenty presses each taken up, three presses
-  without a dismissal, an offer taken after the camera has moved off it, an
-  offer surviving a selection, ten dismissals, and the whole thing interleaved
-  with pin taps, pans and ⌖. Nothing throws. Those tests are kept as the
-  evidence, not as a fix.
+  **The reproduction that got us there** (2026-08-08, far better than the
+  original): selecting stops quickly crashes reliably, and the faster he taps
+  the fewer taps it takes. Marker icons also blank out when selecting one stop
+  while another is selected.
 
-  **Two candidates remain, both device-only, and neither is confirmed.**
+  **The mechanism.** `zIndex` on a Fabric view is implemented by *reordering
+  sibling views*. `StopMarker` was passing `selected ? 2 : 1`, so every change
+  of selection emitted a reorder against `react-native-maps`' component view —
+  which does not keep its marker subviews in the ordinary child array, having
+  handed them to MapKit. React's index and the real array disagree and the
+  insert goes out of range. The non-fatal form of the same mismatch is a view
+  removed and never re-inserted, which is the disappearing icons.
 
-  1. **`pendingMarker.current?.showCallout()`** in `MapScreen.tsx`'s effect on
-     `pending`. This is the one line on the whole gesture that a test cannot
-     reach: the `Marker` double is not a `forwardRef`, so `.current` is null for
-     the entire suite and the optional call is a no-op. On a device it is a real
-     native command, dispatched immediately after mount — and again on a
-     *second* long press, when React updates the marker in place and the
-     callout is already presenting. `MapMarker.showCallout` guards on
-     `this.marker.current`, so the obvious null-dispatch is not it.
-  2. **Unmounting the marker from inside its own callout's press handler.**
-     `searchHere` runs `setPending(null)` while MapKit is delivering the tap.
+  **`zIndex` is gone from both marker components** and Truman could no longer
+  reproduce the crash, "no matter how aggressively I abuse the map". Mechanism,
+  three matching symptoms, and a failure to reproduce — short of proof, and
+  recorded as such.
 
-  **Do not "fix" either from this description.** Both are readings of native
-  behaviour, which is the exact move that produced three wrong claims in this
-  repo already. The next step is evidence from a device: what is needed is the
-  crash log off the phone (Settings → Privacy & Security → Analytics &
-  Improvements → Analytics Data, entries named `WhereDaBus-…`), which says
-  whether the process died in JavaScript or in MapKit and settles it in one
-  look.
+  **What this retires.** The two candidates this entry used to name —
+  `pendingMarker.current?.showCallout()`, and unmounting the marker from inside
+  its own callout's press handler — were both readings of native behaviour and
+  **neither is what the log says**. They are struck. Note that the older
+  tap-hold reproduction is plausibly the *same* bug: mounting `PendingMarker`
+  and its `Callout` is a child mount/unmount on the same path, and both the
+  callout and that marker's constant `zIndex` are now gone. Plausibly, not
+  established — nobody has a log of the tap-hold crash.
 
-  **A JS throw here would not be caught by anything.** React error boundaries
-  cover render, not event handlers or effect callbacks, so `AppErrorGate` does
-  not see a throw inside `onMapLongPress` or `searchHere`. If the log says
-  JavaScript, that gap is where to start.
+  **If it returns**, the answer is not to read native source. It is another
+  `.ips` off the phone, and then the mounting instructions: anything that makes
+  React insert, remove or reorder a child view inside a `react-native-maps`
+  component is a suspect, and marker *children* are the whole design here.
 
 ## Tests
 
