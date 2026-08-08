@@ -8,6 +8,15 @@ Resolved entries are deleted rather than struck through; commit messages hold
 that history. If something here names a file that no longer exists, the entry is
 stale and should be re-checked rather than trusted.
 
+**Trust the symptoms here; measure the causes.** An entry's description of what
+goes wrong has held up every time. Its explanation of *why* is often an
+inference someone made once, and two have now been wrong: the cold-cache
+failures were blamed on a 1 s `waitFor` default when they were Jest's 5 s
+per-test timeout, and reaching for the lever the entry named made things
+strictly worse; the blank `feed_start_date` entry read as a latent bug and is
+inert. Reproduce before fixing — and when the stated cause turns out to be
+wrong, correct the entry rather than only the code.
+
 Increment 6 emptied the **Correctness** section — all six of its entries are
 fixed, so the heading is gone rather than left standing over nothing. That is
 not a claim that nothing is broken; it means nothing *known* is, and the

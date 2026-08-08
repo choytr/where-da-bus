@@ -7,17 +7,25 @@ up. Update it in place rather than adding a dated section each time.
 `CLAUDE.md` are the record; anything already in them belongs there, not here.
 When an increment ships, its write-up in this file collapses to a pointer.
 
-Last updated: **2026-08-05**. Increments 1–5 are shipped, device-verified and
-merged. **Increment 6's correctness half is done** — all seven tasks, one
-commit each, on `dev`. The UI half has not started.
+Last updated: **2026-08-07**. Increments 1–5 are shipped, device-verified and
+merged. **Increment 6's correctness half is done, and a bug-hunting pass on top
+of it** — sixteen commits on `dev`, nothing merged. **The UI half has not
+started, and it is the next thing.**
 
 ---
 
-## Start here: the UI half, and one thing owed
+## Start here: the UI half
 
-**All seven correctness tasks are complete.** Their write-up, including five
-places where reality disagreed with the plan, is in the plan's *What was built*
-section. Do not re-execute them.
+**Nothing is half-finished.** The working tree is clean, everything is pushed,
+and the seven correctness tasks are complete — their write-up, including five
+places where reality disagreed with the plan, is in the plan's *What was
+built* section. Do not re-execute them, and do not re-grill: the 2026-08-04
+grilling settled Increment 6 and is closed.
+
+The UI half is screenshot-driven and Truman drives it. He was about to start
+when this session ended, so **the first move is his**, not a piece of work to
+pick up. Read *Three things about the UI half that will not be obvious* below
+before he sends anything.
 
 **Two things must not be forgotten at merge:**
 
@@ -30,10 +38,6 @@ section. Do not re-execute them.
    `workflow_dispatch` cannot fire from `dev`. Shipping the new floor without
    republishing means every device downloads the old broken generation and
    moves straight off the corrected data — see the plan for the mechanism.
-
-Then the UI half begins. It is screenshot-driven and Truman calls when it is
-done; the grilling from 2026-08-04 is closed, so **do not re-open it and do not
-re-grill.**
 
 ### A bug-hunting pass landed after the correctness half (2026-08-06)
 
@@ -69,10 +73,9 @@ was serious.
    named at the top. Nothing in it widens Increment 6's scope — sectioned
    search and the arrivals route filter were put to Truman and both wait.
 
-**Increment 6 is two halves, in this order.** Six known-broken things from
-`docs/backlog.md` first, then a UI pass driven by screenshots from Truman's
-device. Start at Task 1 and work down; only Task 3 has ordering constraints, and
-they are stated in the plan.
+**Increment 6 was two halves.** Six known-broken things from `docs/backlog.md`
+first — **done** — then a UI pass driven by screenshots from Truman's device,
+which is what remains.
 
 **Live vehicles are a later increment**, and route polylines were cut from that
 work entirely. Only new chrome at the map's *edges* is deferred with them — the
@@ -112,21 +115,23 @@ that important rn. They looked fine when I last checked."
 
 ## Where things stand
 
-`dev` is ahead of `main` by the spec, plan and UI log, the field notes, and
-seven correctness commits. **401 Jest, 80 `node --test`, clean typecheck, clean
-`npm ci`.**
+`dev` is **sixteen commits** ahead of `main`: the spec, plan, UI log and field
+notes, seven correctness commits, and five from the bug-hunting pass. Working
+tree clean, everything pushed. **413 Jest, 82 `node --test`, clean typecheck,
+clean `npm ci`.**
 
-**Nothing in the correctness half has been seen on a device.** Two of its
-changes are visible: the new "Something went wrong" screen (provisional copy,
-wants a screenshot) and the geocoder probe in Settings. Both are for the next
-device round.
+**Nothing on `dev` has been seen on a device.** Three changes are visible: the
+new "Something went wrong" screen (provisional copy, wants a screenshot), the
+geocoder probe in Settings, and — invisibly until the 31st — the month-end
+arrivals fix. All are for the next device round.
 
 **The one thing genuinely unproven: nothing has run unattended yet.** Every
-`gtfs-data.yml` run so far was hand-started. The first scheduled firing is
-**Monday 12:00 UTC (02:00 HST)**. Check it with
-`gh run list --workflow gtfs-data.yml`. **A run that exits with `changed=false`
-is the expected outcome most weeks, not a failure** — it means the upstream feed
-has not been republished.
+`gtfs-data.yml` run so far was hand-started; the three in `gh run list` are all
+`workflow_dispatch` or `push`, the newest 2026-08-04. **The first scheduled
+firing is Monday 2026-08-10, 12:00 UTC (02:00 HST)** — still ahead as of this
+writing. Check it with `gh run list --workflow gtfs-data.yml`. **A run that
+exits with `changed=false` is the expected outcome most weeks, not a failure**
+— it means the upstream feed has not been republished.
 
 If scheduled runs turn out to be badly delayed, `0 12` is the most contended
 slot on GitHub's scheduler; a few minutes past the hour would help. Truman knows
@@ -233,12 +238,18 @@ built. Read it before touching the vehicle endpoint or the map.
 
 - **Not `grilling`.** Increment 6's grilling is done and its decisions are
   written down. Grill again at the *next* increment boundary, not now.
-- **`superpowers:executing-plans`** — there is a written plan to work through.
+- **Not `superpowers:executing-plans` either.** The written plan is executed.
   The order this project converged on is grill → spec → contract-level plan →
-  execute inline → review once at the boundary → device round → merge, and the
-  first three are complete.
+  execute inline → review once at the boundary → device round → merge, and
+  everything up to the boundary review is done. **The UI half has no plan by
+  design** — it is led by what Truman sees on his phone.
 - **`superpowers:systematic-debugging`** — whenever the app's *appearance* comes
-  up, for the reason in the lessons above.
+  up, for the reason in the lessons above. It earned its place again on
+  2026-08-06: it is what stopped a fix being aimed at the cause a backlog entry
+  asserted rather than the one measurement found.
+- **`superpowers:requesting-code-review`** — when Truman calls the UI half done.
+  That is the boundary review, on the whole diff, and it is the one thing this
+  increment still owes its own process.
 - **Not `dispatching-parallel-agents` or `subagent-driven-development`.**
   `CLAUDE.md` is explicit: execute inline, review once at the boundary.
 
