@@ -11,6 +11,7 @@ import * as Linking from 'expo-linking';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { type LongPressEvent, type MarkerPressEvent } from 'react-native-maps';
 import type BottomSheet from '@gorhom/bottom-sheet';
+import { runOnJS, useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { useAnchoredStops } from './useAnchoredStops';
 import { StopMarker } from './StopMarker';
@@ -185,14 +186,38 @@ export function MapScreen({ client }: MapScreenProps) {
    * positions the compass and Apple's own legal label. Setting it keeps that
    * label out from under the sheet, and nothing else.
    */
+  /**
+   * The sheet's top edge, tracked while it moves rather than after it lands.
+   *
+   * Written by the sheet every frame; mirrored into React state so `mapPadding`
+   * — an ordinary prop on a native view, not an animatable one — can follow it.
+   * Rounded to whole points so a drag sets state a few dozen times rather than
+   * on every sub-pixel change.
+   */
+  const sheetTop = useSharedValue(0);
+  const [sheetTopPoints, setSheetTopPoints] = useState<number | null>(null);
+
+  useAnimatedReaction(
+    () => Math.round(sheetTop.value),
+    (top, previous) => {
+      if (top !== previous) runOnJS(setSheetTopPoints)(top);
+    },
+  );
+
   const mapPadding = useMemo(
     () => ({
       top: 0,
       left: 0,
       right: 0,
-      bottom: Math.round(windowHeight * (1 - visibleAbove(detent))),
+      // Falls back to the settled detent until the sheet has reported a
+      // position at all, which is the first frame and every test that doubles
+      // the sheet away.
+      bottom:
+        sheetTopPoints === null
+          ? Math.round(windowHeight * (1 - visibleAbove(detent)))
+          : Math.max(0, Math.round(windowHeight - sheetTopPoints)),
     }),
-    [windowHeight, detent],
+    [windowHeight, detent, sheetTopPoints],
   );
 
   /**
@@ -544,6 +569,7 @@ export function MapScreen({ client }: MapScreenProps) {
         onToggleFavorite={toggleFavorite}
         onOpenRoute={openRoute}
         onDetentChange={setDetent}
+        animatedPosition={sheetTop}
         client={client}
       />
     </View>
