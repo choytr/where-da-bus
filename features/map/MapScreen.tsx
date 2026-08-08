@@ -9,16 +9,12 @@ import {
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, {
-  Callout,
-  Marker,
-  MarkerPressEvent,
-  type LongPressEvent,
-  type MapMarker,
-} from 'react-native-maps';
+import MapView, { type LongPressEvent, type MarkerPressEvent } from 'react-native-maps';
 import type BottomSheet from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
 import { useAnchoredStops } from './useAnchoredStops';
+import { StopMarker } from './StopMarker';
+import { PendingMarker } from './PendingMarker';
 import {
   centredOn,
   hasDriftedFrom,
@@ -73,7 +69,6 @@ const LOCATION_PROMPT = 'Showing downtown Honolulu. Tap ⌖ to use your location
 const LOCATION_DENIED = 'Location is off for this app. Tap ⌖ to turn it on in Settings.';
 const LOCATION_ERROR = 'Could not get your location. Tap ⌖ to try again.';
 const SEARCH_AREA_LABEL = 'Search this area';
-const SEARCH_HERE_LABEL = 'Search here';
 
 /**
  * How far the camera has to be carried from the anchor before *Search this
@@ -132,7 +127,6 @@ export function MapScreen({ client }: MapScreenProps) {
 
   const map = useRef<MapView | null>(null);
   const sheet = useRef<BottomSheet | null>(null);
-  const pendingMarker = useRef<MapMarker | null>(null);
   const [selectedStop, setSelectedStop] = useState<StopWithDistance | null>(null);
   /** The detent the sheet last settled on. `index={0}` is where it starts. */
   const [detent, setDetent] = useState<number>(PEEK_DETENT);
@@ -327,15 +321,6 @@ export function MapScreen({ client }: MapScreenProps) {
     setPending({ lat: latitude, lon: longitude });
   }, []);
 
-  /**
-   * iOS shows a callout only when it is asked to; without this the marker
-   * appears bearing an invisible offer, and the gesture reads as broken.
-   */
-  useEffect(() => {
-    if (pending === null) return;
-    pendingMarker.current?.showCallout();
-  }, [pending]);
-
   const searchFrom = useCallback(
     (coords: Coords) => {
       setPending(null);
@@ -375,7 +360,7 @@ export function MapScreen({ client }: MapScreenProps) {
   }, [camera, detent, searchFrom]);
 
   const onPinPress = useCallback(
-    (event: MarkerPressEvent, stop: StopWithDistance) => {
+    (stop: StopWithDistance, event: MarkerPressEvent) => {
       // Without this the press also reaches `MapView`'s `onPress`, and the tap
       // that selected a stop dismisses it again in the same gesture.
       event.stopPropagation();
@@ -487,44 +472,15 @@ export function MapScreen({ client }: MapScreenProps) {
           toolbarEnabled={false}
         >
           {stops.map((stop) => (
-            <Marker
+            <StopMarker
               key={stop.stop_id}
-              identifier={stop.stop_id}
-              coordinate={{ latitude: stop.lat, longitude: stop.lon }}
-              title={stop.stop_name}
-              pinColor={selectedStop?.stop_id === stop.stop_id ? palette.live : undefined}
-              onPress={(event) => onPinPress(event, stop)}
+              stop={stop}
+              selected={selectedStop?.stop_id === stop.stop_id}
+              onPress={onPinPress}
             />
           ))}
 
-          {pending === null ? null : (
-            <Marker
-              ref={pendingMarker}
-              identifier="pending-anchor"
-              coordinate={{ latitude: pending.lat, longitude: pending.lon }}
-              // Without this the press falls through to the map, which would
-              // dismiss the marker the rider is reaching for.
-              onPress={(event) => event.stopPropagation()}
-            >
-              {/*
-                `tooltip` drops MapKit's own bubble and draws ours. The native
-                one styles itself and its contents do not, so a themed label
-                inside it is a guess about a surface this project cannot see.
-              */}
-              <Callout tooltip onPress={() => searchHere(pending)}>
-                <View
-                  style={[
-                    styles.callout,
-                    { backgroundColor: palette.background, borderColor: palette.border },
-                  ]}
-                >
-                  <Text style={[styles.calloutText, { color: palette.text }]}>
-                    {SEARCH_HERE_LABEL}
-                  </Text>
-                </View>
-              </Callout>
-            </Marker>
-          )}
+          {pending === null ? null : <PendingMarker at={pending} onTake={searchHere} />}
         </MapView>
       </View>
 
@@ -626,11 +582,4 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   searchAreaText: { fontSize: 14, fontWeight: '600' },
-  callout: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  calloutText: { fontSize: 14, fontWeight: '600' },
 });
