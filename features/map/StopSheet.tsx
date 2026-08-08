@@ -6,7 +6,6 @@ import BottomSheet, {
   useBottomSheetSpringConfigs,
   type BottomSheetBackdropProps,
 } from '@gorhom/bottom-sheet';
-import type { SharedValue } from 'react-native-reanimated';
 import { StopRow } from '../stops/StopRow';
 import { StopCard } from './StopCard';
 import { useTheme } from '../../lib/theme';
@@ -80,17 +79,6 @@ export type StopSheetProps = {
    * visible enough to be worth touching.
    */
   onDetentChange: (index: number) => void;
-  /**
-   * The sheet's live top edge in pixels, written every frame while it moves.
-   *
-   * `onDetentChange` reports where the sheet *settled*, which is the right
-   * input for decisions — whether a raise would be a raise, whether the map is
-   * worth touching. It is the wrong input for anything that has to keep up
-   * with the drag, and the map's padding is one of those: driven off the
-   * settled index, Apple's own legal label sat still through the whole gesture
-   * and then jumped. Observed 2026-08-08.
-   */
-  animatedPosition?: SharedValue<number>;
 };
 
 export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSheet(
@@ -105,7 +93,6 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     onToggleFavorite,
     onOpenRoute,
     onDetentChange,
-    animatedPosition,
     client,
   },
   ref,
@@ -167,7 +154,6 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
       animationConfigs={animationConfigs}
       backdropComponent={renderBackdrop}
       onChange={onDetentChange}
-      animatedPosition={animatedPosition}
     >
       {selectedStop === null ? (
         <BottomSheetFlatList

@@ -11,10 +11,10 @@ import * as Linking from 'expo-linking';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { type LongPressEvent, type MarkerPressEvent } from 'react-native-maps';
 import type BottomSheet from '@gorhom/bottom-sheet';
-import { runOnJS, useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import { useAnchoredStops } from './useAnchoredStops';
 import { StopMarker } from './StopMarker';
+import { labelledStopIds } from './labels';
 import { PendingMarker } from './PendingMarker';
 import {
   centredOn,
@@ -112,7 +112,7 @@ export type MapScreenProps = {
 export function MapScreen({ client }: MapScreenProps) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const {
     anchor,
     region,
@@ -187,37 +187,33 @@ export function MapScreen({ client }: MapScreenProps) {
    * label out from under the sheet, and nothing else.
    */
   /**
-   * The sheet's top edge, tracked while it moves rather than after it lands.
+   * Fixed at the peek line, and it does not move.
    *
-   * Written by the sheet every frame; mirrored into React state so `mapPadding`
-   * — an ordinary prop on a native view, not an animatable one — can follow it.
-   * Rounded to whole points so a drag sets state a few dozen times rather than
-   * on every sub-pixel change.
+   * This has now been all three things. Derived from the settled detent, it sat
+   * still through a drag and jumped when the sheet landed. Driven from the
+   * sheet's animated position, it *tracked* — and Truman's word for the result
+   * was "very jittery", which is what a native view prop being reassigned from
+   * a JavaScript state update sixty times a second looks like. It was never
+   * going to be smooth: `mapPadding` is an ordinary prop, not an animatable
+   * one, so every frame is a round trip.
+   *
+   * So it is a constant. Apple's legal label sits just above the collapsed
+   * sheet — visible in the resting state, covered while a rider has actively
+   * raised the sheet over it, and never in motion.
+   *
+   * Truman asked whether it could simply live in the bottom-left corner and be
+   * hidden by the sheet at every detent. Almost: MapKit's usage terms ask that
+   * the label not be obscured, and pinning it one detent up keeps it visible
+   * in the state the map is nearly always in, for no cost.
    */
-  const sheetTop = useSharedValue(0);
-  const [sheetTopPoints, setSheetTopPoints] = useState<number | null>(null);
-
-  useAnimatedReaction(
-    () => Math.round(sheetTop.value),
-    (top, previous) => {
-      if (top !== previous) runOnJS(setSheetTopPoints)(top);
-    },
-  );
-
   const mapPadding = useMemo(
     () => ({
       top: 0,
       left: 0,
       right: 0,
-      // Falls back to the settled detent until the sheet has reported a
-      // position at all, which is the first frame and every test that doubles
-      // the sheet away.
-      bottom:
-        sheetTopPoints === null
-          ? Math.round(windowHeight * (1 - visibleAbove(detent)))
-          : Math.max(0, Math.round(windowHeight - sheetTopPoints)),
+      bottom: Math.round(windowHeight * (1 - visibleAbove(PEEK_DETENT))),
     }),
-    [windowHeight, detent, sheetTopPoints],
+    [windowHeight],
   );
 
   /**
@@ -456,6 +452,25 @@ export function MapScreen({ client }: MapScreenProps) {
     void requestLocation();
   }, [locationStatus, requestLocation]);
 
+  /**
+   * Which names go on the map, recomputed only when the camera settles.
+   *
+   * `camera` is set from `onRegionChangeComplete`, so this does not run during
+   * a pan — which matters more than it looks. A marker whose view changes has
+   * to be re-snapshotted by iOS, and re-snapshotting twenty of them per frame
+   * is how a map with custom markers becomes unusable.
+   */
+  const labelled = useMemo(
+    () =>
+      labelledStopIds(
+        stops,
+        camera ?? region,
+        { width: windowWidth, height: Math.round(windowHeight * visibleAbove(detent)) },
+        selectedStop?.stop_id ?? null,
+      ),
+    [stops, camera, region, windowWidth, windowHeight, detent, selectedStop],
+  );
+
   const banner =
     locationStatus === 'denied'
       ? LOCATION_DENIED
@@ -501,6 +516,7 @@ export function MapScreen({ client }: MapScreenProps) {
               key={stop.stop_id}
               stop={stop}
               selected={selectedStop?.stop_id === stop.stop_id}
+              showLabel={labelled.has(stop.stop_id)}
               onPress={onPinPress}
             />
           ))}
@@ -569,7 +585,6 @@ export function MapScreen({ client }: MapScreenProps) {
         onToggleFavorite={toggleFavorite}
         onOpenRoute={openRoute}
         onDetentChange={setDetent}
-        animatedPosition={sheetTop}
         client={client}
       />
     </View>

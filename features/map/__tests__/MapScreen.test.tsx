@@ -305,16 +305,29 @@ describe('MapScreen', () => {
     expect(screen.getAllByText('KAPALULU PL').length).toBeGreaterThan(0);
   });
 
-  it('writes each stop\u2019s name on the map, without waiting for a tap', async () => {
+  it('writes a stop name on the map once the camera is close enough', async () => {
     // Truman, 2026-08-08, with screenshots of Apple Maps and Google Maps: both
     // put the name beside the icon and neither hides it behind a bubble.
     mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
 
     await show();
+    await waitFor(() => screen.getByLabelText('pin 5'));
+    await fireEvent.press(screen.getByLabelText('zoom in close'));
+
+    // Twice over: once under the pin, once in the sheet's row.
+    await waitFor(() => expect(screen.getAllByText('LAGOON DR')).toHaveLength(2));
+  });
+
+  it('writes no names at the zoom the map opens on', async () => {
+    // The default framing is the whole 1.5 km query radius, and that is the
+    // zoom at which every name at once became the heap in IMG_4479. Nothing
+    // but the selection is labelled until a rider comes closer.
+    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+
+    await show();
 
     await waitFor(() => screen.getByLabelText('pin 5'));
-    // Twice over: once under the pin, once in the sheet's row.
-    expect(screen.getAllByText('LAGOON DR')).toHaveLength(2);
+    expect(screen.getAllByText('LAGOON DR')).toHaveLength(1);
   });
 
   it('leaves MapKit no callout of its own to open', async () => {
@@ -682,10 +695,10 @@ describe('MapScreen', () => {
       await waitFor(() => {
         expect(screen.queryByLabelText('Back to nearby stops')).toBeNull();
       });
-      // Both stops are rows again, not just the one that was open. Two matches
-      // apiece: the pin's title renders the name as well as the row does.
-      expect(screen.getAllByText('LAGOON DR').length).toBeGreaterThan(1);
-      expect(screen.getAllByText('KAPALULU PL').length).toBeGreaterThan(1);
+      // Both stops are rows again, not just the one that was open. One match
+      // apiece: at the zoom the map opens on, no pin carries a name.
+      expect(screen.getAllByText('LAGOON DR')).toHaveLength(1);
+      expect(screen.getAllByText('KAPALULU PL')).toHaveLength(1);
     });
 
     it('raises the sheet to medium when a stop is selected from peek', async () => {

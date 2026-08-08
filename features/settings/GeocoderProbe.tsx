@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useTheme } from '../../lib/theme';
+import { biasedQuery, findOnOahu, type GeocodeResult } from '../../data/geocode/oahu';
 
 /**
  * ============================================================================
@@ -17,6 +18,12 @@ import { useTheme } from '../../lib/theme';
  * Truman types six things (a street address, a mall, a school, a restaurant, a
  * beach, a neighbourhood) and screenshots the results. Then the real feature
  * gets designed against what came back.
+ *
+ * **It has already answered, and the answer was bad**: on 2026-08-08 a bare
+ * "university" resolved to Pennsylvania and "u" to California, each as a single
+ * confident result. So the probe now shows two things at once — the raw reply,
+ * still, and what `data/geocode/oahu.ts` makes of it. The second column is the
+ * fix being checked on a device before the probe that found the bug is deleted.
  *
  * Two things already known, and worth confirming rather than assuming:
  *
@@ -40,7 +47,13 @@ import { useTheme } from '../../lib/theme';
 type Probe =
   | { state: 'idle' }
   | { state: 'running'; query: string }
-  | { state: 'done'; query: string; results: Location.LocationGeocodedLocation[] }
+  | {
+      state: 'done';
+      query: string;
+      asked: string;
+      results: Location.LocationGeocodedLocation[];
+      verdict: GeocodeResult;
+    }
   | { state: 'failed'; query: string; message: string };
 
 export function GeocoderProbe() {
@@ -53,9 +66,14 @@ export function GeocoderProbe() {
     if (trimmed === '') return;
 
     setProbe({ state: 'running', query: trimmed });
+    const asked = biasedQuery(trimmed);
     try {
+      // The raw call keeps asking exactly what was typed, so the probe still
+      // shows the unbiased behaviour that started all this. `findOnOahu` runs
+      // beside it, doing its own biased lookup.
       const results = await Location.geocodeAsync(trimmed);
-      setProbe({ state: 'done', query: trimmed, results });
+      const verdict = await findOnOahu(trimmed, Location.geocodeAsync);
+      setProbe({ state: 'done', query: trimmed, asked, results, verdict });
     } catch (error) {
       // Printed rather than classified. Which failures this throws for — an
       // empty result versus a network problem versus a rate limit — is one of
@@ -118,11 +136,36 @@ export function GeocoderProbe() {
                 {JSON.stringify(result)}
               </Text>
             ))}
+
+            <Text style={[styles.body, { color: palette.muted }]}>
+              asked as “{probe.asked}”
+            </Text>
+            <Text
+              style={[
+                styles.body,
+                { color: probe.verdict.kind === 'found' ? palette.text : palette.warning },
+              ]}
+            >
+              {describe(probe.verdict)}
+            </Text>
           </>
         ) : null}
       </View>
     </>
   );
+}
+
+function describe(verdict: GeocodeResult): string {
+  switch (verdict.kind) {
+    case 'found':
+      return `on Oahu: ${verdict.coords.lat.toFixed(5)}, ${verdict.coords.lon.toFixed(5)}`;
+    case 'offIsland':
+      return 'rejected: resolved somewhere off Oahu';
+    case 'none':
+      return 'rejected: nothing matched';
+    case 'failed':
+      return 'rejected: the lookup itself failed';
+  }
 }
 
 const styles = StyleSheet.create({

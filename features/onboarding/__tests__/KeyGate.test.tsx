@@ -123,7 +123,7 @@ describe('KeyGate', () => {
     expect(screen.getByLabelText('API key').props.secureTextEntry).toBe(true);
   });
 
-  it('does not carry the provider\u2019s legend, because it presents no data', async () => {
+  it('does not carry the provider legend, because it presents no data', async () => {
     // The gate stands precisely because there is no key yet, so no request has
     // been made and nothing on this screen is the provider's. The terms bind
     // "you must present the Data with the following legend"; this presents

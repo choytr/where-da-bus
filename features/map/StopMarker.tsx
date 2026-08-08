@@ -42,10 +42,14 @@ const WIDTH = 124;
 
 /**
  * The coordinate sits at the centre of the tile, not the centre of the view —
- * the name hangs below and is not part of where the stop *is*. Constant
- * because `LABEL_HEIGHT` is.
+ * the name hangs below and is not part of where the stop *is*.
+ *
+ * Two of them because the view has two shapes. Both are constants rather than
+ * arithmetic on a measured height: `LABEL_HEIGHT` is fixed precisely so a
+ * one-line name and a two-line name cannot move the pin off its stop.
  */
-const ANCHOR = { x: 0.5, y: SLOT / 2 / (SLOT + GAP + LABEL_HEIGHT) };
+const ANCHOR_WITH_LABEL = { x: 0.5, y: SLOT / 2 / (SLOT + GAP + LABEL_HEIGHT) };
+const ANCHOR_TILE_ONLY = { x: 0.5, y: 0.5 };
 
 /**
  * How long the marker keeps re-snapshotting itself after its appearance
@@ -63,6 +67,12 @@ export type StopMarkerProps = {
   stop: StopWithDistance;
   selected: boolean;
   /**
+   * Whether this stop's name is drawn under its tile. Decided for the whole set
+   * at once by `labelledStopIds` — labelling every stop produced an unreadable
+   * heap on a device, see that module.
+   */
+  showLabel: boolean;
+  /**
    * Takes the stop rather than closing over it, so this component can be
    * memoised: a fresh arrow per stop per render would defeat `memo` entirely,
    * and re-rendering markers is the cost this component is shaped to avoid.
@@ -70,16 +80,21 @@ export type StopMarkerProps = {
   onPress: (stop: StopWithDistance, event: MarkerPressEvent) => void;
 };
 
-export const StopMarker = memo(function StopMarker({ stop, selected, onPress }: StopMarkerProps) {
+export const StopMarker = memo(function StopMarker({
+  stop,
+  selected,
+  showLabel,
+  onPress,
+}: StopMarkerProps) {
   const { palette } = useTheme();
   const [tracking, setTracking] = useState(true);
 
-  // Re-run on `selected` because that is the only thing that changes how this
-  // draws. Mount included: the first bitmap has to be captured too.
+  // The two things that change how this draws. Mount included: the first bitmap
+  // has to be captured too.
   useEffect(() => {
     setTracking(true);
     return schedule(() => setTracking(false), TRACK_MS);
-  }, [selected]);
+  }, [selected, showLabel]);
 
   const handlePress = useCallback(
     (event: MarkerPressEvent) => onPress(stop, event),
@@ -92,15 +107,26 @@ export const StopMarker = memo(function StopMarker({ stop, selected, onPress }: 
     <Marker
       identifier={stop.stop_id}
       coordinate={{ latitude: stop.lat, longitude: stop.lon }}
-      anchor={ANCHOR}
-      // Selected draws over its neighbours; without this it can end up behind
-      // one of the pins it just grew past.
-      zIndex={selected ? 2 : 1}
+      anchor={showLabel ? ANCHOR_WITH_LABEL : ANCHOR_TILE_ONLY}
+      /*
+        **No `zIndex`.** It was `selected ? 2 : 1`, which meant every change of
+        selection reordered two annotation views on the iOS map. Truman then
+        found that selecting stops quickly crashes the app reliably — the faster
+        the fewer taps it takes — and that icons often blank out when selecting
+        one stop while another is selected. Both symptoms point at annotation
+        views being reordered and recycled underneath a map that is still
+        drawing them, and `zIndex` was the only thing here doing that.
+
+        **This is a candidate, not a diagnosis.** It has not been confirmed on a
+        device and the crash log has not been read yet. The cost of dropping the
+        prop is that a selected tile can sit behind a neighbour it has grown
+        past, which is worth trading for a build that does not die.
+      */
       tracksViewChanges={tracking}
       accessibilityLabel={stop.stop_name}
       onPress={handlePress}
     >
-      <View style={styles.wrap} pointerEvents="none">
+      <View style={showLabel ? styles.wrap : styles.wrapTileOnly} pointerEvents="none">
         <View style={styles.slot}>
           <View
             style={[
@@ -118,6 +144,7 @@ export const StopMarker = memo(function StopMarker({ stop, selected, onPress }: 
           </View>
         </View>
 
+        {!showLabel ? null : (
         <Text
           numberOfLines={2}
           style={[
@@ -135,6 +162,7 @@ export const StopMarker = memo(function StopMarker({ stop, selected, onPress }: 
         >
           {stop.stop_name}
         </Text>
+        )}
       </View>
     </Marker>
   );
@@ -166,6 +194,7 @@ function Bus({ scale, tint, cut }: { scale: number; tint: string; cut: string })
 
 const styles = StyleSheet.create({
   wrap: { width: WIDTH, alignItems: 'center' },
+  wrapTileOnly: { width: SLOT, alignItems: 'center' },
   slot: { height: SLOT, justifyContent: 'center' },
   tile: {
     alignItems: 'center',
