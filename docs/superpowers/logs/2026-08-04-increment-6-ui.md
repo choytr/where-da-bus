@@ -501,3 +501,104 @@ within a block, as in `IMG_4470`, is the case to photograph.
 Still unseen from Round 1: light theme, arrivals empty, unauthorized, location
 denied, no search results, database-unavailable, and arrivals scrolled to the
 true bottom (A21, which must not be reasoned about from source).
+
+---
+
+## Round 3 — 2026-08-08 evening, 3 screenshots plus the two references
+
+`~/wheredabus-screenshots/8-8-2026/IMG_4478…4480.png`. `IMG_4479` is **ours**;
+`4478` is Apple Maps and `4480` is Google Maps, both of the same neighbourhood,
+sent as references and described in the Round 2 section above.
+
+**M43. Labelling every stop does not work.** *Observed* `IMG_4479`: roughly
+twenty stop names overlapping in a heap across Kalihi, most unreadable, several
+tiles buried under their neighbours' text. Truman: "The new pins look awful
+because the text is showing constantly. Other than the labels at a far zoom, it
+functions fine."
+
+The reference apps both label a *minority* of what they draw. Apple clusters —
+one tile carries `4`, another `+3 more` — and Google simply drops the labels
+that would collide while keeping the pin. **Fixed by doing the Google thing**
+(`features/map/labels.ts`): nothing but the selection past the zoom where tiles
+start touching, and below that a greedy pass in priority order — selection
+first, then nearest — keeping a label only where its box clears every box
+already placed. Pure function, eight tests, recomputed only on a settled camera.
+
+**M44. The peek detent is mostly underneath the tab bar.** *Inferred, but it is
+arithmetic rather than a reading*: the sheet's `14%` is 14% of the container,
+which is the full-screen view — about 119 pt on his device. The tab bar occupies
+roughly 83 pt of that (49 pt of bar over a 34 pt bottom inset), and the grab
+handle another 20. **That leaves on the order of 16 pt for content.**
+
+This is the single number behind three separate complaints: Round 1's M11,
+Round 2's M42, and Truman's 2026-08-08 "when a stop is selected, the stop code's
+spacing to the bottom bar is really tight and awkward, and the stop list showing
+only the top entry isn't the best either." *Observed* in `IMG_4479`, where
+`Stop 3984` sits directly on the tab bar.
+
+**His proposal — headings, "Nearby Stops" and "Selected Stop" — is right and
+cannot be built first.** There is no room to put a heading in 16 pt. The peek
+has to clear the tab bar before anything can be designed into it, which means
+`DETENTS[PEEK]` becoming a computed pixel value rather than `'14%'`. That
+touches `visibleAbove`, which the camera framing depends on and which is well
+covered by `region.test.ts` — worth doing carefully rather than alongside a
+crash fix. **Not started.**
+
+**M45. `mapPadding` has now been all three things, and is fixed.** *Observed*
+that tracking the sheet's animated position works and is unpleasant — Truman:
+"The Apple Maps label is indeed tracking. But it's very jittery, and it's still
+too far above the bottom sheet." It was never going to be smooth: `mapPadding`
+is an ordinary prop on a native view, so every frame was a JavaScript state
+update and a round trip.
+
+It is now a constant, pinned just above the collapsed sheet. He asked whether it
+could sit in the bottom-left and be covered by the sheet at every detent;
+**almost** — MapKit's usage terms ask that the label not be obscured, and one
+detent up keeps it visible in the state the map is nearly always in, for no cost.
+
+### The crash, which now has a reproduction
+
+**Truman, 2026-08-08: "Selecting stops fast is very reliably leading to a crash.
+I can switch the selected stop a few times before it crashes. If I go slower
+it's more stops before it crashes — if I go faster it's less stops. Also when
+selecting stops while another was selected, icons often disappear."**
+
+This is a **different reproduction from the one in `docs/backlog.md`**, which
+Truman narrowed to the tap-hold *Search here* gesture on 2026-08-05. It is also
+far better evidence: reliable, and rate-dependent in a direction that points at
+a race rather than at a bad state.
+
+**It appeared in a build carrying `StopMarker`, which this session wrote.** That
+is not proof it was introduced here — the old build crashed too — but it is the
+honest starting point, and the two symptoms travel together in a way the old
+crash's did not.
+
+**Leading candidate, acted on but not confirmed: `zIndex`.** `StopMarker` was
+passing `selected ? 2 : 1`, so every change of selection reordered two
+annotation views on a live iOS map. Reordering forces MapKit to recycle
+annotation views, which would explain the blank icons; doing it repeatedly while
+the map is still drawing would explain a rate-dependent crash. The prop is gone.
+The cost is that a selected tile can sit behind a neighbour it has grown past.
+
+**This is a candidate, not a diagnosis, and must not be written up as a fix.**
+Nothing has been confirmed on a device and the crash log has not been read. The
+next step is unchanged and is the one the backlog has asked for since 2026-08-06:
+the log off the phone — Settings → Privacy & Security → Analytics & Improvements
+→ Analytics Data, entries named `WhereDaBus-…` — which says in one look whether
+the process died in JavaScript or inside MapKit.
+
+If it says MapKit, `zIndex` and `tracksViewChanges` are where to keep looking.
+If it says JavaScript, note that a throw inside `onPinPress` or `searchHere`
+would be caught by nothing: React error boundaries cover render, not event
+handlers.
+
+### Geocoding — settled
+
+**P40 is answered and built.** `Location.geocodeAsync(address: string)` takes an
+address and nothing else in SDK 54 — checked against the installed type
+definitions, not the docs — so `CLGeocoder`'s `inRegion:` is unreachable and the
+biasing is ours. `data/geocode/oahu.ts` appends `, HI` unless the text already
+names the state or city, then tests whatever comes back against an Oahu bounding
+box, keeping *nothing matched* and *matched somewhere off the island* apart. No
+UI consumes it yet; the throwaway probe shows its verdict beside the raw reply
+so it can be checked on a device before the probe is deleted.
