@@ -201,3 +201,200 @@ Light theme (none of the fifteen), the arrivals **empty** state, the
 onboarding, and the database-unavailable screen — which is reachable in Expo Go
 by flipping `AppShell.tsx:249` to `state = { failed: true }`, Truman's
 suggestion, and it removes the last state that would have shipped as inference.
+
+---
+
+## Round 2 — 2026-08-08, 13 screenshots, dark theme, same device
+
+`~/wheredabus-screenshots/8-8-2026/IMG_4462…4474.png`, outside the repo for the
+reason above. Truman's own notes came with them, in the order he took the shots;
+they are reproduced here per finding rather than quoted as a block, and his
+words are marked as his. Surfaces: `KeyGate`, map + sheet + pins, the geocoder
+probe, Settings' API-key group, route detail.
+
+**`KeyGate` is now seen** (`IMG_4462`) — it was on Round 1's *not yet seen*
+list. Still unseen: light theme, arrivals empty, unauthorized, location denied,
+no search results, database-unavailable, and arrivals scrolled to the true
+bottom (A21 is still open, and still must not be reasoned about from source).
+
+### Onboarding
+
+**K33. `KeyGate` looks right.** *Observed* `IMG_4462`. Truman: "Api screen looks
+good." No change proposed. It is also the only screen in the app whose key field
+is masked — see T39.
+
+**K34. Nothing checks the key before letting the rider in.** *Confirmed in
+source*: `KeyGate.tsx:62` `save()` calls `onSave(trimmed)` and stores whatever
+was typed; the only requirement is non-empty. A wrong key therefore surfaces
+much later, as an arrivals failure on some other screen. Truman: "maybe it
+should somehow probe the api for an 'ok' response before letting the user in to
+prevent them from inputting a bad key. Idk, might be overkill though."
+
+The machinery exists. `ArrivalsFailure`'s `unauthorized` is already recognised
+from the response body (the API reports every error as HTTP 200), so a single
+arrivals request against a known-good stop code separates *rejected* from
+*could not reach*. **The design question is what happens on `unreachable`** —
+refusing to save a key because the phone is offline would lock a rider out of
+an app that works offline for stops and routes. Undecided; put to Truman.
+
+### Map — controls
+
+**M35. The two top controls sit ~123 pt below the top of the screen.**
+*Observed* `IMG_4463`/`4465`/`4469`/`4472`; Truman: "buttons at the top are too
+far down (search here and use my location buttons)." *Confirmed in source*:
+both are `top: insets.top + 64` (`MapScreen.tsx:528` and `:551`), and this
+device's top inset is ~59 pt. The `+ 64` exists to clear the fallback location
+banner, which is only mounted when `source === 'fallback'` — so the offset is
+paid on every launch to reserve room for a view that is usually absent.
+Supersedes M5 and M9, which described the same offset from one screenshot.
+
+**M36. The Apple Maps legal label jumps rather than tracks, and sits too high
+at the medium detent.** *Observed*: at peek it is just above the sheet
+(`IMG_4463`), at 45% there is a visible gap between it and the sheet's top edge
+(`IMG_4464`, `IMG_4469`). Truman: "The apple maps attribution snaps into place
+when the sheet moves and is also too far above the sheet at halfway."
+*Confirmed in source*: `mapPadding` is derived from `detent`
+(`MapScreen.tsx:179-187`), and `detent` is set from the sheet's `onChange`
+(`:569`), which fires when the sheet **settles**. So the label is stationary
+through the whole drag and then jumps. Tracking it would mean driving
+`mapPadding` from the sheet's animated position instead of its settled index.
+The gap size is a separate arithmetic question from the jump.
+
+### Map — pins, callouts and selection
+
+Three symptoms, all *observed*, and the mechanisms below are **inferred from
+source and unconfirmed**. This is the area where this project has been wrong
+three times; treat the causes as candidates to measure.
+
+**M37. Selection in our state and selection in MapKit can disagree**, and every
+symptom Truman reported on the pins is a shape of that one disagreement.
+
+Truman: "Interactions with the pins are awkward. Sometimes it's possible to have
+a stop selected but have it not show up on the map at all. And sometimes it's
+possible to 'deselect' a stop by tapping the pin instead of just on the map,
+which makes it deselect and turn back red, but the label is still there and the
+pin is still enlarged."
+
+- *Observed* `IMG_4472`: MapKit's white callout reading `ALEWA DR + 1440` is up,
+  its pin enlarged, **while the sheet shows the plain nearby list** — nothing is
+  selected in our state.
+- *Observed* `IMG_4470` and `IMG_4471`: the sheet shows a selected stop
+  (`HOUGHTAILING ST + KONIA ST`, and `NUUANU AVE + OPP ILIAHI ST`) with **no
+  green pin anywhere on the map**. `IMG_4469`, a minute earlier, shows the green
+  pin working — so this is intermittent, not broken outright.
+
+The two selections are genuinely separate objects. Ours is `selectedStop`
+(`MapScreen.tsx:121`), which drives `pinColor` (`:476`). MapKit's is the
+annotation's own selected state, which it manages itself and which draws the
+native callout, because every stop `Marker` passes `title` (`:475`) and, unlike
+the pending-anchor marker, no `tooltip`. Nothing synchronises them.
+
+Candidate mechanisms, none confirmed:
+
+1. **The deselect-by-tapping-the-pin case**: tapping an annotation MapKit has
+   already selected may not re-fire the marker's `onPress`, so the
+   `event.stopPropagation()` at `:366` never runs and the tap reaches
+   `MapView`'s `onPress` → `onMapPress` → `setSelectedStop(null)`. That would
+   produce exactly the reported triple: our state clears, `pinColor` reverts to
+   red, and MapKit's callout and enlargement stay because MapKit was never told
+   anything.
+2. **The no-green-pin case**: either the `pinColor` change is not applied to an
+   annotation view iOS has already created, or the selected stop is not in
+   `stops` at that moment and so has no marker at all. These are different bugs
+   with different fixes and the screenshots do not separate them.
+
+**What would settle it**: a screen recording of the gesture, or `IMG_4470`'s
+situation reproduced with the stop's own pin known to be on screen. Do not fix
+from this description.
+
+**M38. The callout design is wrong on both kinds of marker.** Truman: "Sometimes,
+it is possible for the hold interaction to show the pin but not the label. Either
+way, the label on top of the pin thing looks stupid. We need to change how it
+looks."
+
+Two separate things in one note.
+
+- **The missing label** is *observed* and is **new evidence for the map-crash
+  backlog entry**, whose first candidate is exactly this line:
+  `pendingMarker.current?.showCallout()` (`MapScreen.tsx:319-322`). The entry
+  records that the ref is null for the entire Jest suite so the call is a no-op
+  under test; Truman has now seen the device case where the marker appears
+  bearing an invisible offer. That is the effect running before the ref
+  attaches. It does not prove the crash has the same cause, and must not be
+  written up as if it does.
+- **The look** is a design change covering both callouts: our themed dark
+  tooltip for *Search here* (`IMG_4465`) and MapKit's white bubble for a
+  selected stop (`IMG_4472`, a white rectangle on a dark map). Round 1 logged
+  the inconsistency as M6; Truman is now rejecting the bubble-above-the-pin
+  form itself, which is a larger change than making the two match. **No
+  direction chosen yet.**
+
+### The geocoder probe
+
+**P40. `geocodeAsync` has no regional bias and returned exactly one result every
+time.** *Observed*, three queries, `IMG_4466`/`4467`/`4468`. Truman: "Idk what
+I'm supposed to see in the probe, but here's some test runs. I only ever get 1
+result, idk if that's intentional."
+
+| Query | Result | Where that is |
+|---|---|---|
+| `u` | 38.5696, −121.5041 | Sacramento, California |
+| `university` | 40.8119, −77.8518 | State College, Pennsylvania |
+| `2500 campus road` | 21.2983, −157.8188 | UH Mānoa, Honolulu — correct |
+
+**This is the finding that matters for address search**, and it is worse than
+the result count: a bare word resolves to the mainland with no signal that it
+did. Increment 6's spec settled that search would be address-only via
+`Location.geocodeAsync`; it did not settle that the results would need
+constraining to Oahu. **Open question**: whether Expo SDK 54's `geocodeAsync`
+exposes anything like `CLGeocoder`'s `geocodeAddressString:inRegion:`, and if
+not, whether filtering returned coordinates to an Oahu bounding box is enough.
+Check the v54 docs before proposing either.
+
+The three untried probe queries — a mall, a restaurant, a beach — are the ones
+that test the places-are-not-addresses boundary the spec already recorded, and
+are still worth running.
+
+### Settings
+
+**T39. The replacement-key field is not masked.** *Observed* `IMG_4473`: the row
+above shows `•••••••••••fff` with `Show`, and directly beneath it the field
+being typed into renders `abcdefg` in the clear. *Confirmed in source*:
+`SettingsScreen.tsx:154` has no `secureTextEntry`, while `KeyGate.tsx:125` has
+`secureTextEntry={!revealed}` — and `KeyGate`'s comment says "Same pair as
+Settings", which is not true. Truman: "The api key needs to be hidden on the
+paste field." Unambiguous, small, and the comment needs correcting with it.
+
+### Route detail
+
+**R41. The route screen does not answer a rider's question.** *Observed*
+`IMG_4474`, Route 4: title, subtitle, a direction section header, then 40-odd
+numbered stops. Truman: "The route page is not very informative. I can't really
+figure out anything from just looking at a list of all the stops of a route.
+Again, this goes back to the seeing a bus on the map thing, which I think is
+deferred (could be wrong)."
+
+**He is right that it is deferred.** Live vehicles are a later increment and
+route polylines were cut from that work entirely — recorded in `docs/handoff.md`
+and settled at the 2026-08-04 grilling. Round 1's R25 called the list "reads
+well", which was about its typography; R26 already recorded that nothing says
+where the rider is. This entry supersedes both: the complaint is not the layout,
+it is that an ordered list of names is not what anyone opens a route for.
+
+What can be done inside Increment 6, without live vehicles: where the rider is
+along the list, which stops are near them, and the arrival times for the stop
+they care about. What cannot: the bus's position. **No direction chosen yet.**
+
+### Sheet detents
+
+**M42. The 14% peek shows nothing worth peeking at.** *Observed* `IMG_4471`:
+the peek's entire visible content is the two-line attribution, the stop name,
+and `Stop 386  133 m` clipped by the tab bar. Truman: "the bottom sheet's 14% is
+kind of awkward. It peeks but doesn't show any meaningful information. Needs to
+be revisited."
+
+Round 1 reached the same conclusion from the other end (M11) and named the
+cause: **the attribution block is what eats the peek**, not the detent height.
+`docs/backlog.md` says the 45% detent must not be raised and gives the reason;
+that entry is about 45% and does not cover 14%. Raising the peek and moving the
+attribution are two different fixes and only one of them is constrained.
