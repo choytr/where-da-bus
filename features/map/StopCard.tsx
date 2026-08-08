@@ -2,6 +2,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { BottomSheetSectionList } from '@gorhom/bottom-sheet';
 import { ArrivalRow } from '../arrivals/ArrivalRow';
 import { BoardHeader } from '../arrivals/BoardHeader';
+import { Attribution } from '../../lib/Attribution';
 import { NOTICES, describe, useArrivalBoard } from '../arrivals/board';
 import { formatDistance } from '../stops/StopRow';
 import { useTheme } from '../../lib/theme';
@@ -132,6 +133,7 @@ export function StopCard({
             </View>
           </View>
         }
+        ListFooterComponent={<Attribution />}
         renderSectionHeader={({ section }) =>
           section.data.length === 0 ? null : (
             <Text

@@ -379,13 +379,6 @@ export function SettingsScreen() {
   return (
     <SafeAreaView style={[styles.fill, { backgroundColor: palette.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/*
-          The terms require the attribution wherever their data appears, and
-          this screen describes that data's provenance — so it sits at the top
-          here for the same reason it does on the three data screens.
-        */}
-        <Text style={[styles.attribution, { color: palette.muted }]}>{ATTRIBUTION}</Text>
-
         <Text style={[styles.title, { color: palette.text }]}>Settings</Text>
 
         <Text style={[styles.sectionHeader, { color: palette.muted }]}>APPEARANCE</Text>
@@ -431,6 +424,14 @@ export function SettingsScreen() {
         <Text style={[styles.sectionHeader, { color: palette.muted }]}>ABOUT</Text>
         <View style={group}>
           <Text style={[styles.body, { color: palette.text }]}>{DISCLAIMER}</Text>
+          {/*
+            This screen presents none of the provider's route or arrival data —
+            it is appearance, a key, and how old a local file is — so the terms'
+            legend is not owed here and no longer leads the screen. It stays in
+            About as the app's one fixed statement of provenance, findable
+            without a stop on screen. See `lib/Attribution.tsx`.
+          */}
+          <Text style={[styles.attribution, { color: palette.muted }]}>{ATTRIBUTION}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>

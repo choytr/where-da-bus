@@ -342,11 +342,25 @@ inside a closure and callers get a `() => void`.
 
 ## Legal
 
-Per Oahu Transit Services' terms, the app must carry attribution and a
-non-affiliation disclaimer. These live in **`lib/legal.ts`** so they cannot be
-silently dropped, and the attribution is rendered at the **top** of the stop
-list, the arrival board and the route detail alike, because the terms require
-prominent display wherever their data appears.
+Per Oahu Transit Services' terms, the app must carry the attribution. It lives
+in **`lib/legal.ts`** so it cannot be silently dropped, and is rendered through
+**`lib/Attribution.tsx`**, which owns its placement for the same reason.
+
+**The non-affiliation disclaimer is ours, not theirs.** Verified 2026-08-08
+against the full Terms of Use: the words *affiliate*, *endorse* and their
+variants appear nowhere in the document. Earlier revisions of this file said the
+terms required one. They do not — it is kept because it is true and prudent for
+an unofficial app, which means its wording and placement are ours to choose.
+
+**The legend closes the content it attributes; it does not lead it.** The clause
+is "You must present the Data with the following legend, prominently displayed",
+and that obligation attaches to *presenting the Data* — not to the top of a
+screen, not to repetition within one, and not to a screen that presents no Data.
+So `KeyGate` carries it not at all, Settings carries it in About, and the four
+data surfaces carry it as a footer. This replaced a top-of-every-screen
+placement on 2026-08-08, after a device round where the collapsed map sheet's
+entire visible content was two lines of legal text and a clipped stop name.
+`lib/Attribution.tsx` records the argument against, which is real.
 
 They are in `lib/` rather than on a screen for a concrete reason: while they
 lived on the stop list, the arrival board had to import that screen — and with

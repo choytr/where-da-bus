@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useStopQueries, type RouteDirection } from '../../data/gtfs/db';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
-import { ATTRIBUTION } from '../../lib/legal';
+import { Attribution } from '../../lib/Attribution';
 import { useTheme } from '../../lib/theme';
 
 /**
@@ -87,9 +87,9 @@ export function RouteScreen({ routeId }: { routeId: string }) {
       sections={sections}
       keyExtractor={(stop, index) => `${stop.stop_id}-${index}`}
       stickySectionHeadersEnabled={false}
+      ListFooterComponent={<Attribution />}
       ListHeaderComponent={
         <View style={styles.header}>
-          <Text style={[styles.attribution, { color: palette.muted }]}>{ATTRIBUTION}</Text>
           <Text style={[styles.routeName, { color: palette.text }]}>
             {route === null ? NOTICES.unknownRoute : `Route ${route.short_name}`}
           </Text>
@@ -139,7 +139,6 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   centerText: { fontSize: 14 },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
-  attribution: { fontSize: 11, lineHeight: 15, marginBottom: 10 },
   routeName: { fontSize: 20, fontWeight: '700' },
   routeLong: { fontSize: 14, marginTop: 2 },
   sectionHeader: {

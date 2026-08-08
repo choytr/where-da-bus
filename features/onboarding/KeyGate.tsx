@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../../lib/theme';
-import { ATTRIBUTION, DISCLAIMER } from '../../lib/legal';
+import { DISCLAIMER } from '../../lib/legal';
 import { useTheBus } from '../../data/thebus';
 
 /**
@@ -74,10 +74,11 @@ function Onboarding({ onSave }: { onSave: (key: string) => Promise<void> }) {
   return (
     <SafeAreaView style={[styles.fill, { backgroundColor: palette.background }]}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        {/* The terms require this wherever the provider's data appears, and
-            this screen is about getting access to it. */}
-        <Text style={[styles.attribution, { color: palette.muted }]}>{ATTRIBUTION}</Text>
-
+        {/* No attribution here. Nothing on this screen presents the
+            provider's data — that is the whole point of the gate: it stands
+            because there is no key yet, so no request has been made. The
+            terms bind "you must present the Data with the following legend",
+            and this screen presents none. See `lib/Attribution.tsx`. */}
         <Text style={[styles.title, { color: palette.text }]}>Add your API key</Text>
 
         <Text style={[styles.body, { color: palette.text }]}>

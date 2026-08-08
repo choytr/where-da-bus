@@ -14,6 +14,7 @@ import type { Stop } from '../../data/gtfs/types';
 import type { TheBusClient } from '../../data/thebus';
 import { ArrivalRow } from './ArrivalRow';
 import { BoardHeader } from './BoardHeader';
+import { Attribution } from '../../lib/Attribution';
 import { NOTICES, describe, useArrivalBoard } from './board';
 import { useTheme } from '../../lib/theme';
 
@@ -116,6 +117,9 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
         )
       }
       renderItem={({ item }) => <ArrivalRow arrival={item} now={now} />}
+      // Renders whether or not there are arrivals: "no buses coming" is itself
+      // the provider's answer, so the legend is owed either way.
+      ListFooterComponent={<Attribution />}
       ListEmptyComponent={
         <View style={styles.empty}>
           <Text style={[styles.emptyText, { color: palette.text }]}>{NOTICES.empty}</Text>

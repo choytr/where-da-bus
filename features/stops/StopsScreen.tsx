@@ -20,7 +20,8 @@ import {
 } from '../../data/storage/favorites';
 import { StopRow } from './StopRow';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
-import { ATTRIBUTION, DISCLAIMER } from '../../lib/legal';
+import { DISCLAIMER } from '../../lib/legal';
+import { Attribution } from '../../lib/Attribution';
 import { useTheme } from '../../lib/theme';
 
 /**
@@ -476,14 +477,17 @@ export function StopsScreen() {
             onPressRoute={openRoute}
           />
         )}
-        // At the head of the list, not the foot: the provider's terms ask for
-        // prominent display, and under twenty-five rows is not prominent.
-        // Scrolling past it afterwards is fine — being seen without hunting is
-        // the point.
-        ListHeaderComponent={
-          <View style={styles.legalBlock}>
-            <Text style={[styles.legal, { color: palette.muted }]}>{ATTRIBUTION}</Text>
-            <Text style={[styles.legal, { color: palette.muted }]}>{DISCLAIMER}</Text>
+        // At the foot of the list, not the head. The argument for the head was
+        // that "under twenty-five rows is not prominent", which is fair and is
+        // recorded in `lib/Attribution.tsx` along with what settled it the
+        // other way. The disclaimer travels with it: nothing in the terms asks
+        // for one at all, so its placement was never the obligation's to fix.
+        ListFooterComponent={
+          <View>
+            <Attribution />
+            <Text style={[styles.legal, styles.disclaimer, { color: palette.muted }]}>
+              {DISCLAIMER}
+            </Text>
           </View>
         }
       />
@@ -528,6 +532,6 @@ const styles = StyleSheet.create({
   empty: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 16, gap: 6 },
   emptyTitle: { fontSize: 17, fontWeight: '600' },
   emptyBody: { fontSize: 14, lineHeight: 20 },
-  legalBlock: { paddingHorizontal: 16, paddingBottom: 14, gap: 4 },
   legal: { fontSize: 11, lineHeight: 15 },
+  disclaimer: { paddingHorizontal: 16, paddingBottom: 14 },
 });
