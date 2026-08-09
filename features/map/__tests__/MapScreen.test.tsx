@@ -3,10 +3,11 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { MapScreen } from '../MapScreen';
 import { MEDIUM_DETENT } from '../StopSheet';
+import { SEARCH_PLACEHOLDER } from '../SearchBar';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
 import { NOTICES } from '../../arrivals/board';
-import type { RouteSummary, StopWithDistance } from '../../../data/gtfs/types';
+import type { RouteSummary, Stop, StopWithDistance } from '../../../data/gtfs/types';
 import type { ArrivalsResult } from '../../../data/thebus/types';
 import type { TheBusClient } from '../../../data/thebus';
 import type { LocationState } from '../../stops/useLocation';
@@ -193,16 +194,36 @@ const mockRoutesForStops = jest.fn(
   async (): Promise<Map<string, RouteSummary[]>> => new Map(),
 );
 
+/**
+ * One object, held still. The real `useStopQueries` returns `useCallback`-stable
+ * functions, and `useSearch` keys its debounce effect on those identities — so
+ * a factory minting a fresh `jest.fn` per render would restart the debounce on
+ * every render and no search would ever resolve.
+ */
+const mockQueries = {
+  nearby: mockNearby,
+  routesForStops: mockRoutesForStops,
+  searchByName: jest.fn(async (_query: string): Promise<Stop[]> => []),
+  searchByCode: jest.fn(async (_code: string): Promise<Stop | null> => null),
+  searchRoutes: jest.fn(async (_query: string): Promise<RouteSummary[]> => []),
+  stopsByIds: jest.fn(async (): Promise<Stop[]> => []),
+  feedEndDate: jest.fn(async (): Promise<string | null> => null),
+};
+
 jest.mock('../../../data/gtfs/db', () => ({
-  useStopQueries: () => ({
-    nearby: mockNearby,
-    routesForStops: mockRoutesForStops,
-    searchByName: jest.fn(async () => []),
-    searchByCode: jest.fn(async () => null),
-    stopsByIds: jest.fn(async () => []),
-    feedEndDate: jest.fn(async () => null),
-  }),
+  useStopQueries: () => mockQueries,
   NEARBY_RADIUS_METERS: 1500,
+}));
+
+/**
+ * The router, so "a stop result does not leave the map" can be asserted as the
+ * absence of a navigation rather than as the presence of a card. A route result
+ * is the one thing here that *does* navigate.
+ */
+const mockPush = jest.fn();
+
+jest.mock('expo-router', () => ({
+  router: { push: (href: string) => mockPush(href) },
 }));
 
 const mockRequest = jest.fn(async (): Promise<Coords | null> => null);
@@ -323,6 +344,13 @@ describe('MapScreen', () => {
     mockRequest.mockResolvedValue(null);
     mockNearby.mockResolvedValue([]);
     mockRoutesForStops.mockResolvedValue(new Map());
+    // `clearAllMocks` clears call records, not implementations, so the defaults
+    // have to be re-established rather than merely declared above.
+    mockQueries.searchByName.mockResolvedValue([]);
+    mockQueries.searchByCode.mockResolvedValue(null);
+    mockQueries.searchRoutes.mockResolvedValue([]);
+    mockQueries.stopsByIds.mockResolvedValue([]);
+    mockQueries.feedEndDate.mockResolvedValue(null);
     mockLocation.status = 'idle';
     mockLocation.coords = null;
     mockArrivalsResult = {
@@ -912,6 +940,143 @@ describe('MapScreen', () => {
         screen.getByText(NOTICES.unreachable);
       });
       expect(screen.queryByText(NOTICES.empty)).toBeNull();
+    });
+  });
+
+  /**
+   * The map's own search: a bar that is always there, and a fullscreen search
+   * over the map rather than beside it.
+   *
+   * Real timers throughout, like the rest of this suite — `useSearch` debounces
+   * by 175 ms and `waitFor` covers that comfortably. Turning fake timers on for
+   * these alone is the trap in `CLAUDE.md` that wedges the *next* suite.
+   */
+  describe('search', () => {
+    const openSearch = () => fireEvent.press(screen.getByLabelText(SEARCH_PLACEHOLDER));
+
+    /** Not one of the nearby stops: the point is that searching reaches stops
+     *  the map is not currently showing. */
+    const FOUND: Stop = {
+      stop_id: '4242',
+      stop_code: '4242',
+      stop_name: 'ALA MOANA CENTER',
+      lat: 21.2911,
+      lon: -157.8434,
+    };
+
+    const findStop = async (query: string) => {
+      await openSearch();
+      await fireEvent.press(screen.getByLabelText('Search by stops'));
+      await fireEvent.changeText(screen.getByLabelText('Find a stop by number or name'), query);
+      await waitFor(() => screen.getByLabelText('ALA MOANA CENTER, stop 4242'));
+      await fireEvent.press(screen.getByLabelText('ALA MOANA CENTER, stop 4242'));
+    };
+
+    it('opens the search from the bar', async () => {
+      await show();
+      // Nothing to type into until the bar is pressed — the bar is a button
+      // wearing a field's clothes, because a real field over a map fights the
+      // sheet's gestures through the keyboard.
+      expect(screen.queryByLabelText('Find an address')).toBeNull();
+
+      await openSearch();
+
+      // And it opens on Address, which is the only filter the Stops tab lacks.
+      screen.getByLabelText('Find an address');
+      screen.getByLabelText('Search by address');
+      screen.getByLabelText('Search by stops');
+      screen.getByLabelText('Search by routes');
+    });
+
+    it('a stop result anchors the map and selects it', async () => {
+      mockQueries.searchByName.mockResolvedValue([FOUND]);
+      await show();
+      await waitFor(() => {
+        expect(mockNearby).toHaveBeenCalledTimes(1);
+      });
+
+      await findStop('ala moana');
+
+      // The anchor moved to the stop, so the pins and the list are about it.
+      await waitFor(() => {
+        expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.2911, lon: -157.8434 });
+      });
+      // The card is open on it, without a second tap.
+      await waitFor(() => {
+        screen.getByLabelText('Back to nearby stops');
+      });
+      // And the camera went there. Framed, not panned: this is the map being
+      // opened on somewhere, like ⌖, so the window is rebuilt from the query
+      // radius rather than keeping whatever spans were on screen.
+      expect(mockCameraMoves).toHaveLength(1);
+      expect(mockCameraMoves[0]).toMatchObject({ longitude: -157.8434 });
+    });
+
+    it('a stop result does not leave the map', async () => {
+      // The whole reason the map has a search of its own. The Stops tab already
+      // pushes `/stop/[code]`; if this did too there would be nothing here the
+      // other host could not do.
+      mockQueries.searchByName.mockResolvedValue([FOUND]);
+      await show();
+
+      await findStop('ala moana');
+
+      await waitFor(() => {
+        screen.getByLabelText('Back to nearby stops');
+      });
+      expect(mockPush).not.toHaveBeenCalled();
+      // The search closed behind it, and the map is what is on screen.
+      expect(screen.queryByLabelText('Find a stop by number or name')).toBeNull();
+      screen.getByLabelText('map surface');
+    });
+
+    it('closing the search leaves the camera where it was', async () => {
+      await show();
+      await waitFor(() => {
+        expect(mockNearby).toHaveBeenCalledTimes(1);
+      });
+
+      await openSearch();
+      await fireEvent.press(screen.getByLabelText('Close search'));
+
+      expect(screen.queryByLabelText('Find an address')).toBeNull();
+      screen.getByLabelText(SEARCH_PLACEHOLDER);
+      // Opening and abandoning a search is not a thing that happened to the map.
+      expect(mockCameraMoves).toEqual([]);
+      expect(mockNearby).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens the route screen by route_id, from a row showing neither', async () => {
+      // `route_id: '25'` is route 32. The row shows the number on the bus and
+      // the tap navigates by the id, and those must not be the same string.
+      mockQueries.searchRoutes.mockResolvedValue([
+        { route_id: '25', short_name: '32', long_name: 'Mapunapuna-Airport' },
+      ]);
+      await show();
+
+      await openSearch();
+      await fireEvent.press(screen.getByLabelText('Search by routes'));
+      await fireEvent.changeText(screen.getByLabelText('Find a route by number or name'), '32');
+      await waitFor(() => screen.getByLabelText('Route 32'));
+
+      await fireEvent.press(screen.getByLabelText('Route 32'));
+
+      expect(mockPush).toHaveBeenCalledWith('/route/25');
+      // Closed behind the push, so it is not underneath the route screen on the
+      // way back.
+      expect(screen.queryByLabelText('Find a route by number or name')).toBeNull();
+    });
+
+    it('carries the required attribution over the search results', async () => {
+      // Unambiguous at the resting peek: the sheet omits the legend there,
+      // showing no Data, so the only thing that can put it on screen is the
+      // search — which presents stop and route names and therefore owes it.
+      await show();
+      expect(screen.queryByText(ATTRIBUTION)).toBeNull();
+
+      await openSearch();
+
+      screen.getByText(ATTRIBUTION);
     });
   });
 

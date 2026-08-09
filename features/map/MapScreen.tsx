@@ -34,6 +34,8 @@ import {
   PEEK_DETENT,
   visibleAbove,
 } from './StopSheet';
+import { SearchBar, SEARCH_BAR_ALLOWANCE } from './SearchBar';
+import { SearchOverlay } from './SearchOverlay';
 import { useStopQueries, NEARBY_RADIUS_METERS } from '../../data/gtfs/db';
 import {
   addFavorite,
@@ -42,7 +44,7 @@ import {
 } from '../../data/storage/favorites';
 import type { TheBusClient } from '../../data/thebus';
 import { useTheme } from '../../lib/theme';
-import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
+import type { RouteSummary, Stop, StopWithDistance } from '../../data/gtfs/types';
 import type { Coords } from '../../lib/distance';
 
 /**
@@ -93,15 +95,18 @@ const SEARCH_AREA_LABEL = 'Search this area';
 const DRIFT_FRACTION = 0.25;
 
 /**
- * How far below the safe area the two map controls sit.
+ * How far below the safe area the map's chrome starts — the search bar, and
+ * everything the search bar pushes down.
  *
- * It was `+ 64`, which put them ~123 pt down a Dynamic Island phone and read as
- * floating in the middle of the map — observed 2026-08-08. The 64 was reserving
- * room for the location banner, which mounts only while there is no fix to
- * show. Reserving it unconditionally paid for an absent view on every launch.
+ * It was `+ 64`, which put the controls ~123 pt down a Dynamic Island phone and
+ * read as floating in the middle of the map — observed 2026-08-08. The 64 was
+ * reserving room for the location banner, which mounts only while there is no
+ * fix to show. Reserving it unconditionally paid for an absent view on every
+ * launch.
  *
- * The banner now pushes the controls down itself, so the common case is tight
- * to the safe area and the rare case still does not collide.
+ * Everything below the bar is stacked the same way: each thing that is actually
+ * on screen pushes what follows it down, so the common case is tight and the
+ * rare case still does not collide.
  */
 const CONTROL_INSET = 12;
 /** Cleared only when the banner is actually up. Its height plus its gap. */
@@ -206,6 +211,8 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const [offeredFor, setOfferedFor] = useState<Coords | null>(null);
   /** A fix is in flight, so ⌖ says so rather than looking inert. */
   const [locating, setLocating] = useState(false);
+  /** Whether the fullscreen search is over the map. */
+  const [searching, setSearching] = useState(false);
   /** False for `ZOOM_LOCKOUT_MS` after a pin tap. See that constant. */
   const [zoomEnabled, setZoomEnabled] = useState(true);
   const releaseZoom = useRef<(() => void) | null>(null);
@@ -279,28 +286,31 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   );
 
   /**
-   * The camera moves in exactly three situations: a ⌖ recentre, the first time
-   * the anchor turns out to be the rider's own location, and a *Search here*
-   * taken up from a long press. Nowhere else — not on selection, not on a poll,
-   * and not on *Search this area*.
+   * The camera moves in exactly four situations: a ⌖ recentre, the first time
+   * the anchor turns out to be the rider's own location, a *Search here* taken
+   * up from a long press, and a stop picked out of the search. Nowhere else —
+   * not on a pin tap, not on a poll, and not on *Search this area*.
    *
-   * The first two *frame*, rebuilding the window from the query radius, because
-   * both are the map being opened on somewhere. The third only *pans* — see
-   * `panTo`.
+   * Three of the four *frame*, rebuilding the window from the query radius,
+   * because each is the map being opened on somewhere. *Search here* only
+   * *pans* — see `panTo`.
    *
    * This used to be an effect on the memoised `region`, which made *every*
    * anchor change a camera move. That is no longer expressible: the anchor now
    * moves in cases where the camera must not, so the rule is stated here
-   * instead of emerging from a dependency array. Each of the three is one
-   * explicit call, which is what keeps a fourth from appearing by accident.
+   * instead of emerging from a dependency array. Each of the four is one
+   * explicit call, which is what keeps a fifth from appearing by accident.
+   *
+   * `against` is the detent to leave room for, and it defaults to the one the
+   * sheet is settled on — the same parameter, for the same reason, as `panTo`'s.
    */
   const frameOn = useCallback(
-    (center: Coords) => {
+    (center: Coords, against: number = detent) => {
       map.current?.animateToRegion(
         regionAround(
           center,
           NEARBY_RADIUS_METERS,
-          visibleAbove(detents, detent, mapHeight),
+          visibleAbove(detents, against, mapHeight),
         ),
         CAMERA_MS,
       );
@@ -503,6 +513,47 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     router.push(`/route/${encodeURIComponent(route.route_id)}`);
   }, []);
 
+  /**
+   * A stop picked out of the search, which is the only thing this search does
+   * that the Stops tab cannot — and therefore the only reason it exists.
+   *
+   * The rider **stays on the map**: the search closes, the anchor moves to the
+   * stop, the camera frames it and the card opens on it. The Stops tab's
+   * equivalent pushes `/stop/[code]` and leaves the map behind.
+   *
+   * Three things follow from anchoring *on* the stop. It is zero metres from
+   * the new anchor, which is what the nearby query is about to say too, so the
+   * card is handed that rather than a distance from wherever the rider was.
+   * `setAnchor` rather than `searchFrom`, because that clears the selection and
+   * the selection is the point here. And the camera *frames* rather than pans —
+   * this is the map being opened on somewhere, like ⌖ and the first fix, not a
+   * short hop across a street a rider has already zoomed into.
+   */
+  const selectFromSearch = useCallback(
+    (stop: Stop) => {
+      const at: Coords = { lat: stop.lat, lon: stop.lon };
+      setSearching(false);
+      // A long press left waiting for an answer is about somewhere else now.
+      setPending(null);
+      setAnchor(at);
+      select({ ...stop, meters: 0 }, { pan: false });
+      // Against the detent the sheet is heading to, not the one it is leaving —
+      // see `select`.
+      frameOn(at, MEDIUM_DETENT);
+    },
+    [setAnchor, select, frameOn],
+  );
+
+  /** A route leaves the map, so the search closes behind it rather than
+   *  being underneath the route screen on the way back. */
+  const openRouteFromSearch = useCallback(
+    (route: RouteSummary) => {
+      setSearching(false);
+      openRoute(route);
+    },
+    [openRoute],
+  );
+
   const toggleFavorite = useCallback(
     async (stopId: string) => {
       try {
@@ -591,9 +642,21 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         ? LOCATION_ERROR
         : LOCATION_PROMPT;
 
-  /** Whether the banner is on screen, which is what the controls clear. */
+  /**
+   * The map's chrome, stacked downward from the safe area: the search bar
+   * first, then the location banner if there is one, then ⌖ and *Search this
+   * area* side by side.
+   *
+   * The bar is the new thing at the top and everything else moves down by
+   * exactly its allowance — which reopens Increment 6's deferral of persistent
+   * chrome at the map's edges. Truman reopened it knowingly on 2026-08-09,
+   * having been shown the conflict. **The placement is provisional** and goes
+   * to him with screenshots.
+   */
   const bannerShowing = source === 'fallback' && locationStatus !== 'loading';
-  const controlsTop = insets.top + CONTROL_INSET + (bannerShowing ? BANNER_ALLOWANCE : 0);
+  const barTop = insets.top + CONTROL_INSET;
+  const bannerTop = barTop + SEARCH_BAR_ALLOWANCE;
+  const controlsTop = bannerTop + (bannerShowing ? BANNER_ALLOWANCE : 0);
 
   return (
     // No SafeAreaView around the map. A map is one of the few things that
@@ -639,9 +702,15 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         </MapView>
       </View>
 
+      {/*
+        A sibling of `MapView`, never a child — the rule the map section of
+        `docs/backlog.md` exists for.
+      */}
+      <SearchBar top={barTop} onPress={() => setSearching(true)} />
+
       {bannerShowing ? (
         <View
-          style={[styles.prompt, { top: insets.top + CONTROL_INSET, backgroundColor: palette.background }]}
+          style={[styles.prompt, { top: bannerTop, backgroundColor: palette.background }]}
         >
           <Text style={[styles.promptText, { color: palette.text }]}>{banner}</Text>
         </View>
@@ -703,6 +772,19 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         detents={detents}
         tabBarOverlap={tabBarOverlap}
       />
+
+      {/*
+        Last, so it covers the sheet as well as the map. A fullscreen search
+        with the sheet's rows legible under it would be two lists at once.
+      */}
+      {searching ? (
+        <SearchOverlay
+          onClose={() => setSearching(false)}
+          onSelectStop={selectFromSearch}
+          onSelectRoute={openRouteFromSearch}
+          tabBarOverlap={tabBarOverlap}
+        />
+      ) : null}
     </View>
   );
 }

@@ -135,7 +135,7 @@ and favorites tests must pass unchanged.
 
 ---
 
-## Task 8 — The map's search bar and fullscreen search — **NEXT**
+## Task 8 — The map's search bar and fullscreen search — **DONE**
 
 **Files:** `features/map/MapScreen.tsx`, `features/map/SearchBar.tsx`,
 `features/map/SearchOverlay.tsx`, `features/map/__tests__/`.
@@ -157,11 +157,25 @@ SIGABRT — see the map section of `docs/backlog.md`.
 
 **Tests:** `opens the search from the bar`; `a stop result anchors the map and
 selects it`; `a stop result does not leave the map`; `closing the search leaves
-the camera where it was`.
+the camera where it was`. Two more were added on the way: `opens the route
+screen by route_id, from a row showing neither`, and `carries the required
+attribution over the search results` — the overlay presents stop and route
+names and so owes the legend, pinned under its list like every other surface.
+
+**Two things settled while building it.** `frameOn` gained the same `against`
+parameter `panTo` has, because a searched stop raises the sheet and framing
+against the peek it is leaving would put the stop under where the sheet is
+about to be. And the selected stop is `{ ...stop, meters: 0 }`: the anchor
+*is* the stop, so zero is what the nearby query is about to say too.
+
+`MapScreen.test.tsx`'s `useStopQueries` double had to become one held object —
+it minted fresh `jest.fn`s per call, and `useSearch` keys its debounce effect on
+those identities, so the debounce restarted on every render and no search ever
+resolved.
 
 ---
 
-## Task 9 — Address mode
+## Task 9 — Address mode — **NEXT**
 
 **Files:** `features/map/SearchOverlay.tsx`, `features/map/MapScreen.tsx`,
 `features/map/__tests__/`.
