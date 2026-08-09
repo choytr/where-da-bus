@@ -65,6 +65,20 @@ export type Palette = {
    */
   pin: string;
   pinGlyph: string;
+  /**
+   * The route line on the map.
+   *
+   * **Its own colour rather than `pin`, on Truman's call after device round 1.**
+   * It was `pin`, on the reasoning that a line and the stops on it should read
+   * as one thing; on a device that put a blue line under blue pins on Apple's
+   * blue roads, and the line stopped being findable. Red separates it from the
+   * pins, from the map's own furniture, and from the rider's own location dot.
+   *
+   * Not `canceled` or `warning`, which are also red: a route line is not a
+   * warning about anything, and sharing a token would mean tuning one of them
+   * changes the other.
+   */
+  route: string;
 };
 
 const LIGHT: Palette = {
@@ -82,6 +96,7 @@ const LIGHT: Palette = {
   bannerText: '#8a4b08',
   pin: '#0b6bcb',
   pinGlyph: '#ffffff',
+  route: '#d92b2b',
 };
 
 const DARK: Palette = {
@@ -99,6 +114,9 @@ const DARK: Palette = {
   bannerText: '#f0c48a',
   pin: '#3b9dff',
   pinGlyph: '#0b1f33',
+  // Lifted for a dark map: the light theme's red reads as brown over Apple's
+  // dark tiles, which is the surface this line is actually drawn on.
+  route: '#ff5a52',
 };
 
 export type Theme = {

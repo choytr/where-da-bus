@@ -135,6 +135,21 @@ wrong, correct the entry rather than only the code.
 
 ### Map, from the device rounds
 
+- **Stop pins cover the route line, and that is accepted.** Observed on a device
+  2026-08-09, device round 1: on a dense stretch — Route 10 through Alewa
+  Heights — the pins are almost continuous and the line shows only between them.
+  Truman: *"it's also easy for the stop pins to completely cover the line but we
+  should just accept that and move on."*
+
+  Recorded rather than fixed because every fix is worse than the problem. Drawing
+  the line **over** the pins needs a `zIndex` on markers, and `zIndex` is the
+  prop whose removal made the SIGABRT stop reproducing — see the rule at the foot
+  of this section. Thinning the pins would take away the stops, which are what
+  route mode is for. Shrinking them below the line's width makes them
+  untappable. The line was made red on the same round, which is as far as this
+  goes: it is now findable between the pins rather than hidden under pins of its
+  own colour.
+
 - **A bare number in Address mode geocodes to something unrelated, and that is
   accepted.** Truman typed `2469`; `findOnOahu` asked `CLGeocoder` for
   `2469, HI` and got *2339 Kamehameha Hwy E, Honolulu* back as a single

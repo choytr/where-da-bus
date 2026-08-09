@@ -39,9 +39,11 @@ export const RouteLine = memo(function RouteLine({ points }: RouteLineProps) {
       testID="route-line"
       coordinates={points.map((point) => ({ latitude: point.lat, longitude: point.lon }))}
       strokeWidth={STROKE_WIDTH}
-      // The same colour as the pins, so the line and the stops on it read as
-      // one thing rather than two overlaid answers.
-      strokeColor={palette.pin}
+      // Red, and not the pins' blue. It was `palette.pin` on the reasoning that
+      // the line and the stops on it should read as one thing; device round 1
+      // showed a blue line under blue pins on Apple's blue roads, and Truman
+      // asked for red.
+      strokeColor={palette.route}
     />
   );
 });
