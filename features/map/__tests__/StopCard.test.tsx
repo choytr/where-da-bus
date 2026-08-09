@@ -74,7 +74,6 @@ const show = (client: TheBusClient, over: Partial<Parameters<typeof StopCard>[0]
         onToggleFavorite={jest.fn()}
         onPressRoute={jest.fn()}
         client={client}
-        tabBarHeight={83}
         {...over}
       />
     </TestTheme>,
@@ -96,8 +95,10 @@ describe('StopCard', () => {
 
     screen.getByText('KING ST + BISHOP ST');
     screen.getByText('Stop 596');
-    // The terms require it wherever this data appears, sheet included.
-    screen.getByText(/provided by permission of Oahu Transit Services, Inc/);
+    // The legend the terms require is no longer this card's to render — it is
+    // pinned once by `StopSheet`, under whichever mode is showing, and asserted
+    // there. See `lib/Attribution.tsx`.
+    expect(screen.queryByText(/provided by permission of/)).toBeNull();
   });
 
   it('renders arrivals grouped by direction', async () => {

@@ -9,6 +9,7 @@ import {
   FULL_DETENT,
 } from '../StopSheet';
 import { TestTheme } from '../../../lib/testing/theme';
+import { ATTRIBUTION } from '../../../lib/legal';
 import type { StopWithDistance } from '../../../data/gtfs/types';
 import type { ArrivalsResult, TheBusClient } from '../../../data/thebus';
 
@@ -79,15 +80,19 @@ const show = (selectedStop: StopWithDistance | null, onBack = jest.fn()) =>
  * cannot be told about it.
  */
 describe('the detents', () => {
-  it("derives a peek tall enough for the card's header", () => {
+  it('derives a peek that is the grab handle and nothing else', () => {
     const detents = detentsFor(WINDOW_HEIGHT, TAB_BAR);
 
     // The old `'14%'` was 119 pt here, of which the tab bar took 83 and the
     // grab handle 24 — about a dozen points of content, which is what three
-    // separately-reported complaints were all about.
-    expect(detents[PEEK_DETENT] - TAB_BAR).toBeGreaterThanOrEqual(120);
-    // Still a peek, though: it has to stay well under the detent above it.
+    // separately-reported complaints were all about. It was then briefly sized
+    // to fit the card's header, ~211 pt, and on a device that took too much map
+    // for what it bought. A peek showing *part* of something has to be right
+    // about which part; a peek showing nothing is honest about being a handle.
+    expect(detents[PEEK_DETENT]).toBe(TAB_BAR + 24);
+    // Still a peek: well under the detent above it, and clear of the bar.
     expect(detents[PEEK_DETENT]).toBeLessThan(detents[MEDIUM_DETENT]);
+    expect(detents[PEEK_DETENT]).toBeGreaterThan(TAB_BAR);
   });
 
   it('derives the same fraction from points that the percentages used to give', () => {
@@ -130,30 +135,41 @@ describe('StopSheet', () => {
   });
 
   /**
-   * The tab bar is drawn **over** the sheet rather than clipping it, so
-   * without this the last row of either host renders underneath it — which is
-   * what "the stop code's spacing to the bottom bar is really tight and
-   * awkward" was. It holds at every detent, not only at the peek.
+   * The tab bar is drawn **over** the sheet rather than clipping it, so without
+   * something reserving space the sheet's bottom edge renders underneath it —
+   * which is what "the stop code's spacing to the bottom bar is really tight
+   * and awkward" was. The legend is what sits at that edge, so the clearance is
+   * its to carry, and everything above it is clear by construction.
    *
    * Asserted on the style because the failure is a layout one, and Jest runs no
    * layout: there is nothing behavioural to observe off-device.
    */
-  it('pads the nearby list clear of the tab bar', async () => {
+  it('pins the legend clear of the tab bar', async () => {
     await show(null);
 
-    const padding = StyleSheet.flatten(
-      screen.getByTestId('nearby-stops').props.contentContainerStyle,
-    ).paddingBottom;
+    const padding = StyleSheet.flatten(screen.getByTestId('sheet-attribution').props.style)
+      .paddingBottom;
     expect(padding).toBeGreaterThanOrEqual(TAB_BAR);
   });
 
-  it("pads the card's arrivals clear of the tab bar", async () => {
+  /**
+   * The sheet was the one surface where the legend scrolled away with the
+   * content. Every other one pins it as a sibling of its scroll view, and as of
+   * Increment 7 so does this — see `lib/Attribution.tsx` for why the objection
+   * that kept it a scroll footer stopped applying.
+   */
+  it('pins the legend under the nearby list rather than at the foot of it', async () => {
+    await show(null);
+
+    screen.getByText(ATTRIBUTION);
+    expect(screen.getByTestId('nearby-stops').props.ListFooterComponent).toBeUndefined();
+  });
+
+  it('pins the same legend under the card', async () => {
     await show(STOPS[0]);
 
-    const padding = StyleSheet.flatten(
-      screen.getByTestId('stop-card-arrivals').props.contentContainerStyle,
-    ).paddingBottom;
-    expect(padding).toBeGreaterThanOrEqual(TAB_BAR);
+    screen.getByText(ATTRIBUTION);
+    expect(screen.getByTestId('stop-card-arrivals').props.ListFooterComponent).toBeUndefined();
   });
 
   it('returns to the list from the card', async () => {

@@ -1,9 +1,7 @@
-import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomSheetSectionList } from '@gorhom/bottom-sheet';
 import { ArrivalRow } from '../arrivals/ArrivalRow';
 import { BoardHeader } from '../arrivals/BoardHeader';
-import { Attribution } from '../../lib/Attribution';
 import { NOTICES, describe, useArrivalBoard } from '../arrivals/board';
 import { formatDistance } from '../stops/StopRow';
 import { useTheme } from '../../lib/theme';
@@ -40,11 +38,6 @@ export type StopCardProps = {
   onPressRoute: (route: RouteSummary) => void;
   /** Handed down from MapScreen, which reads it from `useTheBus()`. */
   client: TheBusClient;
-  /**
-   * The tab bar is drawn *over* the sheet rather than clipping it, so the last
-   * arrival of a board would otherwise render underneath it. See `StopSheet`.
-   */
-  tabBarHeight: number;
 };
 
 export function StopCard({
@@ -56,13 +49,8 @@ export function StopCard({
   onToggleFavorite,
   onPressRoute,
   client,
-  tabBarHeight,
 }: StopCardProps) {
   const { palette } = useTheme();
-  const listContent = useMemo(
-    () => ({ paddingBottom: CONTENT_INSET + tabBarHeight }),
-    [tabBarHeight],
-  );
   const code = stop.stop_code || stop.stop_id;
   const { sections, board, failure, loading, fetchedAt, refresh, now, tick } = useArrivalBoard(
     code,
@@ -106,7 +94,7 @@ export function StopCard({
         sections={sections}
         keyExtractor={(arrival) => arrival.id}
         stickySectionHeadersEnabled={false}
-        contentContainerStyle={listContent}
+        contentContainerStyle={styles.content}
         ListHeaderComponent={
           <View>
             <BoardHeader
@@ -145,7 +133,6 @@ export function StopCard({
             </View>
           </View>
         }
-        ListFooterComponent={<Attribution />}
         renderSectionHeader={({ section }) =>
           section.data.length === 0 ? null : (
             <Text
@@ -203,11 +190,13 @@ export function StopCard({
   );
 }
 
-/** Breathing room under the last arrival, before the tab bar's own share. */
-const CONTENT_INSET = 32;
-
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  content: {
+    // Breathing room under the last arrival. The tab bar is cleared by the
+    // legend pinned below this card by `StopSheet`, not by this list.
+    paddingBottom: 32,
+  },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',

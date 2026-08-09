@@ -45,20 +45,6 @@ export const FULL_DETENT = 2;
 const HANDLE_HEIGHT = 24;
 
 /**
- * What `StopCard`'s fixed top costs before a single arrival can appear: the
- * back/star bar, then `BoardHeader`'s name, code and age.
- *
- * **The peek is sized off the card, not off a `StopRow`.** A one-row peek is
- * about a dozen points shorter, which would leave the selected-stop mode — the
- * one that was actually complained about — still cramped. Sized off the card,
- * the nearby list gets one full row plus a sliver of the next, which is the
- * same "there is more below" cue the medium detent already relies on.
- *
- * Provisional until a device round, like the ~210 pt total it produces.
- */
-const CARD_HEADER_HEIGHT = 104;
-
-/**
  * The three detents, in **points**.
  *
  * They were percentage strings until Increment 7, and the peek was `'14%'` —
@@ -67,6 +53,15 @@ const CARD_HEADER_HEIGHT = 104;
  * separately-reported complaints, and a percentage cannot fix it: the thing the
  * peek has to clear is a bar whose height is measured in points and differs per
  * device.
+ *
+ * **The peek shows the handle and nothing else.** It was briefly sized to fit
+ * `StopCard`'s header — ~211 pt, one full row plus a sliver — and on a device
+ * Truman's verdict was that it took too much map for what it bought. A peek
+ * that shows *part* of something has to be right about which part, and there
+ * was no version of that anyone was happy with; a peek that shows nothing is
+ * honest about being a grab handle, and the map gets the height back. What
+ * belongs in a resting sheet is a question for a later increment, with a device
+ * in hand.
  *
  * So the peek is arithmetic and the other two are not — medium and full are
  * genuinely "about half" and "nearly all" of the screen, which is what a
@@ -77,7 +72,7 @@ export function detentsFor(
   tabBarHeight: number,
 ): readonly [number, number, number] {
   return [
-    tabBarHeight + HANDLE_HEIGHT + CARD_HEADER_HEIGHT,
+    tabBarHeight + HANDLE_HEIGHT,
     Math.round(windowHeight * 0.45),
     Math.round(windowHeight * 0.9),
   ];
@@ -169,10 +164,19 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
   // with the camera framing — which must not be able to write to them.
   const snapPoints = useMemo(() => [...detents], [detents]);
 
-  const listContent = useMemo(
-    () => ({ paddingBottom: CONTENT_INSET + tabBarHeight }),
-    [tabBarHeight],
-  );
+  /**
+   * The tab bar is cleared by the pinned legend below the list, not by the list
+   * itself, so this is only breathing room under the last row.
+   */
+  const listContent = useMemo(() => ({ paddingBottom: CONTENT_INSET }), []);
+
+  /**
+   * Lifts the pinned legend off the tab bar, which is drawn *over* the sheet
+   * rather than clipping it. At the peek this pushes the legend entirely behind
+   * the bar, which is correct: a sheet showing only its handle is presenting no
+   * Data, and the obligation attaches to presenting the Data.
+   */
+  const footer = useMemo(() => ({ paddingBottom: tabBarHeight }), [tabBarHeight]);
 
   const animationConfigs = useBottomSheetSpringConfigs({
     damping: 90,
@@ -229,6 +233,12 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
       backdropComponent={renderBackdrop}
       onChange={onDetentChange}
     >
+    {/*
+      A column, so the legend can be pinned under whichever mode is showing
+      rather than living at the foot of each one's scroll. Both modes are
+      `flex: 1` above it.
+    */}
+    <View style={styles.fill}>
       {selectedStop === null ? (
         <BottomSheetFlatList
           testID="nearby-stops"
@@ -236,12 +246,6 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
           keyExtractor={(stop) => stop.stop_id}
           renderItem={renderItem}
           contentContainerStyle={listContent}
-          // At the foot, not the head. It led this list until 2026-08-08, and
-          // at the collapsed detent the legend plus a clipped stop name was
-          // the entire visible sheet — the peek showed legal text and nothing
-          // a rider opened the app for. `lib/Attribution.tsx` carries the
-          // reading of the terms that permits the move, and what it costs.
-          ListFooterComponent={<Attribution />}
           ListEmptyComponent={
             // Three states kept apart, as §4 requires: still looking, looked and
             // found nothing here, and could not look at all.
@@ -274,17 +278,29 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
           onToggleFavorite={onToggleFavorite}
           onPressRoute={onOpenRoute}
           client={client}
-          tabBarHeight={tabBarHeight}
         />
       )}
+
+      {/*
+        Pinned under the content, not at the foot of its scroll — the same
+        placement the stop list, the arrival board and route detail already
+        use, so the legend is on screen from the first frame at every detent
+        that shows any Data. `lib/Attribution.tsx` carries the reading of the
+        terms behind that, and why the sheet stopped being the exception.
+      */}
+      <View testID="sheet-attribution" style={footer}>
+        <Attribution />
+      </View>
+    </View>
     </BottomSheet>
   );
 });
 
-/** Breathing room under the last row, before the tab bar's own share is added. */
+/** Breathing room under the last row. The tab bar is the legend's to clear. */
 const CONTENT_INSET = 32;
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   empty: { paddingHorizontal: 16, paddingTop: 8 },
   emptyText: { fontSize: 14, lineHeight: 20 },
 });

@@ -26,15 +26,19 @@ import { ATTRIBUTION } from './legal';
  * is fair.
  *
  * **Truman's answer was better than either, and is what ships**: outside the
- * list entirely, pinned under it. The stops list, the arrival board and route
- * detail each render this as a sibling of their scroll view, so the legend is
- * on screen from the first frame and stays there — more prominent than the
- * header it replaced, without putting legal text above the content.
+ * list entirely, pinned under it. Every surface renders this as a sibling of
+ * its scroll view, so the legend is on screen from the first frame and stays
+ * there — more prominent than the header it replaced, without putting legal
+ * text above the content.
  *
- * The two sheet surfaces are the exception and stay scroll-footers. A pinned
- * strip inside the bottom sheet would sit at the sheet's own bottom edge,
- * which at the collapsed detent is precisely the sliver the legend was
- * evicted from.
+ * **The map's sheet was the exception until Increment 7, and no longer is.**
+ * The objection was that a pinned strip sits at the sheet's own bottom edge,
+ * which at the collapsed detent was precisely the sliver the legend had just
+ * been evicted from. That stopped being true when the peek was cut back to the
+ * grab handle alone: the sheet at rest now presents no Data at all, so it owes
+ * no legend, and the strip is simply behind the tab bar there. At every detent
+ * that *does* show stops or arrivals the legend is pinned and visible — which
+ * is the more prominent placement, not the less.
  */
 export function Attribution() {
   const { palette } = useTheme();

@@ -49,21 +49,47 @@ appear to touch the bar. Nothing was reserving space for it.
 
 ### What the peek shows
 
-**One full `StopRow`** — stop name, distance, route chips — for the nearby list.
+**Nothing. The grab handle, clear of the tab bar, and that is all.**
 
-**But the height is sized off the *card*, not the row.** With a stop selected
-the sheet renders `StopCard`, whose top is a bar (‹ Back, ★) over `BoardHeader`
-(name 20 pt, `Stop 596`, `Updated 30 s ago`): ~104 pt against the ~92 pt a
-one-row peek would give. Sizing off the row would leave the selected-stop
-mode — the one Truman complained about — still cramped. Sized off the card, the
-list gets one row plus a sliver of the next, which is the same "there is more"
-cue the 45% detent already relies on.
+*Revised 2026-08-09, on the device round after Tasks 1–3.* The peek was built
+as specced below and Truman's verdict on ~211 pt was that it took too much map
+for what it bought. His call: *"We can't get anything right, so can we just hide
+the sheet's content by lowering it and only show the top draggable bit? I will
+fine-tune what I want to show there in the future."*
 
-Arithmetic puts it near **210 pt**. The number is provisional until a device
-round; the *rule* is not.
+A peek that shows *part* of something has to be right about which part, and
+neither candidate was. A peek that shows nothing is honest about being a grab
+handle, and the map gets the height back. **What belongs in a resting sheet is
+deferred, deliberately, to a later increment with a device in hand.**
+
+The superseded reasoning, kept because it is what the measurement supported
+before the device disagreed with it: one full `StopRow` for the nearby list, but
+sized off the *card* — `StopCard`'s top is a bar (‹ Back, ★) over `BoardHeader`
+(name 20 pt, `Stop 596`, `Updated 30 s ago`), ~104 pt against the ~92 pt a
+one-row peek would give — so that the selected-stop mode was not left cramped.
+That arithmetic put it near 210 pt. It was right about the arithmetic and wrong
+about the screen, which is exactly what a device round is for.
 
 **Sheet content never renders under the tab bar.** This is the actual fix for
-the crowding, and it holds at every detent, not just the peek.
+the crowding, and it holds at every detent, not just the peek. With the peek cut
+back, the clearance is carried by the legend pinned at the sheet's bottom edge
+rather than by each scroll host's padding — see below.
+
+### The legend is pinned in the sheet too
+
+*Added 2026-08-09, same round.* The sheet was the one surface where the required
+legend scrolled away with the content, and Truman noticed. Every other surface
+renders it as a sibling of its scroll view.
+
+`lib/Attribution.tsx` recorded a real objection to pinning it here: the strip
+would sit at the sheet's own bottom edge, which at the collapsed detent was
+precisely the sliver the legend had just been evicted from. **That objection
+dies with the tall peek.** A sheet showing only its handle presents no Data, so
+it owes no legend, and the strip is simply behind the tab bar there. At every
+detent that does show stops or arrivals the legend is pinned and visible, which
+is the more prominent placement rather than the less.
+
+It costs ~35 pt of the 45% detent, which the scroll-footer version did not.
 
 ### Headings, and why they are not built
 
@@ -229,8 +255,9 @@ Truman briefly parked address search entirely over this, then reinstated it with
 
 ## Stated assumptions
 
-- The ~210 pt peek, the bar's placement against ⌖ and *Search this area*, and
-  chip styling are **provisional** and go to Truman with screenshots.
+- ~~The ~210 pt peek~~ **settled on the device round: the peek is the handle
+  alone.** The bar's placement against ⌖ and *Search this area*, and chip
+  styling, remain **provisional** and go to Truman with screenshots.
 - Everything about how this *looks* is inference until he confirms it on a
   device. There is no simulator here.
 

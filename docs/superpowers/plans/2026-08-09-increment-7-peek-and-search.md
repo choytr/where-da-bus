@@ -36,8 +36,11 @@ StopSheetProps: { …, detents: readonly number[], tabBarHeight: number }
 `DETENTS` stops being a module constant. `PEEK_DETENT` / `MEDIUM_DETENT` /
 `FULL_DETENT` stay as indices. `visibleAbove` no longer parses strings.
 
-**Settled:** the peek is `tabBarHeight + handle + card-header budget`, target
-~210 pt on Truman's device; the other two stay `0.45 × h` and `0.9 × h`.
+**Settled:** the peek is `tabBarHeight + handle` — **revised on the device round
+from `tabBarHeight + handle + card-header budget` (~210 pt), which Truman judged
+to take too much map for what it showed.** The resting sheet now shows nothing
+but its grab handle; what it *should* show is deferred to a later increment. The
+other two stay `0.45 × h` and `0.9 × h`.
 `useBottomTabBarHeight()` is read in `app/(tabs)/index.tsx` and passed down,
 because it is a React context that **throws** outside a navigator and would
 break `MapScreen`'s tests.
@@ -47,9 +50,9 @@ break `MapScreen`'s tests.
 `region.test.ts`. `region.ts` itself does not change; it already takes a
 fraction.
 
-**Tests:** `derives a peek tall enough for the card's header`; `derives the same
-fraction from points that the percentages used to give`; `a taller tab bar
-raises the peek by the same amount`; existing `region.test.ts` unchanged.
+**Tests:** `derives a peek that is the grab handle and nothing else`; `derives
+the same fraction from points that the percentages used to give`; `a taller tab
+bar raises the peek by the same amount`; existing `region.test.ts` unchanged.
 
 ---
 
@@ -62,11 +65,17 @@ The tab bar is drawn **over** the sheet, not clipping it, so content renders
 underneath it with nothing reserving space. This is the actual fix for "the stop
 code's spacing to the bottom bar is really tight and awkward".
 
-**Contract:** both scroll hosts pad their content by `tabBarHeight` in addition
-to the existing 32. Applies at every detent, not just the peek.
+**Contract:** the sheet's bottom edge clears `tabBarHeight`. **Revised on the
+device round**: the clearance is carried by the required legend, now *pinned* at
+that edge for both modes rather than living at the foot of each one's scroll —
+Truman noticed the sheet was the app's one surface where it scrolled away.
+Everything above the legend is clear by construction, so the scroll hosts keep
+only their own 32 pt of breathing room. `lib/Attribution.tsx` records why the
+objection that kept the sheet an exception died with the tall peek.
 
-**Tests:** `pads the nearby list clear of the tab bar`; `pads the card's
-arrivals clear of the tab bar`.
+**Tests:** `pins the legend clear of the tab bar`; `pins the legend under the
+nearby list rather than at the foot of it`; `pins the same legend under the
+card`.
 
 ---
 

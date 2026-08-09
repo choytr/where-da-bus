@@ -513,12 +513,11 @@ describe('MapScreen', () => {
     // The middle of what the rider can *see*, which at the peek detent is a
     // little north of the window's own 21.45 — the sheet covers the bottom.
     //
-    // The peek is 211 pt now rather than 14%, and this number barely moved:
-    // `useWindowDimensions` reports React Native's Jest default of 750 × 1334
-    // here, not the 393 × 852 in `METRICS`, and 211 pt of 1334 is 15.8%. On
-    // Truman's shorter device the same 211 pt is a quarter of the screen.
+    // Barely north of it, because the peek is now the tab bar plus the grab
+    // handle and nothing else — 107 pt, of the 750 × 1334 window React Native
+    // reports under Jest (not the 393 × 852 in `METRICS`).
     expect(mockNearby).toHaveBeenLastCalledWith({
-      lat: expect.closeTo(21.4524, 4),
+      lat: expect.closeTo(21.4512, 4),
       lon: -157.8583,
     });
     // Re-anchored to the screen centre, so the offer is answered and retires.
