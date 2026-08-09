@@ -43,9 +43,14 @@ const KEY_REJECTED = ['invalid or unspecified api key', 'application key was not
  * key was rejected when it was not, and send them to Settings to fix
  * something that is not broken.
  */
-function isKeyRejection(message: string): boolean {
+export function isKeyRejection(message: string): boolean {
   const normalized = message.toLowerCase();
   return KEY_REJECTED.some((known) => normalized.includes(known));
+}
+
+/** `""` is the vendor saying nothing, not saying empty. */
+function emptyToNull(value: string | null): string | null {
+  return value === null || value === '' ? null : value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -130,6 +135,7 @@ function arrival(value: unknown): Arrival | null {
     estimate: estimate(str(value, 'estimated')),
     // "???" is a literal sentinel for "no bus assigned yet", not a number.
     vehicle: vehicle === null || vehicle === '???' ? null : vehicle,
+    shape: emptyToNull(str(value, 'shape')),
     position: position(str(value, 'latitude'), str(value, 'longitude')),
     // "1" is canceled; "-1" means it was canceled and has been reinstated,
     // which is a bus that is running.

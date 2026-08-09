@@ -130,5 +130,11 @@ export function withCache(inner: TheBusClient, options: CacheOptions = {}): TheB
     }
   }
 
-  return { arrivals };
+  /**
+   * Straight through, uncached. `withCache` keys on a stop code and coalesces
+   * calls for the same stop; the fleet is one call for the whole island, made
+   * by one screen, and a second layer of staleness under a view whose entire
+   * job is to say how old each bus's position is would be actively wrong.
+   */
+  return { arrivals, vehicles: (options) => inner.vehicles(options) };
 }

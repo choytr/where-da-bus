@@ -39,6 +39,16 @@ export type Arrival = {
   readonly estimate: ArrivalEstimate;
   /** `null` where the vendor sent `"???"`, meaning no bus is assigned yet. */
   readonly vehicle: string | null;
+  /**
+   * The `shape_id` of the exact variant this bus is running, keying into the
+   * asset's `shapes` table.
+   *
+   * Present on every arrival in the real capture, unlike `position`, which 23 of
+   * 25 withhold — which is why the asset stores all 532 variants rather than one
+   * representative per route and direction. A short-turn or an express run is a
+   * different shape from the one the route view draws.
+   */
+  readonly shape: string | null;
   /** `null` unless the bus has a real GPS fix. Never the `"0"`/`"0"` sentinel. */
   readonly position: Coords | null;
   readonly canceled: boolean;
@@ -63,7 +73,7 @@ export type ArrivalBoard = {
  * API separates them cleanly (`arrivals: []` with a `stop` and `timestamp`,
  * versus an `errorMessage` with neither).
  */
-export type ArrivalsFailure =
+export type ApiFailure =
   /**
    * The key was rejected. Its own kind rather than an `api` failure carrying
    * the vendor's sentence, because it is the only failure here the user can
@@ -84,6 +94,62 @@ export type ArrivalsFailure =
    *  vendor-side format change is visible rather than looking like an outage. */
   | { readonly kind: 'malformed' };
 
+/**
+ * The arrivals endpoint's failures are the fleet endpoint's failures, so there
+ * is one type with two names rather than two identical types. The alias keeps
+ * every existing `ArrivalsFailure` reading naturally at a call site about
+ * arrivals.
+ */
+export type ArrivalsFailure = ApiFailure;
+
 export type ArrivalsResult =
   | { readonly ok: true; readonly board: ArrivalBoard }
-  | { readonly ok: false; readonly failure: ArrivalsFailure };
+  | { readonly ok: false; readonly failure: ApiFailure };
+
+/**
+ * One bus, from the fleet endpoint.
+ *
+ * **There is no field for the driver, and that is the point.** `<driver>` is an
+ * employee number — confirmed by the vendor documentation — and it sits directly
+ * beside `<number>`, the fleet number, which *is* what gets displayed. Dropping
+ * it at this boundary rather than merely not rendering it means no screen can
+ * show one and no log can print one, because the app has no way to say it.
+ */
+export type Vehicle = {
+  /** The fleet number painted on the bus. This is what a rider is shown. */
+  readonly number: string;
+  /** Joins to `Arrival.tripId`, which is how tapping an arrival finds its bus. */
+  readonly tripId: string | null;
+  /**
+   * The number on the front of the bus. `null` where the vendor sent the
+   * literal string `"null"`, which 17 of 235 live buses do — so some real buses
+   * cannot be attributed to a route at all. Known, and accepted.
+   */
+  readonly route: string | null;
+  /** Required: a bus with no position is not a bus this app can draw. */
+  readonly position: Coords;
+  readonly headsign: string | null;
+  /**
+   * Minutes off schedule. **Positive means *early***, and nothing bounds it to
+   * ±60. Carried but deliberately unrendered — where lateness is shown is
+   * deferred in `docs/backlog.md`, so surfacing it later is a UI change and not
+   * a data change.
+   */
+  readonly adherence: number | null;
+  /**
+   * When this bus last reported. The whole freshness rule hangs off it: most of
+   * the fleet response is buses parked since 2022 carrying entirely plausible
+   * Oahu coordinates, so an unfiltered draw puts ~1,100 ghosts on the map.
+   */
+  readonly lastMessage: Date;
+};
+
+export type Fleet = {
+  /** The server's own clock when it answered — what a bus's age is measured from. */
+  readonly serverTime: Date;
+  readonly vehicles: readonly Vehicle[];
+};
+
+export type FleetResult =
+  | { readonly ok: true; readonly fleet: Fleet }
+  | { readonly ok: false; readonly failure: ApiFailure };

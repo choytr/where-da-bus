@@ -356,6 +356,17 @@ captured — a live call needs Truman's AppID, which is in his keychain. It must
 contain: a live bus, a bus whose `route_short_name` is the literal `"null"`, a
 stale bus with plausible Oahu coordinates, and a `<driver>` element.
 
+**What was built.** As contracted. `parseVehicles` collects each `<vehicle>`
+block's leaf elements into a **map in one pass** rather than running a regex per
+field — the body is 333 KB and the document is flat, so one scan answers
+everything. It decodes XML entities, because headsigns are free text off a
+destination sign and `KAPOLEI &amp; MAKAKILO` is real. Self-closing `<trip/>`
+reads as no trip.
+
+`withCache` delegates with an arrow rather than `inner.vehicles.bind(inner)`:
+binding reads the property at construction, and the cache's own test doubles are
+partial clients that have no `vehicles` until one is called.
+
 **Tests:** `reads a vehicle's fleet number and position`; `never carries a
 driver`; `a route_short_name of "null" reads as no route`; `an unreadable vehicle
 does not sink the fleet`; `a rejected key is unauthorized, not an api error`; `an
