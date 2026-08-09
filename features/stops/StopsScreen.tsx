@@ -25,7 +25,6 @@ import { SearchNudge } from '../search/SearchNudge';
 import { nudgeFor } from '../search/nudge';
 import { useSearch, type SearchFilter, type SearchState } from '../search/useSearch';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
-import { DISCLAIMER } from '../../lib/legal';
 import { Attribution } from '../../lib/Attribution';
 import { useTheme } from '../../lib/theme';
 
@@ -434,11 +433,6 @@ export function StopsScreen() {
           keyboardDismissMode={KEYBOARD_DISMISS_MODE}
           keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => <RouteRow route={item} onPress={openRoute} />}
-          ListFooterComponent={
-            <Text style={[styles.legal, styles.disclaimer, { color: palette.muted }]}>
-              {DISCLAIMER}
-            </Text>
-          }
         />
       ) : (
         <FlatList
@@ -462,13 +456,6 @@ export function StopsScreen() {
               onPressRoute={openRoute}
             />
           )}
-          // The disclaimer is required by nothing and can live at the end of the
-          // scroll. The legend cannot — see below.
-          ListFooterComponent={
-            <Text style={[styles.legal, styles.disclaimer, { color: palette.muted }]}>
-              {DISCLAIMER}
-            </Text>
-          }
         />
       )}
 
@@ -521,6 +508,4 @@ const styles = StyleSheet.create({
   empty: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 16, gap: 6 },
   emptyTitle: { fontSize: 17, fontWeight: '600' },
   emptyBody: { fontSize: 14, lineHeight: 20 },
-  legal: { fontSize: 11, lineHeight: 15 },
-  disclaimer: { paddingHorizontal: 16, paddingBottom: 14 },
 });

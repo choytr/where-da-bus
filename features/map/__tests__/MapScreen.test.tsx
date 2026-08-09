@@ -438,6 +438,11 @@ describe('MapScreen', () => {
 
   it('carries the required attribution in the sheet', async () => {
     await show();
+    // Off the peek, where the sheet is showing something to attribute. At rest
+    // it is a grab handle over the tab bar and presents no Data at all — see
+    // `StopSheet` and `lib/Attribution.tsx`.
+    await fireEvent.press(screen.getByLabelText('settle the sheet at 1'));
+
     screen.getByText(ATTRIBUTION);
   });
 

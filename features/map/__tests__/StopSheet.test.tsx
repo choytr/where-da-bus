@@ -18,10 +18,39 @@ import type { ArrivalsResult, TheBusClient } from '../../../data/thebus';
  * and how a rider gets between them — the card's own contents are
  * StopCard.test.tsx, and how the sheet slides is not testable off-device.
  */
-jest.mock('@gorhom/bottom-sheet', () => ({
-  __esModule: true,
-  ...require('@gorhom/bottom-sheet/mock'),
-}));
+/**
+ * The shipped double renders children and swallows `onChange`, which is not
+ * enough any more: the sheet leaves the legend off at the peek — there is no
+ * room for it there, and a sheet showing only its handle presents no Data to
+ * attribute — so a test about the legend has to be able to settle the sheet
+ * somewhere else. This adds that one control and keeps the rest.
+ */
+jest.mock('@gorhom/bottom-sheet', () => {
+  const React = require('react');
+  const { View, Pressable } = require('react-native');
+
+  const MockBottomSheet = React.forwardRef(({ children, onChange }: any, ref: any) => {
+    React.useImperativeHandle(ref, () => ({ snapToIndex: () => {} }));
+    return (
+      <View>
+        {[0, 1, 2].map((index: number) => (
+          <Pressable
+            key={index}
+            accessibilityLabel={`settle the sheet at ${index}`}
+            onPress={() => onChange?.(index)}
+          />
+        ))}
+        {children}
+      </View>
+    );
+  });
+
+  return {
+    __esModule: true,
+    ...require('@gorhom/bottom-sheet/mock'),
+    default: MockBottomSheet,
+  };
+});
 
 const mockArrivalsResult: ArrivalsResult = {
   ok: true,
@@ -116,6 +145,9 @@ describe('the detents', () => {
   });
 });
 
+/** Off the peek, where the sheet is actually showing something. */
+const raise = () => fireEvent.press(screen.getByLabelText('settle the sheet at 1'));
+
 describe('StopSheet', () => {
   it('shows the nearby list when nothing is selected', async () => {
     await show(null);
@@ -146,10 +178,32 @@ describe('StopSheet', () => {
    */
   it('pins the legend clear of the tab bar', async () => {
     await show(null);
+    await raise();
 
     const padding = StyleSheet.flatten(screen.getByTestId('sheet-attribution').props.style)
       .paddingBottom;
     expect(padding).toBeGreaterThanOrEqual(TAB_BAR);
+  });
+
+  /**
+   * The peek is the tab bar plus the grab handle, so its content area is
+   * exactly the tab bar's height — no room for a legend, and a fixed block in a
+   * flex column does not shrink: it would take that space and collapse the list
+   * to nothing. It is also `lib/Attribution.tsx`'s older bug in disguise, the
+   * resting sheet whose entire visible content is legal text.
+   *
+   * A sheet showing only its handle presents no Data, and the obligation
+   * attaches to presenting the Data.
+   */
+  it('leaves the legend off the resting sheet, which presents no data', async () => {
+    await show(null);
+
+    expect(screen.queryByTestId('sheet-attribution')).toBeNull();
+    expect(screen.queryByText(ATTRIBUTION)).toBeNull();
+
+    await raise();
+
+    screen.getByText(ATTRIBUTION);
   });
 
   /**
@@ -160,6 +214,7 @@ describe('StopSheet', () => {
    */
   it('pins the legend under the nearby list rather than at the foot of it', async () => {
     await show(null);
+    await raise();
 
     screen.getByText(ATTRIBUTION);
     expect(screen.getByTestId('nearby-stops').props.ListFooterComponent).toBeUndefined();
@@ -167,6 +222,7 @@ describe('StopSheet', () => {
 
   it('pins the same legend under the card', async () => {
     await show(STOPS[0]);
+    await raise();
 
     screen.getByText(ATTRIBUTION);
     expect(screen.getByTestId('stop-card-arrivals').props.ListFooterComponent).toBeUndefined();

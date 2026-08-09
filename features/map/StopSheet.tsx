@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useMemo } from 'react';
+import { forwardRef, useCallback, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -172,11 +172,32 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
 
   /**
    * Lifts the pinned legend off the tab bar, which is drawn *over* the sheet
-   * rather than clipping it. At the peek this pushes the legend entirely behind
-   * the bar, which is correct: a sheet showing only its handle is presenting no
-   * Data, and the obligation attaches to presenting the Data.
+   * rather than clipping it.
    */
   const footer = useMemo(() => ({ paddingBottom: tabBarHeight }), [tabBarHeight]);
+
+  /**
+   * The detent the sheet has settled on, tracked here as well as reported, so
+   * the legend below can be left off at the peek.
+   *
+   * At the peek the content area is exactly the tab bar's height — there is no
+   * room for a legend, and a fixed-height block in a flex column does not
+   * shrink: it takes its space and the list collapses to nothing. That is the
+   * broken list. It is also the older bug in disguise, the one
+   * `lib/Attribution.tsx` records: a resting sheet whose entire visible content
+   * is legal text.
+   *
+   * A sheet showing only its handle presents no Data and so owes no legend, so
+   * the honest fix is not to render one there.
+   */
+  const [settled, setSettled] = useState(PEEK_DETENT);
+  const handleDetentChange = useCallback(
+    (index: number) => {
+      setSettled(index);
+      onDetentChange(index);
+    },
+    [onDetentChange],
+  );
 
   const animationConfigs = useBottomSheetSpringConfigs({
     damping: 90,
@@ -231,7 +252,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
       handleIndicatorStyle={{ backgroundColor: palette.muted }}
       animationConfigs={animationConfigs}
       backdropComponent={renderBackdrop}
-      onChange={onDetentChange}
+      onChange={handleDetentChange}
     >
     {/*
       A column, so the legend can be pinned under whichever mode is showing
@@ -242,6 +263,10 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
       {selectedStop === null ? (
         <BottomSheetFlatList
           testID="nearby-stops"
+          // Explicit, because it is now a sibling of the legend rather than the
+          // sheet's only child: without it the list sizes to its content and
+          // pushes the legend out of the sheet entirely.
+          style={styles.fill}
           data={stops}
           keyExtractor={(stop) => stop.stop_id}
           renderItem={renderItem}
@@ -287,10 +312,14 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
         use, so the legend is on screen from the first frame at every detent
         that shows any Data. `lib/Attribution.tsx` carries the reading of the
         terms behind that, and why the sheet stopped being the exception.
+
+        Not at the peek: see `settled` above.
       */}
-      <View testID="sheet-attribution" style={footer}>
-        <Attribution />
-      </View>
+      {settled === PEEK_DETENT ? null : (
+        <View testID="sheet-attribution" style={[styles.legend, footer]}>
+          <Attribution />
+        </View>
+      )}
     </View>
     </BottomSheet>
   );
@@ -301,6 +330,8 @@ const CONTENT_INSET = 32;
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  /** Never squeezed by the list above it, and never squeezing it either. */
+  legend: { flexShrink: 0 },
   empty: { paddingHorizontal: 16, paddingTop: 8 },
   emptyText: { fontSize: 14, lineHeight: 20 },
 });

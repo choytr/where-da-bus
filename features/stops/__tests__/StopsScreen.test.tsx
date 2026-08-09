@@ -278,11 +278,19 @@ describe('StopsScreen', () => {
     expect(screen.queryByText(/published for service through/i)).toBeNull();
   });
 
-  it('carries the attribution and the disclaimer', async () => {
+  /**
+   * The legend is required by the terms wherever the Data is presented, so it
+   * is pinned here. The non-affiliation disclaimer is **ours**, not theirs —
+   * verified 2026-08-08 against the full Terms of Use — so where it goes is our
+   * choice, and Truman's is that it belongs in Settings' About and nowhere
+   * else. Repeating it at the foot of every list bought nothing and crowded the
+   * last row.
+   */
+  it('carries the required attribution, and not the disclaimer', async () => {
     await renderScreen();
 
     screen.getByText('Route and arrival data provided by permission of Oahu Transit Services, Inc');
-    screen.getByText(/unofficial app/i);
+    expect(screen.queryByText(/unofficial app/i)).toBeNull();
   });
 
   it('pins a matching favorite above the rest of the results', async () => {
