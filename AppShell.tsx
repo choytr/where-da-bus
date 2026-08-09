@@ -10,6 +10,7 @@ import { themeStorage } from './data/storage/preferences';
 import { TheBusProvider } from './data/thebus';
 import { apiKeyStorage } from './data/storage/apiKey';
 import { BUNDLED_DATABASE, loadCurrentDatabase } from './data/storage/database';
+import { isReadableGeneration } from './data/gtfs/refresh';
 import { databaseFiles } from './data/gtfs/files';
 import { refreshStopData, sweepStaleGenerations } from './data/gtfs/dataRefresh';
 import { schedule } from './lib/schedule';
@@ -70,7 +71,11 @@ function useCurrentDatabaseName(): string | null {
     loadCurrentDatabase()
       .then((current) => {
         if (cancelled) return;
-        setName(current === null ? BUNDLED_DATABASE : generationOnDisk(current.file));
+        // A pointer naming another schema's generation is not a pointer: the
+        // file is there and opens perfectly, and every query the newer schema
+        // added then fails with "no such table". See `isReadableGeneration`.
+        const usable = current !== null && isReadableGeneration(current.file);
+        setName(usable ? generationOnDisk(current.file) : BUNDLED_DATABASE);
       })
       // `loadCurrentDatabase` swallows its own failures, so this is belt to
       // braces — but a shell that never resolves would hang on the spinner

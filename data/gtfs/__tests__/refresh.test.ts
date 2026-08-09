@@ -75,6 +75,27 @@ function fakeFiles(options: { downloads?: string; facts?: DatabaseFacts | Error 
   return { files, contents, removed };
 }
 
+describe('MANIFEST_URL', () => {
+  /**
+   * The other half of a handshake whose failure is silent. `manifestNameFor` in
+   * scripts/build-gtfs/publish.mjs publishes under these exact names; if the two
+   * ever disagreed, `checkForUpdate` would fetch a 404 forever and Settings
+   * would report "could not check" instead of updating.
+   */
+  it('asks for the manifest belonging to this binary’s own schema', () => {
+    expect(MANIFEST_URL.endsWith(`/manifest-v${SCHEMA_VERSION}.json`)).toBe(true);
+  });
+
+  /**
+   * A shared `manifest.json` is what would switch every older install off: they
+   * have that URL compiled in and ignore a manifest of another schema, so a bump
+   * publishing over it reads to them as "up to date", forever.
+   */
+  it('does not share a name with the manifest older binaries read', () => {
+    expect(MANIFEST_URL.endsWith('/manifest.json')).toBe(false);
+  });
+});
+
 describe('checkForUpdate', () => {
   it('reports no update when builtAt matches', async () => {
     const found = await checkForUpdate(serving(published), published.builtAt);

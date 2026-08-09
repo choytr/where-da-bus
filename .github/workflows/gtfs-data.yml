@@ -105,19 +105,30 @@ jobs:
             --title "Stop data" \
             --notes "Generated stop data for the app to download. Published by .github/workflows/gtfs-data.yml; not a software release."
 
-      # The database first and the manifest second, always. A manifest that
-      # exists therefore always describes an asset that exists, which is what
-      # makes a half-failed run safe rather than a source of 404s. Two steps
-      # rather than one command because a single `gh release upload a b` gives
-      # no ordering guarantee.
-      - name: Upload the database
+      # Databases first and manifests second, always. A manifest that exists
+      # therefore always describes an asset that exists, which is what makes a
+      # half-failed run safe rather than a source of 404s. Separate steps rather
+      # than one command because a single `gh release upload a b` gives no
+      # ordering guarantee.
+      #
+      # **Two generations, and the older one is not optional.** `manifest.json`
+      # is compiled into every binary built before schema v2, and those binaries
+      # ignore a manifest that is not their own schema — so if this run stopped
+      # publishing v1, every one of them would silently stop updating forever.
+      # There is no App Store to push a fix through. See `manifestNameFor` in
+      # scripts/build-gtfs/publish.mjs.
+      - name: Upload the databases
         if: steps.decide.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload data "dist/${{ steps.package.outputs.file }}" --clobber
+        run: |
+          gh release upload data "dist/${{ steps.package.outputs.file }}" --clobber
+          gh release upload data "dist/${{ steps.package.outputs.legacy_file }}" --clobber
 
-      - name: Upload the manifest
+      - name: Upload the manifests
         if: steps.decide.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload data dist/manifest.json --clobber
+        run: |
+          gh release upload data dist/manifest.json --clobber
+          gh release upload data dist/manifest-v2.json --clobber

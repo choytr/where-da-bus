@@ -73,6 +73,21 @@ already cached in `.gtfs-cache/`) and commit `assets/db/gtfs.db` with the bump.
 Either alone leaves the app asking the floor for a table it lacks. This is the
 sanctioned exception to `CLAUDE.md`'s ban — Truman authorised it.
 
+**What was built.** As planned, plus three things the contract did not say.
+`deriveShapes` orders points by `shape_pt_sequence` **numerically** — the feed
+counts from 10001, so a lexical sort puts 10010 before 1002 and the line becomes
+a scribble. Simplification measures to the **segment**, not to the infinite line
+through its ends: Oahu's feed has a loop at most termini, and measuring to the
+line reports the far end of a loop as lying on it, collapsing it to a straight
+there and back. And `build.mjs` now applies the publish floor itself, because
+`emitDatabase` defaults `shapes` to empty so the existing relationship tests need
+not supply it — which means a build that stopped deriving shapes would emit a
+valid database with no route lines and nothing about the run would look wrong.
+
+Measured after the rebuild: **532 shapes, 152 KiB of polyline, 236
+route/directions, asset 1.17 MB → 1.37 MB.** The spec's estimate of 1.32 MB was
+the polyline bytes alone and did not count the two tables' own pages.
+
 **Tests:** `round-trips a polyline through encode and decode`; `encodes a known
 polyline byte for byte`; `drops a point that lies on the line between its
 neighbours`; `keeps a point that deviates by more than the tolerance`; `picks the
@@ -126,6 +141,30 @@ and `FLOOR_COUNTS` now counts one.
 
 **Workflow:** upload both databases *before* both manifests, keeping the existing
 rule that a manifest which exists always describes an asset that exists.
+
+**What was built.** The plan's contract, and then a bug the contract implied but
+did not name. **A stored pointer is not evidence about the *schema* of the file
+it names.** Truman's phone holds a pointer at a `gtfs-v1-…` generation that is
+still on disk; a v2 binary opens it happily, and every shape query then fails
+with "no such table" while the pointer, the file and its checksum are all in
+order. So `isReadableGeneration` was added to `refresh.ts` and applied in three
+places — `AppShell` opens the floor instead, `dataRefresh` treats the pointer as
+absent so the check downloads rather than comparing timestamps, and
+`staleGenerations` now sweeps **every** schema's generations so the dead v1 file
+is reclaimed. Without the second of those the app would have sat on the bundled
+floor for up to a week, because both generations of one build carry the same
+`builtAt` and the comparison would have said "up to date".
+
+Two smaller ones. `publish.mjs`'s CLI now runs only when the file is the entry
+point — importing it to test it otherwise hits `process.exit(2)` and kills the
+test process before a single assertion. And `pkg` takes its `built`/`dist` paths
+so the end-to-end test stages into a temporary directory instead of the working
+tree's `dist/`.
+
+`MANIFEST_URL` is simply `manifest-v${SCHEMA_VERSION}.json` with no v1 special
+case: `SCHEMA_VERSION` is a literal type, so comparing it to `1` is a compile
+error — and that pointed at something true, which is that the app never needs
+the old name. Keeping `manifest.json` alive is entirely the publisher's job.
 
 **Tests:** `the downgraded database has no shapes table`; `the downgraded
 database reports schema version 1`; `the downgraded database still meets the v1

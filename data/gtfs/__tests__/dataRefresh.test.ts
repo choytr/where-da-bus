@@ -175,6 +175,44 @@ describe('refreshStopData', () => {
   });
 });
 
+describe('a pointer this binary cannot read', () => {
+  const foreign = 'gtfs-v1-20260810T120000Z.db';
+
+  /**
+   * Both generations of one build carry the same `builtAt`, so comparing
+   * against a v1 pointer says "up to date" and the app would sit on the bundled
+   * floor until the agency next republished. Treating the pointer as absent is
+   * what makes the right generation arrive on the first launch instead.
+   */
+  it('downloads this schema’s generation rather than comparing timestamps with it', async () => {
+    await AsyncStorage.setItem(
+      'gtfs.current.v1',
+      JSON.stringify({ file: foreign, builtAt: published.builtAt }),
+    );
+    const { dependencies, contents } = deps();
+
+    expect(await refreshStopData(dependencies)).toEqual({
+      state: 'installed',
+      builtAt: published.builtAt,
+    });
+    expect(contents.has(published.file)).toBe(true);
+  });
+
+  it('sweeps the generation it can no longer open', async () => {
+    await AsyncStorage.setItem(
+      'gtfs.current.v1',
+      JSON.stringify({ file: foreign, builtAt: published.builtAt }),
+    );
+    const { files, contents } = deps();
+    contents.set(foreign, 'last schema');
+
+    await sweepStaleGenerations(files);
+
+    expect(contents.has(foreign)).toBe(false);
+    expect(contents.get('gtfs.db')).toBe('the floor');
+  });
+});
+
 describe('sweepStaleGenerations', () => {
   const older = `gtfs-v${SCHEMA_VERSION}-20260801T120000Z.db`;
 

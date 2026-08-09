@@ -4,6 +4,15 @@ import { AppShell } from '../AppShell';
 import { Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheBus } from '../data/thebus';
+import { SCHEMA_VERSION } from '../data/gtfs/sql';
+
+/**
+ * A generation name of *this* binary's schema. Written as a literal here once
+ * and it was wrong the moment SCHEMA_VERSION moved: the app now refuses a
+ * pointer naming another schema's file, so these tests silently became tests
+ * of the fallback instead of tests of the pointer.
+ */
+const GENERATION = `gtfs-v${SCHEMA_VERSION}-20260810T120000Z.db`;
 
 /**
  * What this file owns is the gate in front of the stop list: the bundled
@@ -263,15 +272,15 @@ describe('AppShell', () => {
   it('opens the downloaded generation once one has been installed', async () => {
     await AsyncStorage.setItem(
       'gtfs.current.v1',
-      JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
+      JSON.stringify({ file: GENERATION, builtAt: '2026-08-10T12:00:00Z' }),
     );
-    mockDatabaseDirectory = ['gtfs.db', 'gtfs-v1-20260810T120000Z.db'];
+    mockDatabaseDirectory = ['gtfs.db', GENERATION];
 
     await render(<AppShell><InsetReader /></AppShell>);
 
     await waitFor(() => {
       const props = sqlite().SQLiteProvider.mock.calls.at(-1)[0];
-      expect(props.databaseName).toBe('gtfs-v1-20260810T120000Z.db');
+      expect(props.databaseName).toBe(GENERATION);
     });
   });
 
@@ -285,9 +294,9 @@ describe('AppShell', () => {
   it('does not name the bundled asset while opening a generation', async () => {
     await AsyncStorage.setItem(
       'gtfs.current.v1',
-      JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
+      JSON.stringify({ file: GENERATION, builtAt: '2026-08-10T12:00:00Z' }),
     );
-    mockDatabaseDirectory = ['gtfs.db', 'gtfs-v1-20260810T120000Z.db'];
+    mockDatabaseDirectory = ['gtfs.db', GENERATION];
 
     await render(<AppShell><InsetReader /></AppShell>);
 
@@ -311,7 +320,7 @@ describe('AppShell', () => {
   it('falls back to the bundled database when the stored pointer names a file that is not there', async () => {
     await AsyncStorage.setItem(
       'gtfs.current.v1',
-      JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
+      JSON.stringify({ file: GENERATION, builtAt: '2026-08-10T12:00:00Z' }),
     );
     // The pointer survived; the file did not.
     mockDatabaseDirectory = ['gtfs.db'];
@@ -325,18 +334,43 @@ describe('AppShell', () => {
     expect(props.assetSource.forceOverwrite).toBe(true);
   });
 
+  /**
+   * The upgrade path a sideloaded install actually takes. A binary going from
+   * schema v1 to v2 finds a stored pointer at a `gtfs-v1-…` generation that is
+   * still on disk and still opens — and every query the new schema added then
+   * fails with "no such table", with the pointer, the file and its checksum all
+   * perfectly in order. The floor is a database this binary is certain it can
+   * read, so it wins.
+   */
+  it('falls back to the bundled database when the pointer names another schema’s generation', async () => {
+    const older = 'gtfs-v1-20260810T120000Z.db';
+    await AsyncStorage.setItem(
+      'gtfs.current.v1',
+      JSON.stringify({ file: older, builtAt: '2026-08-10T12:00:00Z' }),
+    );
+    // The file is right there, which is exactly what makes this dangerous.
+    mockDatabaseDirectory = ['gtfs.db', older];
+
+    await render(<AppShell><InsetReader /></AppShell>);
+
+    await waitFor(() => screen.getByText('inside the shell'));
+    const props = sqlite().SQLiteProvider.mock.calls.at(-1)[0];
+    expect(props.databaseName).toBe('gtfs.db');
+    expect(props.assetSource.forceOverwrite).toBe(true);
+  });
+
   it('opens the stored generation when it exists', async () => {
     await AsyncStorage.setItem(
       'gtfs.current.v1',
-      JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
+      JSON.stringify({ file: GENERATION, builtAt: '2026-08-10T12:00:00Z' }),
     );
-    mockDatabaseDirectory = ['gtfs.db', 'gtfs-v1-20260810T120000Z.db'];
+    mockDatabaseDirectory = ['gtfs.db', GENERATION];
 
     await render(<AppShell><InsetReader /></AppShell>);
 
     await waitFor(() => {
       const props = sqlite().SQLiteProvider.mock.calls.at(-1)[0];
-      expect(props.databaseName).toBe('gtfs-v1-20260810T120000Z.db');
+      expect(props.databaseName).toBe(GENERATION);
     });
     // The distinguishing assertion: the directory was actually consulted,
     // rather than the name being taken on the pointer's word as before.
@@ -352,7 +386,7 @@ describe('AppShell', () => {
   it('falls back when listing the directory throws', async () => {
     await AsyncStorage.setItem(
       'gtfs.current.v1',
-      JSON.stringify({ file: 'gtfs-v1-20260810T120000Z.db', builtAt: '2026-08-10T12:00:00Z' }),
+      JSON.stringify({ file: GENERATION, builtAt: '2026-08-10T12:00:00Z' }),
     );
     mockListFails = true;
 
