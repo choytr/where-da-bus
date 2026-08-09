@@ -1,7 +1,7 @@
 import { Dimensions, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
-import { MapScreen } from '../MapScreen';
+import { MapScreen, COMPASS_LAYOUT_OFFSET } from '../MapScreen';
 import { MEDIUM_DETENT, PEEK_DETENT, detentsFor, tabBarOverlapOf, visibleAbove } from '../StopSheet';
 import { centredOn } from '../region';
 import { SEARCH_PLACEHOLDER } from '../SearchBar';
@@ -1334,7 +1334,7 @@ describe('MapScreen', () => {
       });
     });
 
-    it('leaves the compass room below the bar and ⌖', async () => {
+    it('puts the compass under ⌖, spaced as ⌖ is under the bar', async () => {
       // The bar is drawn across the map's top-right corner, which is where
       // MapKit puts the compass, and on a device it hid it — reported
       // 2026-08-09 with a screenshot of the compass peeking out from behind the
@@ -1346,23 +1346,32 @@ describe('MapScreen', () => {
       // that the screen asks for enough room. Confirm the compass itself on a
       // device.
       //
-      // Asserted as the *invariant*, not as the number: `COMPASS_DROP` is a
-      // knob for tuning on a device, and a test pinned to its current value
-      // would break the moment it is turned. What must hold at any setting is
-      // that the compass clears the button — and clearing ⌖ clears the bar
-      // above it too, since ⌖ already does.
+      // The assertion is Truman's own sentence — "directly under the location
+      // button and spaced with the same spacing between the location button and
+      // the address bar" — as arithmetic on the three positions, rather than a
+      // literal that any tuning would break. The only measured number involved
+      // is `COMPASS_LAYOUT_OFFSET`, which corrects for MapKit's own inset and
+      // is the one thing here that could not be derived.
       await show();
 
+      const bar = StyleSheet.flatten(screen.getByLabelText(SEARCH_PLACEHOLDER).props.style);
       const recentre = StyleSheet.flatten(
         screen.getByLabelText('Centre on my location').props.style,
       );
       const reported = screen.getByText(/^mapPadding top:/).props.children;
       // `[^-\d]`, not `\D`: stripping the minus sign turns a compass shoved up
-      // behind the search bar into a large positive number that sails past the
-      // assertion below. Caught by setting `COMPASS_DROP` negative on purpose.
+      // behind the search bar into a large positive number that sails past
+      // every assertion below. Caught by setting the drop negative on purpose.
       const top = Number(String(reported).replace(/[^-\d]/g, ''));
+      const compassTop = top + COMPASS_LAYOUT_OFFSET.top;
 
-      expect(top).toBeGreaterThanOrEqual(recentre.top + recentre.height);
+      const barToButton = recentre.top - (bar.top + bar.height);
+      const buttonToCompass = compassTop - (recentre.top + recentre.height);
+
+      expect(buttonToCompass).toBe(barToButton);
+      // And below it, not merely evenly spaced from it — a negative gap would
+      // satisfy the equality above on both sides.
+      expect(buttonToCompass).toBeGreaterThan(0);
     });
 
     it('carries the required attribution over the search results', async () => {

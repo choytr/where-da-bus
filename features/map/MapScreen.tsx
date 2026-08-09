@@ -121,30 +121,30 @@ const CONTROL_INSET = 12;
 /** ⌖'s diameter, and the pill's height beside it. */
 const CONTROL_SIZE = 44;
 
+/** How far in from the screen's right edge ⌖ sits. The compass lines up with it. */
+const CONTROL_EDGE_INSET = 12;
+
 /**
- * **Where the compass sits. These are the two knobs — change them and nothing
- * else moves.**
+ * The gap between what we hand `mapPadding` and where MapKit actually draws the
+ * compass.
  *
- * MapKit draws the compass in the map's top-right corner, inside whatever
- * `mapPadding` reports as the view's margins. Nothing here can position it
- * directly; the only levers are how much room the top and right edges claim.
+ * **Measured, not derived, and it is the only number here that could not be.**
+ * `mapPadding` becomes the map view's `layoutMargins`, and MapKit then places
+ * the compass some distance inside them — its own size and its own inset, none
+ * of it documented and none of it readable from here. Reasoning about it is the
+ * mistake this project has now made six times.
  *
- * `COMPASS_DROP` is measured **down from the bottom of ⌖**, so the compass
- * tracks the button rather than the screen — the location banner pushes both
- * down together and they cannot collide. Zero puts the compass immediately
- * under ⌖; a negative value slides it up behind the button and then behind the
- * search bar, which is the bug this replaced. Raising it walks the compass down
- * the right-hand edge.
+ * So it was measured instead: Truman placed the compass by eye on a device on
+ * 2026-08-09, landing on a top margin of `controlsTop + 2` and a right margin
+ * of `7`. Against where he wanted it — directly under ⌖, one `CONTROL_INSET`
+ * below it, right edges aligned — those two settings say MapKit is insetting
+ * the compass 54 pt down and 5 pt in from the margins it is given.
  *
- * `COMPASS_FROM_RIGHT` pulls it in from the right edge. Zero leaves it where
- * MapKit puts it, hard against the side.
- *
- * That the compass follows `mapPadding` at all is this repo's own recorded
- * reading of `AIRMap.m`, not something measured — so **check the result on a
- * device** rather than trusting the arithmetic.
+ * **If the compass moves after an SDK bump, re-measure these two rather than
+ * recomputing anything below.** Everything else on this screen is a real
+ * position; only this pair is a correction for someone else's layout.
  */
-const COMPASS_DROP = CONTROL_INSET;
-const COMPASS_FROM_RIGHT = 0;
+export const COMPASS_LAYOUT_OFFSET = { top: 54, right: 5 } as const;
 /** Cleared only when the banner is actually up. Its height plus its gap. */
 const BANNER_ALLOWANCE = 52;
 
@@ -341,15 +341,26 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * the label not be obscured, and pinning it one detent up keeps it visible
    * in the state the map is nearly always in, for no cost.
    */
+  /**
+   * Directly under ⌖, separated by the same gap ⌖ has under the search bar.
+   *
+   * Stated as that relationship rather than as a number, so it holds when the
+   * bar's height changes, when the banner appears and pushes ⌖ down, and when
+   * the safe area differs on another phone. `controlsTop` already carries all
+   * three. The two edges of the stack read off the same `CONTROL_INSET`, which
+   * is what makes the spacing visibly even rather than accidentally so.
+   */
+  const compassTop = controlsTop + CONTROL_SIZE + CONTROL_INSET;
+
   const mapPadding = useMemo(
     () => ({
-      // Below ⌖, by `COMPASS_DROP`. See that constant for the knobs.
-      top: controlsTop + CONTROL_SIZE + COMPASS_DROP,
+      // Where the compass should *be*, less what MapKit adds on its own.
+      top: compassTop - COMPASS_LAYOUT_OFFSET.top,
       left: 0,
-      right: COMPASS_FROM_RIGHT,
+      right: CONTROL_EDGE_INSET - COMPASS_LAYOUT_OFFSET.right,
       bottom: detents[PEEK_DETENT],
     }),
-    [controlsTop, detents],
+    [compassTop, detents],
   );
 
   /**
@@ -872,10 +883,12 @@ const styles = StyleSheet.create({
   promptText: { fontSize: 13, lineHeight: 18 },
   recentre: {
     position: 'absolute',
-    right: 12,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    // The same constants the compass lines itself up against, so the two
+    // cannot drift apart by editing one of them.
+    right: CONTROL_EDGE_INSET,
+    width: CONTROL_SIZE,
+    height: CONTROL_SIZE,
+    borderRadius: CONTROL_SIZE / 2,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
