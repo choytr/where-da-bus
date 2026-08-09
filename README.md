@@ -29,7 +29,7 @@ These are basic instructions for how I've been sideloading it on my phone with a
     - Itunes &rarr; File Sharing &rarr; SideStore &rarr; drag and drop the .ipa &rarr; link and sync.
 1. Make sure LocalDevVPN is turned on, as well as developer mode.
 1. Install the .ipa with SideStore on your phone.
-1. Repeat this every 7 days or sooner as the app's certificate expires in 7 days.
+1. Resign the app (and SideStore) every 7 days. You don't need the computer to do this, only need LocalDevVPN on.
 
 ## Features
 
