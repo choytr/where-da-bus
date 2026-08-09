@@ -24,7 +24,14 @@ import {
   visibleCentre,
   type Region,
 } from './region';
-import { StopSheet, FULL_DETENT, MEDIUM_DETENT, PEEK_DETENT, visibleAbove } from './StopSheet';
+import {
+  StopSheet,
+  detentsFor,
+  FULL_DETENT,
+  MEDIUM_DETENT,
+  PEEK_DETENT,
+  visibleAbove,
+} from './StopSheet';
 import { useStopQueries, NEARBY_RADIUS_METERS } from '../../data/gtfs/db';
 import {
   addFavorite,
@@ -129,12 +136,24 @@ export type MapScreenProps = {
    * test drive it with a stub client and no provider.
    */
   client: TheBusClient;
+  /**
+   * Read from `useBottomTabBarHeight()` by the route and handed down, for the
+   * same reason `client` is: it is a React context that **throws** outside a
+   * navigator, so reading it here would break this screen's own tests. It
+   * already includes the bottom safe-area inset, which is what retires the
+   * 49 + 34 guess about what UIKit does on a Dynamic Island phone.
+   */
+  tabBarHeight: number;
 };
 
-export function MapScreen({ client }: MapScreenProps) {
+export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const detents = useMemo(
+    () => detentsFor(windowHeight, tabBarHeight),
+    [windowHeight, tabBarHeight],
+  );
   const {
     anchor,
     region,
@@ -190,11 +209,13 @@ export function MapScreen({ client }: MapScreenProps) {
       setCamera(region);
       // Against the *visible* centre, not the window's — the window's centre is
       // under the sheet on purpose, see `regionAround`.
-      if (hasDriftedFrom(anchor, region, DRIFT_FRACTION, visibleAbove(detent))) {
+      if (
+        hasDriftedFrom(anchor, region, DRIFT_FRACTION, visibleAbove(detents, detent, windowHeight))
+      ) {
         setOfferedFor(anchor);
       }
     },
-    [anchor, detent],
+    [anchor, detent, detents, windowHeight],
   );
 
   /**
@@ -232,13 +253,8 @@ export function MapScreen({ client }: MapScreenProps) {
    * in the state the map is nearly always in, for no cost.
    */
   const mapPadding = useMemo(
-    () => ({
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: Math.round(windowHeight * (1 - visibleAbove(PEEK_DETENT))),
-    }),
-    [windowHeight],
+    () => ({ top: 0, left: 0, right: 0, bottom: detents[PEEK_DETENT] }),
+    [detents],
   );
 
   /**
@@ -260,11 +276,15 @@ export function MapScreen({ client }: MapScreenProps) {
   const frameOn = useCallback(
     (center: Coords) => {
       map.current?.animateToRegion(
-        regionAround(center, NEARBY_RADIUS_METERS, visibleAbove(detent)),
+        regionAround(
+          center,
+          NEARBY_RADIUS_METERS,
+          visibleAbove(detents, detent, windowHeight),
+        ),
         CAMERA_MS,
       );
     },
-    [detent],
+    [detent, detents, windowHeight],
   );
 
   /**
@@ -279,9 +299,12 @@ export function MapScreen({ client }: MapScreenProps) {
       // which case what is on screen is `initialRegion` — so its spans are the
       // ones to preserve.
       const base = camera ?? region;
-      map.current?.animateToRegion(centredOn(base, center, visibleAbove(detent)), CAMERA_MS);
+      map.current?.animateToRegion(
+        centredOn(base, center, visibleAbove(detents, detent, windowHeight)),
+        CAMERA_MS,
+      );
     },
-    [camera, region, detent],
+    [camera, region, detent, detents, windowHeight],
   );
 
   /** Set once the camera has been put on the rider, so it is not done twice. */
@@ -402,8 +425,8 @@ export function MapScreen({ client }: MapScreenProps) {
 
   const searchThisArea = useCallback(() => {
     if (camera === null) return;
-    searchFrom(visibleCentre(camera, visibleAbove(detent)));
-  }, [camera, detent, searchFrom]);
+    searchFrom(visibleCentre(camera, visibleAbove(detents, detent, windowHeight)));
+  }, [camera, detent, detents, windowHeight, searchFrom]);
 
   /**
    * Restarted on every pin tap rather than left to run out, so tapping through
@@ -509,11 +532,11 @@ export function MapScreen({ client }: MapScreenProps) {
           // The whole window: the map is full-screen and the camera's region
           // spans all of it. `visibleHeight` is a separate question.
           height: windowHeight,
-          visibleHeight: Math.round(windowHeight * visibleAbove(detent)),
+          visibleHeight: Math.round(windowHeight * visibleAbove(detents, detent, windowHeight)),
         },
         selectedStop?.stop_id ?? null,
       ),
-    [stops, camera, region, windowWidth, windowHeight, detent, selectedStop],
+    [stops, camera, region, windowWidth, windowHeight, detent, detents, selectedStop],
   );
 
   const banner =
@@ -632,6 +655,7 @@ export function MapScreen({ client }: MapScreenProps) {
         onOpenRoute={openRoute}
         onDetentChange={setDetent}
         client={client}
+        detents={detents}
       />
     </View>
   );

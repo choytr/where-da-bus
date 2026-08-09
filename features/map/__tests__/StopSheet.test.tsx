@@ -1,5 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import { StopSheet } from '../StopSheet';
+import {
+  StopSheet,
+  detentsFor,
+  visibleAbove,
+  PEEK_DETENT,
+  MEDIUM_DETENT,
+  FULL_DETENT,
+} from '../StopSheet';
 import { TestTheme } from '../../../lib/testing/theme';
 import type { StopWithDistance } from '../../../data/gtfs/types';
 import type { ArrivalsResult, TheBusClient } from '../../../data/thebus';
@@ -39,6 +46,10 @@ const stop = (id: string, name: string, meters: number): StopWithDistance => ({
 
 const STOPS = [stop('5', 'LAGOON DR', 120), stop('6', 'KAPALULU PL', 340)];
 
+/** Truman's device: 852 pt of window under an 83 pt tab bar. */
+const WINDOW_HEIGHT = 852;
+const TAB_BAR = 83;
+
 const show = (selectedStop: StopWithDistance | null, onBack = jest.fn()) =>
   render(
     <TestTheme>
@@ -54,9 +65,49 @@ const show = (selectedStop: StopWithDistance | null, onBack = jest.fn()) =>
         onOpenRoute={jest.fn()}
         onDetentChange={jest.fn()}
         client={client}
+        detents={detentsFor(WINDOW_HEIGHT, TAB_BAR)}
       />
     </TestTheme>,
   );
+
+/**
+ * The detents are points now, not percentage strings, and the peek is the only
+ * one that is arithmetic. What these pin down is the reason for the change: the
+ * thing the peek has to clear is a tab bar measured in points, and a percentage
+ * cannot be told about it.
+ */
+describe('the detents', () => {
+  it("derives a peek tall enough for the card's header", () => {
+    const detents = detentsFor(WINDOW_HEIGHT, TAB_BAR);
+
+    // The old `'14%'` was 119 pt here, of which the tab bar took 83 and the
+    // grab handle 24 — about a dozen points of content, which is what three
+    // separately-reported complaints were all about.
+    expect(detents[PEEK_DETENT] - TAB_BAR).toBeGreaterThanOrEqual(120);
+    // Still a peek, though: it has to stay well under the detent above it.
+    expect(detents[PEEK_DETENT]).toBeLessThan(detents[MEDIUM_DETENT]);
+  });
+
+  it('derives the same fraction from points that the percentages used to give', () => {
+    const detents = detentsFor(WINDOW_HEIGHT, TAB_BAR);
+
+    // Medium and full are genuinely "about half" and "nearly all" of the
+    // screen, so those two are unchanged by the move to points — which is what
+    // keeps `region.ts` and every camera call taking the same fraction it did.
+    expect(visibleAbove(detents, MEDIUM_DETENT, WINDOW_HEIGHT)).toBeCloseTo(0.55, 3);
+    expect(visibleAbove(detents, FULL_DETENT, WINDOW_HEIGHT)).toBeCloseTo(0.1, 3);
+  });
+
+  it('a taller tab bar raises the peek by the same amount', () => {
+    const short = detentsFor(WINDOW_HEIGHT, 49);
+    const tall = detentsFor(WINDOW_HEIGHT, 83);
+
+    expect(tall[PEEK_DETENT] - short[PEEK_DETENT]).toBe(34);
+    // And only the peek. The other two are about the screen, not the chrome.
+    expect(tall[MEDIUM_DETENT]).toBe(short[MEDIUM_DETENT]);
+    expect(tall[FULL_DETENT]).toBe(short[FULL_DETENT]);
+  });
+});
 
 describe('StopSheet', () => {
   it('shows the nearby list when nothing is selected', async () => {

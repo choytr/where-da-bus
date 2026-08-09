@@ -33,10 +33,55 @@ import type { AnchoredStatus } from './useAnchoredStops';
  */
 
 /** Peek, medium, full. Medium is where a selected stop's arrivals fit. */
-export const DETENTS = ['14%', '45%', '90%'] as const;
 export const PEEK_DETENT = 0;
 export const MEDIUM_DETENT = 1;
 export const FULL_DETENT = 2;
+
+/**
+ * The sheet's own grab handle: `@gorhom/bottom-sheet`'s default handle is 10 pt
+ * of padding either side of a 4 pt indicator. Read off its stylesheet rather
+ * than guessed.
+ */
+const HANDLE_HEIGHT = 24;
+
+/**
+ * What `StopCard`'s fixed top costs before a single arrival can appear: the
+ * back/star bar, then `BoardHeader`'s name, code and age.
+ *
+ * **The peek is sized off the card, not off a `StopRow`.** A one-row peek is
+ * about a dozen points shorter, which would leave the selected-stop mode — the
+ * one that was actually complained about — still cramped. Sized off the card,
+ * the nearby list gets one full row plus a sliver of the next, which is the
+ * same "there is more below" cue the medium detent already relies on.
+ *
+ * Provisional until a device round, like the ~210 pt total it produces.
+ */
+const CARD_HEADER_HEIGHT = 104;
+
+/**
+ * The three detents, in **points**.
+ *
+ * They were percentage strings until Increment 7, and the peek was `'14%'` —
+ * ~119 pt on Truman's device, of which the tab bar took ~83 and the handle 24,
+ * leaving on the order of 16 pt for content. That one number is behind three
+ * separately-reported complaints, and a percentage cannot fix it: the thing the
+ * peek has to clear is a bar whose height is measured in points and differs per
+ * device.
+ *
+ * So the peek is arithmetic and the other two are not — medium and full are
+ * genuinely "about half" and "nearly all" of the screen, which is what a
+ * fraction says well.
+ */
+export function detentsFor(
+  windowHeight: number,
+  tabBarHeight: number,
+): readonly [number, number, number] {
+  return [
+    tabBarHeight + HANDLE_HEIGHT + CARD_HEADER_HEIGHT,
+    Math.round(windowHeight * 0.45),
+    Math.round(windowHeight * 0.9),
+  ];
+}
 
 /**
  * How much of the screen's height is *not* under the sheet at a given detent.
@@ -45,9 +90,13 @@ export const FULL_DETENT = 2;
  * camera framing and the sheet's height must not be able to disagree about how
  * much of the map a rider can see.
  */
-export function visibleAbove(detent: number): number {
-  const height = DETENTS[detent] ?? DETENTS[PEEK_DETENT];
-  return 1 - Number.parseFloat(height) / 100;
+export function visibleAbove(
+  detents: readonly number[],
+  index: number,
+  windowHeight: number,
+): number {
+  const height = detents[index] ?? detents[PEEK_DETENT] ?? 0;
+  return 1 - height / windowHeight;
 }
 
 const EMPTY_HERE = 'No stops within walking distance of here.';
@@ -79,6 +128,13 @@ export type StopSheetProps = {
    * visible enough to be worth touching.
    */
   onDetentChange: (index: number) => void;
+  /**
+   * The three snap heights, in points, from `detentsFor`. Passed in rather
+   * than computed here because the peek's height depends on the tab bar, and
+   * `useBottomTabBarHeight()` throws outside a navigator — which the sheet's
+   * own tests are.
+   */
+  detents: readonly number[];
 };
 
 export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSheet(
@@ -94,11 +150,14 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     onOpenRoute,
     onDetentChange,
     client,
+    detents,
   },
   ref,
 ) {
   const { palette } = useTheme();
-  const detents = useMemo(() => [...DETENTS], []);
+  // Copied because `snapPoints` is declared mutable, and the detents are shared
+  // with the camera framing — which must not be able to write to them.
+  const snapPoints = useMemo(() => [...detents], [detents]);
 
   const animationConfigs = useBottomSheetSpringConfigs({
     damping: 90,
@@ -147,7 +206,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
       ref={ref}
       index={0}
       enableDynamicSizing={false}
-      snapPoints={detents}
+      snapPoints={snapPoints}
       enablePanDownToClose={false}
       backgroundStyle={{ backgroundColor: palette.background }}
       handleIndicatorStyle={{ backgroundColor: palette.muted }}

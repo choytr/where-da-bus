@@ -296,11 +296,19 @@ const METRICS: Metrics = {
   insets: { top: 59, left: 0, right: 0, bottom: 34 },
 };
 
+/**
+ * What `useBottomTabBarHeight()` reports on the device the metrics above
+ * describe: 49 pt of bar over a 34 pt inset. The screen takes it as a prop
+ * rather than reading it, because that hook throws outside a navigator and this
+ * suite deliberately does not stand one up.
+ */
+const TAB_BAR_HEIGHT = 83;
+
 function show() {
   return render(
     <SafeAreaProvider initialMetrics={METRICS}>
       <TestTheme>
-        <MapScreen client={client} />
+        <MapScreen client={client} tabBarHeight={TAB_BAR_HEIGHT} />
       </TestTheme>
     </SafeAreaProvider>,
   );
@@ -504,8 +512,13 @@ describe('MapScreen', () => {
     });
     // The middle of what the rider can *see*, which at the peek detent is a
     // little north of the window's own 21.45 — the sheet covers the bottom.
+    //
+    // The peek is 211 pt now rather than 14%, and this number barely moved:
+    // `useWindowDimensions` reports React Native's Jest default of 750 × 1334
+    // here, not the 393 × 852 in `METRICS`, and 211 pt of 1334 is 15.8%. On
+    // Truman's shorter device the same 211 pt is a quarter of the screen.
     expect(mockNearby).toHaveBeenLastCalledWith({
-      lat: expect.closeTo(21.4521, 4),
+      lat: expect.closeTo(21.4524, 4),
       lon: -157.8583,
     });
     // Re-anchored to the screen centre, so the offer is answered and retires.
