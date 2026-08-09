@@ -40,6 +40,9 @@ jest.mock('react-native-maps', () => {
 
     return (
       <View>
+        {/* The zoom lockout after a pin tap is a prop on the map and nothing
+            else, so the double reports it the way it reports a camera move. */}
+        <Text>{`zoomEnabled: ${props.zoomEnabled !== false}`}</Text>
         <Pressable
           accessibilityLabel="map surface"
           onPress={() =>
@@ -347,6 +350,31 @@ describe('MapScreen', () => {
     await waitFor(() => screen.getByLabelText('pin 5'));
     // Mounted, and invisible. Unmounting it is what moved the pins.
     expect(labelOpacity('LAGOON DR')).toBe(0);
+  });
+
+  it('stops the map zooming for a moment after a pin is tapped', async () => {
+    // Tapping two pins in quick succession was being counted as a double tap,
+    // and iOS zoomed. The zooming recogniser is MKMapView's own and is not
+    // exposed, so the map is simply told not to zoom for slightly longer than
+    // the system's double-tap window.
+    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+    await show();
+    await waitFor(() => screen.getByLabelText('pin 5'));
+
+    screen.getByText('zoomEnabled: true');
+    await fireEvent.press(screen.getByLabelText('pin 5'));
+
+    screen.getByText('zoomEnabled: false');
+  });
+
+  it('gives zooming back once the double-tap window has passed', async () => {
+    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+    await show();
+    await waitFor(() => screen.getByLabelText('pin 5'));
+    await fireEvent.press(screen.getByLabelText('pin 5'));
+
+    // A pinch a second later has to work, or the cure is worse than the zoom.
+    await waitFor(() => screen.getByText('zoomEnabled: true'));
   });
 
   it('keeps the label mounted when its visibility changes', async () => {

@@ -225,12 +225,15 @@ but that'll come later. Functionality first."
   therefore comes from `MKMapView`'s internal recogniser, which nothing in this
   library reaches.
 
-  Options, none good: `zoomEnabled={false}` kills pinch as well as double-tap;
-  toggling `zoomEnabled` off for a few hundred milliseconds after a marker press
-  would swallow the offending second tap and is a plain prop change on the map
-  rather than a child mutation, so it is safe with respect to the seam above,
-  but it also deadens a deliberate pinch in that window. A real fix is native
-  and therefore leaves the Expo Go loop. **Not attempted; Truman's call.**
+  **Truman chose the blunt instrument, 2026-08-08, knowing the cost.** The map
+  is told not to zoom for `ZOOM_LOCKOUT_MS` (320 ms, slightly longer than the
+  system's double-tap window) after a pin tap, restarted on each tap so a run of
+  taps stays still throughout. It is a plain prop on the map and not a change to
+  any child, which is what makes it safe against the mounting bug above.
+
+  **The cost, recorded because it is real:** a deliberate pinch begun within
+  320 ms of tapping a pin does nothing. A proper fix is native and would leave
+  the Expo Go loop, which is a larger decision than this one.
 
 ## Tests
 

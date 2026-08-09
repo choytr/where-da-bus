@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { type LongPressEvent, type MarkerPressEvent } from 'react-native-maps';
 import type BottomSheet from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
+import { schedule } from '../../lib/schedule';
 import { useAnchoredStops } from './useAnchoredStops';
 import { StopMarker } from './StopMarker';
 import { labelledStopIds } from './labels';
@@ -100,6 +101,27 @@ const BANNER_ALLOWANCE = 52;
 /** Long enough to read as travel rather than a cut, short enough not to wait. */
 const CAMERA_MS = 350;
 
+/**
+ * How long the map refuses to zoom after a pin is tapped.
+ *
+ * Tapping two pins in quick succession zoomed the map, because iOS counted the
+ * pair as a double tap. There is no way to ask for anything narrower:
+ * `react-native-maps` attaches its own tap recognisers but its double-tap one
+ * only fires `onDoublePress` and never zooms — the zoom is `MKMapView`'s own
+ * recogniser, which the library does not expose, and `zoomTapEnabled` is
+ * documented as Google Maps only on iOS. Both read from source.
+ *
+ * So the blunt instrument: turn zooming off for slightly longer than the
+ * system's double-tap window, then turn it back on. It is a plain prop on the
+ * map — not a change to any child — which is what makes it safe against the
+ * mounting bug in `StopMarker`.
+ *
+ * **The cost is real**: a deliberate pinch begun within this window of tapping
+ * a pin does nothing. Truman chose this over living with the zoom, knowing
+ * that, and over a native fix that would leave the Expo Go loop.
+ */
+const ZOOM_LOCKOUT_MS = 320;
+
 export type MapScreenProps = {
   /**
    * Read from `useTheBus()` by the route and handed down, rather than read
@@ -144,6 +166,9 @@ export function MapScreen({ client }: MapScreenProps) {
   const [offeredFor, setOfferedFor] = useState<Coords | null>(null);
   /** A fix is in flight, so ⌖ says so rather than looking inert. */
   const [locating, setLocating] = useState(false);
+  /** False for `ZOOM_LOCKOUT_MS` after a pin tap. See that constant. */
+  const [zoomEnabled, setZoomEnabled] = useState(true);
+  const releaseZoom = useRef<(() => void) | null>(null);
   const [routesByStop, setRoutesByStop] = useState<Map<string, RouteSummary[]>>(new Map());
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
 
@@ -380,16 +405,30 @@ export function MapScreen({ client }: MapScreenProps) {
     searchFrom(visibleCentre(camera, visibleAbove(detent)));
   }, [camera, detent, searchFrom]);
 
+  /**
+   * Restarted on every pin tap rather than left to run out, so tapping through
+   * four stops in a row keeps the map still throughout rather than letting the
+   * zoom back in between the third and the fourth.
+   */
+  const holdZoomOff = useCallback(() => {
+    releaseZoom.current?.();
+    setZoomEnabled(false);
+    releaseZoom.current = schedule(() => setZoomEnabled(true), ZOOM_LOCKOUT_MS);
+  }, []);
+
+  useEffect(() => () => releaseZoom.current?.(), []);
+
   const onPinPress = useCallback(
     (stop: StopWithDistance, event: MarkerPressEvent) => {
       // Without this the press also reaches `MapView`'s `onPress`, and the tap
       // that selected a stop dismisses it again in the same gesture.
       event.stopPropagation();
+      holdZoomOff();
       select(stop);
     },
     // `select` reads the settled detent, so a stale copy here would be a copy
     // that thinks the sheet is still at peek — and would lower it.
-    [select],
+    [select, holdZoomOff],
   );
 
   const openRoute = useCallback((route: RouteSummary) => {
@@ -507,6 +546,7 @@ export function MapScreen({ client }: MapScreenProps) {
           onRegionChangeComplete={onCameraSettled}
           onMapReady={onMapReady}
           mapPadding={mapPadding}
+          zoomEnabled={zoomEnabled}
           showsUserLocation={locationStatus === 'granted'}
           showsMyLocationButton={false}
           toolbarEnabled={false}
@@ -516,7 +556,7 @@ export function MapScreen({ client }: MapScreenProps) {
               key={stop.stop_id}
               stop={stop}
               selected={selectedStop?.stop_id === stop.stop_id}
-              showLabel={labelled.has(stop.stop_id)}
+              placement={labelled.get(stop.stop_id) ?? null}
               onPress={onPinPress}
             />
           ))}

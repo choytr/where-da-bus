@@ -4,6 +4,7 @@ import { Marker, type MarkerPressEvent } from 'react-native-maps';
 import { schedule } from '../../lib/schedule';
 import { useTheme } from '../../lib/theme';
 import type { StopWithDistance } from '../../data/gtfs/types';
+import type { LabelPlacement } from './labels';
 
 /**
  * One stop on the map: a tile, and the stop's name written under it.
@@ -79,14 +80,16 @@ export type StopMarkerProps = {
   stop: StopWithDistance;
   selected: boolean;
   /**
-   * Whether this stop's name is *visible* under its tile. Decided for the whole
-   * set at once by `labelledStopIds` — labelling every stop produced an
-   * unreadable heap on a device, see that module.
+   * Which side of the tile this stop's name is drawn on, or null for a tile
+   * with no name. Decided for the whole set at once by `labelledStopIds` —
+   * labelling every stop produced an unreadable heap on a device, and labelling
+   * them all below produced names underneath other stops' tiles.
    *
-   * Visible, not present: the label is always mounted and this only changes its
-   * opacity. The reason is in the render below and it is not cosmetic.
+   * Null means *invisible*, not absent: the label is always mounted and this
+   * only changes its opacity and its offset. The reason is in the render below
+   * and it is not cosmetic.
    */
-  showLabel: boolean;
+  placement: LabelPlacement | null;
   /**
    * Takes the stop rather than closing over it, so this component can be
    * memoised: a fresh arrow per stop per render would defeat `memo` entirely,
@@ -98,7 +101,7 @@ export type StopMarkerProps = {
 export const StopMarker = memo(function StopMarker({
   stop,
   selected,
-  showLabel,
+  placement,
   onPress,
 }: StopMarkerProps) {
   const { palette } = useTheme();
@@ -109,7 +112,7 @@ export const StopMarker = memo(function StopMarker({
   useEffect(() => {
     setTracking(true);
     return schedule(() => setTracking(false), TRACK_MS);
-  }, [selected, showLabel]);
+  }, [selected, placement]);
 
   const handlePress = useCallback(
     (event: MarkerPressEvent) => onPress(stop, event),
@@ -189,9 +192,10 @@ export const StopMarker = memo(function StopMarker({
           numberOfLines={2}
           style={[
             styles.label,
+            placement === 'above' ? styles.labelAbove : styles.labelBelow,
             selected && styles.labelSelected,
             {
-              opacity: showLabel ? 1 : 0,
+              opacity: placement === null ? 0 : 1,
               color: palette.text,
               // A halo rather than a plate. Map tiles run from pale sand to
               // dark green under the same label, and a shadow in the screen's
@@ -242,7 +246,6 @@ const styles = StyleSheet.create({
   },
   label: {
     position: 'absolute',
-    top: SLOT + GAP,
     // Centred on the tile by hanging equally off both sides.
     left: (SLOT - WIDTH) / 2,
     width: WIDTH,
@@ -254,6 +257,10 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,
   },
+  labelBelow: { top: SLOT + GAP },
+  // Same gap, measured off the other edge. `labels.ts` places a name here when
+  // there is no room beneath, which is what both reference maps do in a crowd.
+  labelAbove: { top: -(LABEL_HEIGHT + GAP) },
   labelSelected: { fontWeight: '800' },
 
   bus: { width: 14, height: 11, alignItems: 'center', justifyContent: 'space-between' },

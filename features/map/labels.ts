@@ -12,16 +12,27 @@ import type { StopWithDistance } from '../../data/gtfs/types';
  * Google thing, because it needs no clustering and never moves a pin away from
  * the stop it marks.
  *
- * Two rules, in order:
+ * The rules, in order:
  *
  * 1. **Zoomed far enough out, nothing is labelled but the selection.** Past
  *    `MAX_SPAN_FOR_LABELS` the tiles are already touching and no amount of
  *    culling produces a readable map.
  * 2. **Otherwise, greedily, in priority order** — the selected stop first, then
- *    nearest first — a stop keeps its label if the label's box clears every box
- *    already accepted. Greedy because the alternative is an optimisation
- *    problem to place text on a map, and nearest-first is the order a rider
- *    cares about anyway.
+ *    nearest first — a stop keeps its label if the box clears everything
+ *    claimed so far. Greedy because the alternative is an optimisation problem
+ *    to place text on a map, and nearest-first is the order a rider cares about
+ *    anyway.
+ * 3. **Every tile is an obstacle, not just every label.** The first version
+ *    only checked labels against other labels, and `IMG_4527` is the result:
+ *    names running underneath other stops' icons, half-legible. A tile is
+ *    opaque and cannot move, so it is claimed up front — all of them, including
+ *    stops that will never get a label.
+ * 4. **A label may sit above its tile if it cannot sit below.** Doubles the
+ *    chances of placing one in a crowd, which is what both reference apps do,
+ *    and costs one style branch in `StopMarker`.
+ * 5. **At most `MAX_LABELS`.** Collision rules alone still allowed a dozen
+ *    names on a busy screen; Truman's word was "dense". A cap is a blunter
+ *    instrument than the geometry and it is the one that makes the map calm.
  *
  * It is a pure function of the stop set, the camera and the viewport, so it is
  * tested as arithmetic rather than through a map that Jest cannot render. It is
@@ -40,10 +51,21 @@ const MAX_SPAN_FOR_LABELS = 0.022;
 /** The label's box, matching `StopMarker`'s own geometry. */
 const LABEL_WIDTH = 124;
 const LABEL_HEIGHT = 28;
-/** Vertical distance from the stop's coordinate down to the label's top edge. */
+/** The tile's box, likewise. Square, centred on the stop's coordinate. */
+const TILE_SIZE = 34;
+/** Distance from the coordinate to the near edge of the label, either way up. */
 const LABEL_OFFSET = 20;
-/** Breathing room, so two accepted labels are not merely not-overlapping. */
+/** Breathing room, so two accepted boxes are not merely not-overlapping. */
 const MARGIN = 4;
+
+/**
+ * How many names the map will carry at once, however much room there is.
+ *
+ * The geometry alone still produced a dozen on a busy screen — legible
+ * individually, and collectively the thing Truman called dense. Apple's own map
+ * of the same neighbourhood carries about this many.
+ */
+const MAX_LABELS = 6;
 
 type Box = { left: number; right: number; top: number; bottom: number };
 
@@ -53,9 +75,12 @@ function overlaps(a: Box, b: Box): boolean {
 
 export type Viewport = { width: number; height: number };
 
+/** Which side of its tile a label sits on. */
+export type LabelPlacement = 'below' | 'above';
+
 /**
- * The ids whose labels should be drawn. Everything not in the set renders as a
- * tile alone.
+ * Where each stop's label goes, keyed by stop id. A stop absent from the map
+ * renders as a tile alone.
  *
  * `region` is the camera as last settled, or null before the map has reported
  * one — in which case only the selection is labelled, since there is no way to
@@ -66,45 +91,81 @@ export function labelledStopIds(
   region: Region | null,
   viewport: Viewport,
   selectedId: string | null,
-): Set<string> {
-  const kept = new Set<string>();
-  if (selectedId !== null) kept.add(selectedId);
+): Map<string, LabelPlacement> {
+  const placement = new Map<string, LabelPlacement>();
+  // The selected stop is labelled first and unconditionally: a rider who just
+  // tapped a pin must see which one they tapped, even in a crowd.
+  if (selectedId !== null) placement.set(selectedId, 'below');
 
-  if (region === null || viewport.width <= 0 || viewport.height <= 0) return kept;
-  if (region.longitudeDelta > MAX_SPAN_FOR_LABELS) return kept;
+  if (region === null || viewport.width <= 0 || viewport.height <= 0) return placement;
+  if (region.longitudeDelta > MAX_SPAN_FOR_LABELS) return placement;
 
   const pointsPerDegreeX = viewport.width / region.longitudeDelta;
   const pointsPerDegreeY = viewport.height / region.latitudeDelta;
 
-  const boxFor = (stop: StopWithDistance): Box => {
-    // Screen position of the stop itself. Latitude grows upward and y grows
-    // downward, hence the flip.
-    const x = viewport.width / 2 + (stop.lon - region.longitude) * pointsPerDegreeX;
-    const y = viewport.height / 2 - (stop.lat - region.latitude) * pointsPerDegreeY;
+  // Screen position of the stop itself. Latitude grows upward and y grows
+  // downward, hence the flip.
+  const pointFor = (stop: StopWithDistance) => ({
+    x: viewport.width / 2 + (stop.lon - region.longitude) * pointsPerDegreeX,
+    y: viewport.height / 2 - (stop.lat - region.latitude) * pointsPerDegreeY,
+  });
 
+  const tileBox = (stop: StopWithDistance): Box => {
+    const { x, y } = pointFor(stop);
     return {
-      left: x - LABEL_WIDTH / 2 - MARGIN,
-      right: x + LABEL_WIDTH / 2 + MARGIN,
-      top: y + LABEL_OFFSET - MARGIN,
-      bottom: y + LABEL_OFFSET + LABEL_HEIGHT + MARGIN,
+      left: x - TILE_SIZE / 2,
+      right: x + TILE_SIZE / 2,
+      top: y - TILE_SIZE / 2,
+      bottom: y + TILE_SIZE / 2,
     };
   };
 
-  // The selected stop is placed first and unconditionally: a rider who just
-  // tapped a pin must see which one they tapped, even in a crowd.
-  const ordered = [...stops].sort((a, b) => {
-    if (a.stop_id === selectedId) return -1;
-    if (b.stop_id === selectedId) return 1;
-    return a.meters - b.meters;
+  const labelBox = (stop: StopWithDistance, side: LabelPlacement): Box => {
+    const { x, y } = pointFor(stop);
+    const top = side === 'below' ? y + LABEL_OFFSET : y - LABEL_OFFSET - LABEL_HEIGHT;
+    return {
+      left: x - LABEL_WIDTH / 2 - MARGIN,
+      right: x + LABEL_WIDTH / 2 + MARGIN,
+      top: top - MARGIN,
+      bottom: top + LABEL_HEIGHT + MARGIN,
+    };
+  };
+
+  // Each stop paired with its own tile up front, so the loop below never has to
+  // look one up and never has to reason about a missing one.
+  const candidates = stops.map((stop) => ({ stop, tile: tileBox(stop) }));
+
+  const ordered = [...candidates].sort((a, b) => {
+    if (a.stop.stop_id === selectedId) return -1;
+    if (b.stop.stop_id === selectedId) return 1;
+    return a.stop.meters - b.stop.meters;
   });
 
-  const placed: Box[] = [];
-  for (const stop of ordered) {
-    const box = boxFor(stop);
-    if (placed.some((other) => overlaps(box, other))) continue;
-    placed.push(box);
-    kept.add(stop.stop_id);
+  // Tiles are claimed before any label is placed. They are opaque, they cannot
+  // move, and every one of them is drawn whether or not it is named.
+  const claimed: Box[] = candidates.map((candidate) => candidate.tile);
+
+  // A label always overlaps its *own* tile — it is drawn hard against it — so
+  // that one box is excluded by identity rather than by geometry.
+  const free = (box: Box, own: Box) =>
+    !claimed.some((other) => other !== own && overlaps(box, other));
+
+  for (const { stop, tile } of ordered) {
+    const forced = placement.get(stop.stop_id);
+    if (forced === undefined && placement.size >= MAX_LABELS) continue;
+
+    const side = (['below', 'above'] as const).find((candidate) =>
+      free(labelBox(stop, candidate), tile),
+    );
+
+    // The selection keeps its label whatever collides, but still takes the
+    // better side, and still reserves the space so later labels avoid it.
+    const chosen = side ?? forced;
+    if (chosen === undefined) continue;
+
+    placement.set(stop.stop_id, chosen);
+    claimed.push(labelBox(stop, chosen));
   }
 
-  return kept;
+  return placement;
 }
