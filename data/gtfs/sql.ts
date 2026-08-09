@@ -153,6 +153,81 @@ export const ROUTE_BY_ID = `
 `;
 
 /**
+ * Routes matching what a rider typed. Parameters:
+ * (anywhere, anywhere, exact, prefix, limit), all but the last from
+ * `toLikeQuery` — never bind a raw user string to a `LIKE` here.
+ *
+ * **It never matches `route_id`, and that is the whole point.** The feed's ids
+ * are not the numbers on the buses: `route_id: '13'` is route **14**, and
+ * `route_id: '40'` is route **C**, the CountryExpress to Makaha. Matching on
+ * the id would answer "40" with a route to the far side of the island while
+ * route 40 sat further down the list. Navigation still uses `route_id`,
+ * because that is what the other queries key on; only the *matching* is on the
+ * names a rider can see.
+ *
+ * **118 routes, so a `LIKE` scan.** No FTS table, which means no
+ * `SCHEMA_VERSION` bump and no republished generation — this was the one place
+ * the increment could have grown a data-migration tail. A full scan of 118
+ * rows is not worth an index, let alone a second search engine.
+ *
+ * Exact `short_name` matches sort first, then prefixes, then anything else;
+ * within a rank, numeric routes in numeric order, as `routesForStopsSql`
+ * already does. So `40` leads with route 40 rather than with 401.
+ */
+export const SEARCH_ROUTES = `
+  SELECT route_id, short_name, long_name
+  FROM routes
+  WHERE short_name LIKE ? ESCAPE '\\' OR long_name LIKE ? ESCAPE '\\'
+  ORDER BY
+    CASE
+      WHEN short_name = ? COLLATE NOCASE THEN 0
+      WHEN short_name LIKE ? ESCAPE '\\' THEN 1
+      ELSE 2
+    END,
+    CASE WHEN CAST(short_name AS INTEGER) > 0 THEN 0 ELSE 1 END,
+    CAST(short_name AS INTEGER),
+    short_name
+  LIMIT ?
+`;
+
+/** The escape character `SEARCH_ROUTES` declares. */
+const LIKE_ESCAPE = '\\';
+
+/**
+ * The three shapes `SEARCH_ROUTES` binds, from one typed string.
+ *
+ * A wrapper type for the same reason as `FtsQuery`: `null` is a legal SQLite
+ * bind parameter, so a bare `string | null` could be handed to the query
+ * without a null check — and here it would silently match nothing rather than
+ * throwing, which is worse.
+ */
+export type LikeQuery = {
+  /** Substring, for the `WHERE`. Wildcards in the input are escaped. */
+  readonly anywhere: string;
+  /** Prefix, for the middle rank of the `ORDER BY`. Escaped likewise. */
+  readonly prefix: string;
+  /**
+   * The typed text itself, **not** escaped: it is compared with `=`, where a
+   * `%` is a percent sign and a backslash is a backslash.
+   */
+  readonly exact: string;
+};
+
+/**
+ * Patterns for `SEARCH_ROUTES`, or null when there is nothing to search for.
+ *
+ * `%` and `_` are escaped, so a rider who types one gets a route whose name
+ * contains that character rather than every route in the feed. `LIKE` is
+ * already case-insensitive for ASCII, which is all a route name contains.
+ */
+export function toLikeQuery(input: string): LikeQuery | null {
+  const trimmed = input.trim();
+  if (trimmed === '') return null;
+  const escaped = trimmed.replace(/[\\%_]/g, (character) => `${LIKE_ESCAPE}${character}`);
+  return { anywhere: `%${escaped}%`, prefix: `${escaped}%`, exact: trimmed };
+}
+
+/**
  * Every stop a route serves, in the order it serves them. Parameters: (route_id).
  *
  * `direction_id` and `seq` come back so the caller can split the run into its

@@ -7,10 +7,12 @@ import {
   ROUTE_STOPS,
   SEARCH_BY_CODE,
   SEARCH_BY_NAME,
+  SEARCH_ROUTES,
   boundingBox,
   routesForStopsSql,
   stopsByIdsSql,
   toFtsQuery,
+  toLikeQuery,
 } from './sql';
 import { metersBetween, type Coords } from '../../lib/distance';
 import type { RouteSummary, Stop, StopWithDistance } from './types';
@@ -218,6 +220,30 @@ export function useStopQueries() {
     return isFeedEndDateRow(row) ? row.feed_end_date : null;
   }, [db]);
 
+  /**
+   * Routes matching what a rider typed, by the number on the bus or by the
+   * route's name — **never** by `route_id`, which lies. See `SEARCH_ROUTES`.
+   *
+   * An unsearchable query (empty, or whitespace) reads as "no results" rather
+   * than as an error, the same way `searchByName` treats one.
+   */
+  const searchRoutes = useCallback(
+    async (query: string): Promise<RouteSummary[]> => {
+      const like = toLikeQuery(query);
+      if (like === null) return [];
+      const rows = await db.getAllAsync(
+        SEARCH_ROUTES,
+        like.anywhere,
+        like.anywhere,
+        like.exact,
+        like.prefix,
+        SEARCH_LIMIT,
+      );
+      return rows.filter(isRouteSummary);
+    },
+    [db],
+  );
+
   /** One route by id, or null when the bundled feed does not carry it. */
   const routeById = useCallback(
     async (routeId: string): Promise<RouteSummary | null> => {
@@ -263,6 +289,7 @@ export function useStopQueries() {
     nearby,
     searchByName,
     searchByCode,
+    searchRoutes,
     routesForStops,
     stopsByIds,
     feedEndDate,
