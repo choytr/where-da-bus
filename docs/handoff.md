@@ -24,10 +24,15 @@ increments without anyone noticing.
 
 ## Start here
 
-**Increment 8 is built and both device rounds are done.** Route mode, the red
-route line and the live buses have all been seen working on an `.ipa`. The next
-action is **a review pass over the whole diff**, then the merge to `main`, which
-needs Truman's explicit permission.
+**Increment 8 is built and verified on a device. Nothing is broken and nothing
+is owed from the device rounds.** Route mode, the red route line, the live
+buses and the sheet's scrolling have all been seen working on an `.ipa` —
+Truman, 2026-08-09: *"Everything looks good."*
+
+**The next action is a short round of small changes Truman has in mind, then a
+review pass over the whole diff, then the merge to `main`** — which needs his
+explicit permission. Ask him what the small changes are; they were not specified
+before the context was cleared.
 
 `docs/backlog.md` takes what is not worth fixing now — **where `adherence` is
 shown**, **stop pins covering the route line**, and **bus labels being
@@ -343,6 +348,15 @@ AppID) and **how any of it looks** (no simulator, no device on this side).
   those before suspecting the app.
 - The API PDFs need `node scripts/pdf-text.mjs <file>`; `Read` cannot open them.
   It breaks lines mid-word, so pipe through `tr -d '\n'` to grep for a phrase.
+- **A stale `.env` sits in the working tree** carrying the retired
+  `EXPO_PUBLIC_THEBUS_APP_ID`, so every `npx expo` command prints
+  `env: export EXPO_PUBLIC_THEBUS_APP_ID`. Increment 4 removed everything that
+  read it and no build injects it. Harmless noise, not a leak — the file is
+  gitignored and CI has no such value.
+- **`npx expo prebuild` rewrites `package.json`**, adding `ios` and `android`
+  scripts. It was run once locally to read `ios/Podfile.properties.json` while
+  chasing the scroll bug; `/ios` was deleted and `package.json` reverted
+  afterwards. If those scripts reappear in a diff, that is where they came from.
 - **The first scheduled `gtfs-data.yml` run is Monday 2026-08-10, 12:00 UTC.**
   Nothing has yet run unattended. Check with
   `gh run list --workflow gtfs-data.yml`. **A run that exits `changed=false` is
