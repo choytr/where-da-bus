@@ -292,15 +292,19 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * its centre moves. `frameOn` rebuilds the window from the query radius,
    * which is right for opening the map on somewhere and wrong for going to a
    * point on a street a rider has already zoomed into.
+   *
+   * `against` is the detent to leave room for, and it defaults to the one the
+   * sheet is settled on. Selection overrides it, because selection *raises*
+   * the sheet — see `select`.
    */
   const panTo = useCallback(
-    (center: Coords) => {
+    (center: Coords, against: number = detent) => {
       // `camera` is null only before the map has ever reported a region, in
       // which case what is on screen is `initialRegion` — so its spans are the
       // ones to preserve.
       const base = camera ?? region;
       map.current?.animateToRegion(
-        centredOn(base, center, visibleAbove(detents, detent, windowHeight)),
+        centredOn(base, center, visibleAbove(detents, against, windowHeight)),
         CAMERA_MS,
       );
     },
@@ -355,13 +359,34 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * takes back height the rider asked for: on a device, selecting a row while
    * reading the list at full height dropped the sheet to half and moved the
    * row out from under the thumb that had just touched it.
+   *
+   * **`pan` is the one thing the two callers disagree about.** A row names a
+   * stop the rider cannot see — the map behind the sheet is showing whatever it
+   * was showing — so the map goes to it. A pin *is* the thing on the map, and
+   * travelling to something already under the thumb reads as the map lurching
+   * for no reason. Truman's call, made against the argument that a pin tapped
+   * low on screen ends up behind the risen sheet; that cost is real and is to
+   * be looked for on the device round rather than pre-empted here.
+   *
+   * One function either way, so the two paths cannot drift apart in *what*
+   * they select.
    */
   const select = useCallback(
-    (stop: StopWithDistance) => {
+    (stop: StopWithDistance, { pan }: { pan: boolean }) => {
       setSelectedStop(stop);
       if (detent < MEDIUM_DETENT) sheet.current?.snapToIndex(MEDIUM_DETENT);
+      // Against the detent the sheet is *heading to*, not the one it is
+      // leaving. Selection raises the sheet, so framing against the peek would
+      // put the stop under where the sheet is about to be.
+      if (pan) panTo(stop, MEDIUM_DETENT);
     },
-    [detent],
+    [detent, panTo],
+  );
+
+  /** The sheet's rows. The map travels; see `select`. */
+  const selectFromList = useCallback(
+    (stop: StopWithDistance) => select(stop, { pan: true }),
+    [select],
   );
 
   /** Back out of the card to the nearby list. The sheet keeps its height. */
@@ -447,7 +472,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
       // that selected a stop dismisses it again in the same gesture.
       event.stopPropagation();
       holdZoomOff();
-      select(stop);
+      select(stop, { pan: false });
     },
     // `select` reads the settled detent, so a stale copy here would be a copy
     // that thinks the sheet is still at peek — and would lower it.
@@ -649,7 +674,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         routesByStop={routesByStop}
         favoriteIds={favoriteIds}
         selectedStop={selectedStop}
-        onSelect={select}
+        onSelect={selectFromList}
         onBack={clearSelection}
         onToggleFavorite={toggleFavorite}
         onOpenRoute={openRoute}

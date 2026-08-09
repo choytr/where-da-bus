@@ -621,7 +621,12 @@ describe('MapScreen', () => {
     });
   });
 
-  it('does not move the camera when a stop is selected', async () => {
+  it('does not move the camera when a pin is tapped', async () => {
+    // A pin *is* the thing on the map, already under the thumb, so travelling
+    // to it reads as the map lurching for no reason. Truman's call on
+    // 2026-08-09, made against the argument that a pin tapped low on screen
+    // ends up behind the risen sheet — a cost to look for on a device rather
+    // than to pre-empt with logic. A row tap is the opposite case; see below.
     mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
     await show();
     await waitFor(() => {
@@ -799,6 +804,51 @@ describe('MapScreen', () => {
       expect(screen.getAllByText('KAPALULU PL').length).toBeGreaterThan(0);
       expect(labelOpacity('LAGOON DR')).toBe(0);
       expect(labelOpacity('KAPALULU PL')).toBe(0);
+    });
+
+    it('centres the map on a stop chosen from the list', async () => {
+      // A row names a stop the rider cannot see: the map behind the sheet is
+      // showing whatever it was showing before. So the map goes to it — which
+      // is the only thing that makes the list and the map one view rather than
+      // two.
+      await show();
+      await waitFor(() => {
+        screen.getByLabelText('pin 5');
+      });
+
+      await fireEvent.press(screen.getByLabelText('Arrivals at LAGOON DR'));
+
+      await waitFor(() => {
+        expect(mockCameraMoves).toHaveLength(1);
+      });
+      expect(mockCameraMoves[0]).toMatchObject({ longitude: -157.85 });
+    });
+
+    it('centres against the medium detent, not the one the sheet is leaving', async () => {
+      // Selection *raises* the sheet, so framing against the peek it is leaving
+      // would put the stop under where the sheet is about to be. Distinguished
+      // by the southward shift `centredOn` applies: a quarter of the window at
+      // medium, a sixth of it at the peek.
+      await show();
+      await waitFor(() => {
+        screen.getByLabelText('pin 5');
+      });
+      // A known camera, so the arithmetic below has something to be about.
+      await fireEvent.press(screen.getByLabelText('zoom in close'));
+
+      await fireEvent.press(screen.getByLabelText('Arrivals at LAGOON DR'));
+
+      await waitFor(() => {
+        expect(mockCameraMoves).toHaveLength(1);
+      });
+      expect(mockCameraMoves[0]).toMatchObject({
+        // Stop 5 sits at 21.305. Against the medium detent that is pushed
+        // 0.0009° south; against the peek it would only be 0.0003°.
+        latitude: expect.closeTo(21.3041, 4),
+        longitude: -157.85,
+        // Travelled, not reframed: the rider's zoom is untouched.
+        latitudeDelta: 0.004,
+      });
     });
 
     it('raises the sheet to medium when a stop is selected from peek', async () => {
