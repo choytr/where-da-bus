@@ -14,7 +14,7 @@ import type { Stop } from '../../data/gtfs/types';
 import type { TheBusClient } from '../../data/thebus';
 import { ArrivalRow } from './ArrivalRow';
 import { BoardHeader } from './BoardHeader';
-import { Attribution } from '../../lib/Attribution';
+import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
 import { NOTICES, describe, useArrivalBoard } from './board';
 import { useTheme } from '../../lib/theme';
 
@@ -96,7 +96,7 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
         // its content instead of to the screen, its frame ends up equal to its
         // content, and the board stops scrolling. See `StopCard`.
         style={[styles.fill, { backgroundColor: palette.background }]}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{ paddingBottom: LEGEND_GAP }}
         sections={sections}
         keyExtractor={(arrival) => arrival.id}
         stickySectionHeadersEnabled={false}

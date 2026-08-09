@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useStopQueries, type RouteDirection } from '../../data/gtfs/db';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
-import { Attribution } from '../../lib/Attribution';
+import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
 import { useTheme } from '../../lib/theme';
 
 /**
@@ -87,7 +87,7 @@ export function RouteScreen({ routeId }: { routeId: string }) {
         // Load-bearing; see `StopCard`. A long route is exactly the list that
         // needs to scroll and exactly the one that would not.
         style={[styles.fill, { backgroundColor: palette.background }]}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{ paddingBottom: LEGEND_GAP }}
         sections={sections}
         keyExtractor={(stop, index) => `${stop.stop_id}-${index}`}
         stickySectionHeadersEnabled={false}

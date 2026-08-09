@@ -120,6 +120,31 @@ const DRIFT_FRACTION = 0.25;
 const CONTROL_INSET = 12;
 /** ⌖'s diameter, and the pill's height beside it. */
 const CONTROL_SIZE = 44;
+
+/**
+ * **Where the compass sits. These are the two knobs — change them and nothing
+ * else moves.**
+ *
+ * MapKit draws the compass in the map's top-right corner, inside whatever
+ * `mapPadding` reports as the view's margins. Nothing here can position it
+ * directly; the only levers are how much room the top and right edges claim.
+ *
+ * `COMPASS_DROP` is measured **down from the bottom of ⌖**, so the compass
+ * tracks the button rather than the screen — the location banner pushes both
+ * down together and they cannot collide. Zero puts the compass immediately
+ * under ⌖; a negative value slides it up behind the button and then behind the
+ * search bar, which is the bug this replaced. Raising it walks the compass down
+ * the right-hand edge.
+ *
+ * `COMPASS_FROM_RIGHT` pulls it in from the right edge. Zero leaves it where
+ * MapKit puts it, hard against the side.
+ *
+ * That the compass follows `mapPadding` at all is this repo's own recorded
+ * reading of `AIRMap.m`, not something measured — so **check the result on a
+ * device** rather than trusting the arithmetic.
+ */
+const COMPASS_DROP = CONTROL_INSET;
+const COMPASS_FROM_RIGHT = 0;
 /** Cleared only when the banner is actually up. Its height plus its gap. */
 const BANNER_ALLOWANCE = 52;
 
@@ -318,9 +343,10 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    */
   const mapPadding = useMemo(
     () => ({
-      top: controlsTop + CONTROL_SIZE + CONTROL_INSET,
+      // Below ⌖, by `COMPASS_DROP`. See that constant for the knobs.
+      top: controlsTop + CONTROL_SIZE + COMPASS_DROP,
       left: 0,
-      right: 0,
+      right: COMPASS_FROM_RIGHT,
       bottom: detents[PEEK_DETENT],
     }),
     [controlsTop, detents],

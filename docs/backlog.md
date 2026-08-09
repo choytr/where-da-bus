@@ -114,6 +114,24 @@ wrong, correct the entry rather than only the code.
 
 ### Map, from the device rounds
 
+- **A bare number in Address mode geocodes to something unrelated, and that is
+  accepted.** Truman typed `2469`; `findOnOahu` asked `CLGeocoder` for
+  `2469, HI` and got *2339 Kamehameha Hwy E, Honolulu* back as a single
+  confident result. Reviewed on a device 2026-08-09 and **left as it is** —
+  "let's accept that behavior and leave it for now."
+
+  It is the geocoder's matching, and nothing here can tune it: `geocodeAsync`
+  takes a string and returns coordinates, with no region, no ranking and no
+  confidence. The design already contains the damage — the *"Did you mean…?"*
+  confirmation showed the wrong address before the map moved, and the nudge
+  underneath was already offering *"1 stop matches — switch to Stops"*.
+
+  **Do not "fix" this by rejecting digits-only input.** Postal codes are digits
+  and they geocode correctly; the rule would break the working case to catch the
+  ambiguous one. The two real options, if it is ever worth it, are a different
+  geocoder (a second key and a second terms-of-use) or ranking the confirmation
+  down when the returned street number differs from the typed one.
+
 - **The "no location permission" banner flashes on launch before the fix
   arrives.** Observed by Truman in Expo Go, 2026-08-09, and triaged by him as
   minor: "the location stuff works. It's not ideal, but it works."

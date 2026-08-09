@@ -1345,11 +1345,24 @@ describe('MapScreen', () => {
       // **A proxy.** Jest cannot see MapKit place anything; what is asserted is
       // that the screen asks for enough room. Confirm the compass itself on a
       // device.
+      //
+      // Asserted as the *invariant*, not as the number: `COMPASS_DROP` is a
+      // knob for tuning on a device, and a test pinned to its current value
+      // would break the moment it is turned. What must hold at any setting is
+      // that the compass clears the button — and clearing ⌖ clears the bar
+      // above it too, since ⌖ already does.
       await show();
 
-      const padding = screen.getByText(/^mapPadding top:/).props.children;
-      // insets.top 59 + 12, the bar's 44 + 12, then ⌖'s 44 + 12.
-      expect(padding).toBe('mapPadding top: 183');
+      const recentre = StyleSheet.flatten(
+        screen.getByLabelText('Centre on my location').props.style,
+      );
+      const reported = screen.getByText(/^mapPadding top:/).props.children;
+      // `[^-\d]`, not `\D`: stripping the minus sign turns a compass shoved up
+      // behind the search bar into a large positive number that sails past the
+      // assertion below. Caught by setting `COMPASS_DROP` negative on purpose.
+      const top = Number(String(reported).replace(/[^-\d]/g, ''));
+
+      expect(top).toBeGreaterThanOrEqual(recentre.top + recentre.height);
     });
 
     it('carries the required attribution over the search results', async () => {

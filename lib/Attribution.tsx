@@ -28,6 +28,21 @@ import { ATTRIBUTION } from './legal';
  * The map's sheet does not render one at its collapsed detent, where it shows
  * no Data and therefore owes no legend. See `StopSheet`.
  */
+/**
+ * How much air the content *above* a pinned legend wants under its last row.
+ *
+ * One number, here, for the same reason the wording and the size are here: four
+ * screens each picking their own is four chances to drift. It is deliberately
+ * small — the block below already opens with 16 pt of its own padding, and the
+ * two are additive.
+ *
+ * It replaced `insets.bottom + 24` on the screens that pin the legend at the
+ * foot of the display. Once the legend takes the safe-area inset itself, a list
+ * that also reserves it is reserving it twice, and the result was a band of
+ * dead space between the last row and the legend — reported 2026-08-09.
+ */
+export const LEGEND_GAP = 8;
+
 export function Attribution() {
   const { palette } = useTheme();
 

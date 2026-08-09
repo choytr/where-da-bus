@@ -5,6 +5,7 @@ import { BoardHeader } from '../arrivals/BoardHeader';
 import { NOTICES, describe, useArrivalBoard } from '../arrivals/board';
 import { PEEK_BAND } from './peek';
 import { formatDistance } from '../stops/StopRow';
+import { LEGEND_GAP } from '../../lib/Attribution';
 import { useTheme } from '../../lib/theme';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
 import type { TheBusClient } from '../../data/thebus';
@@ -213,7 +214,7 @@ const styles = StyleSheet.create({
   content: {
     // Breathing room under the last arrival. The tab bar is cleared by the
     // legend pinned below this card by `StopSheet`, not by this list.
-    paddingBottom: 32,
+    paddingBottom: LEGEND_GAP,
   },
   bar: {
     height: PEEK_BAND,

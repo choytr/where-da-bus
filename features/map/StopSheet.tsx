@@ -10,7 +10,7 @@ import { StopRow } from '../stops/StopRow';
 import { StopCard } from './StopCard';
 import { PEEK_BAND, PEEK_ROW } from './peek';
 import { useTheme } from '../../lib/theme';
-import { Attribution } from '../../lib/Attribution';
+import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
 import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
 import type { TheBusClient } from '../../data/thebus';
 import type { AnchoredStatus } from './useAnchoredStops';
@@ -49,7 +49,7 @@ const HANDLE_HEIGHT = 24;
 const TOP_GAP = 16;
 
 /** Tuned by eye on a device. Named so the next nudge is a one-line change. */
-const MEDIUM_FRACTION = 0.505;
+const MEDIUM_FRACTION = 0.4985;
 
 const NEARBY_HEADING = 'Nearby Stops';
 
@@ -357,7 +357,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
 });
 
 /** Breathing room under the last row. The tab bar is the legend's to clear. */
-const CONTENT_INSET = 32;
+const CONTENT_INSET = LEGEND_GAP;
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
