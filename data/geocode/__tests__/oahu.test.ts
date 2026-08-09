@@ -7,6 +7,7 @@ import { biasedQuery, findOnOahu, isOnOahu } from '../oahu';
  */
 
 const UH_MANOA = { latitude: 21.2982538, longitude: -157.818837 };
+const ALA_MOANA = { latitude: 21.2989524, longitude: -157.8526839 };
 const PENN_STATE = { latitude: 40.811916, longitude: -77.8517852 };
 const SACRAMENTO = { latitude: 38.5696284, longitude: -121.5040514 };
 
@@ -94,6 +95,60 @@ describe('findOnOahu', () => {
     const geocode = jest.fn().mockRejectedValue(new Error('offline'));
 
     await expect(findOnOahu('bishop st', geocode)).resolves.toEqual({ kind: 'failed' });
+  });
+
+  it('asks again without the steer when the steer found nothing', async () => {
+    // Measured on a device 2026-08-08: "ala moana beach" resolves correctly and
+    // "ala moana beach, HI" returns nothing at all. A hint that turns a right
+    // answer into no answer is worse than no hint.
+    const geocode = jest
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([ALA_MOANA]);
+
+    await expect(findOnOahu('ala moana beach', geocode)).resolves.toEqual({
+      kind: 'found',
+      coords: { lat: ALA_MOANA.latitude, lon: ALA_MOANA.longitude },
+    });
+    expect(geocode).toHaveBeenNthCalledWith(1, 'ala moana beach, HI');
+    expect(geocode).toHaveBeenNthCalledWith(2, 'ala moana beach');
+  });
+
+  it('asks again when the steer found somewhere off the island', async () => {
+    const geocode = jest
+      .fn()
+      .mockResolvedValueOnce([PENN_STATE])
+      .mockResolvedValueOnce([ALA_MOANA]);
+
+    await expect(findOnOahu('ala moana beach', geocode)).resolves.toEqual({
+      kind: 'found',
+      coords: { lat: ALA_MOANA.latitude, lon: ALA_MOANA.longitude },
+    });
+  });
+
+  it('does not ask twice when the steer already succeeded', async () => {
+    // One geocode per user action is what Apple asks for. The second attempt
+    // exists for the failures, and must not become the normal path.
+    const geocode = answering(UH_MANOA);
+
+    await findOnOahu('2500 campus road', geocode);
+
+    expect(geocode).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not ask twice when the text already named the place', async () => {
+    // Both attempts would be the same string, so the second is pure waste.
+    const geocode = answering();
+
+    await findOnOahu('bishop st, honolulu', geocode);
+
+    expect(geocode).toHaveBeenCalledTimes(1);
+  });
+
+  it('still reports off-island when both attempts land on the mainland', async () => {
+    const geocode = jest.fn().mockResolvedValue([PENN_STATE]);
+
+    await expect(findOnOahu('university', geocode)).resolves.toEqual({ kind: 'offIsland' });
   });
 
   it('asks nothing at all when nothing was typed', async () => {

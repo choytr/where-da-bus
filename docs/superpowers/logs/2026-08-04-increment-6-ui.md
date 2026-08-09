@@ -682,3 +682,64 @@ native, and leaving the Expo Go loop is a larger decision than this one.
   above and below. Both reference apps do it, it roughly doubles the placements
   available again, and it is a change to one pure function plus one style. His
   words: "that can be later."
+
+---
+
+## The geocoder probe, answered in full — 2026-08-08
+
+Six queries run on the device, `IMG_4530`–`IMG_4534` and earlier. **The probe
+has now done its whole job and can be deleted at merge.**
+
+| Typed | Raw reply | Where | With `, HI` | Verdict |
+|---|---|---|---|---|
+| `u` | 38.5696, −121.5041 | Sacramento, CA | — | off island |
+| `university` | 40.8119, −77.8518 | State College, PA | 21.29407, −157.82134 | **on Oahu** |
+| `2500 campus road` | 21.2983, −157.8188 | UH Mānoa | same | on Oahu |
+| `ala moana` | 21.2990, −157.8527 | Ala Moana | same | on Oahu |
+| `beach` | 46.9149, −104.0039 | **Montana** | 21.31977, −158.01043 | **on Oahu** |
+| `ala moana beach` | 21.2990, −157.8527 | Ala Moana | **0 results** | ~~nothing matched~~ |
+| `da spot` | 0 results | — | 0 results | nothing matched |
+
+Four things settled:
+
+1. **The steer works, and is necessary.** `"university"` and `"beach"` both
+   resolve to the mainland raw — Pennsylvania and *Montana* — and both land on
+   Oahu once `, HI` is appended. Without this, address search would have
+   confidently thrown riders across the Pacific.
+2. **The steer can also break a query that worked.** `"ala moana beach"`
+   resolves correctly on its own and returns **zero results** as
+   `"ala moana beach, HI"`. Caught only because the probe printed both.
+   **Fixed**: `findOnOahu` now asks the plain text as a second attempt whenever
+   the steered one produced nothing on the island, so a hint can never turn a
+   right answer into no answer. One request in the common case, two only on the
+   ones that would otherwise have failed.
+3. **Place names do partly resolve**, which the spec did not assume — `ala
+   moana` and `beach` both return points. `CLGeocoder` is still an address
+   geocoder and `"da spot"` gets nothing, so the spec's *places are not
+   addresses* caveat stands as a limit rather than as an absolute.
+4. **Still one result per query, every time.** Seven queries, never more than
+   one. Undocumented, so `findOnOahu` still scans the whole array.
+
+### Truman's question: address autocomplete, 3–5 suggestions?
+
+*Asked 2026-08-08 for a later increment.* **Not feasible on the current
+dependency set, and the reason is not effort.**
+
+`geocodeAsync` returns `{ latitude, longitude, altitude, accuracy }` and nothing
+else — **no formatted address, no place name**. Even with several results there
+would be nothing to *print* in a suggestion list but coordinates. And it has
+returned exactly one result every time it has been watched. Both halves of a
+suggestion list are missing.
+
+The real API is `MKLocalSearchCompleter`, which is what Apple Maps' own
+search-as-you-type uses. Neither `expo-location` nor `react-native-maps` exposes
+it, so it means a native module — and that leaves the Expo Go loop, which
+`CLAUDE.md` treats as an architectural decision rather than an install. A web
+geocoder (Nominatim, Mapbox, Google Places) is the other route and brings a
+second network dependency, another key, and another terms-of-use.
+
+**What is feasible today, and is the honest middle:** geocode once on submit,
+then `reverseGeocodeAsync` the single result to get a formatted address, and
+show *one* confirmation — "Did you mean 2500 Campus Rd, Honolulu?" — rather than
+a list. No new dependency, and it fixes the thing autocomplete would really be
+for, which is not guessing what the app understood.

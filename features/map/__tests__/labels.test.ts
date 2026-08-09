@@ -176,6 +176,24 @@ describe('labelledStopIds', () => {
     expect([...labelled.keys()].every((id) => !id.startsWith('hidden'))).toBe(true);
   });
 
+  it('does not spend the label budget on stops off the side of the screen', () => {
+    // Truman guessed this one from the outside: "there are stops loaded on the
+    // left that have a bunch of labels. Maybe those aren't being unloaded and
+    // are eating the labels count?" They are not unloaded and should not be —
+    // the stop set belongs to the anchor, not the camera — but they were taking
+    // label slots while sitting past the left edge.
+    const offToTheLeft = Array.from({ length: 6 }, (_, i) =>
+      // Well west of centre: at this zoom these land past x = 0.
+      stop(`west${i}`, 21.3069 - i * 0.0012, -157.8583 - 0.008, 10 + i),
+    );
+    const inView = stop('visible', 21.3069, -157.8583, 900);
+
+    const labelled = labelledStopIds([...offToTheLeft, inView], CLOSE, VIEWPORT, null);
+
+    expect(labelled.has('visible')).toBe(true);
+    expect([...labelled.keys()].every((id) => !id.startsWith('west'))).toBe(true);
+  });
+
   it('still treats a hidden stop as an obstacle', () => {
     // It is drawn on the part of the map under the sheet, and a label reaching
     // down from a visible stop would run straight into it.

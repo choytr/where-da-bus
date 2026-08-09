@@ -268,14 +268,28 @@ const labelOpacity = (name: string): number | null => {
   return null;
 };
 
-const stop = (id: string, name: string, meters: number): StopWithDistance => ({
+/**
+ * `lon` is a parameter only because the label tests need a stop the close-zoom
+ * camera can actually see. Labels are culled to the visible rectangle on both
+ * axes, and the default longitude sits well off the right-hand edge at that
+ * zoom — which is correct behaviour, and which no other test cares about.
+ */
+const stop = (
+  id: string,
+  name: string,
+  meters: number,
+  lon = -157.85,
+): StopWithDistance => ({
   stop_id: id,
   stop_code: id,
   stop_name: name,
   lat: 21.3 + Number(id) / 1000,
-  lon: -157.85,
+  lon,
   meters,
 });
+
+/** Centred under the close-zoom camera, so its name is on screen to be read. */
+const IN_VIEW_LON = -157.8583;
 
 const METRICS: Metrics = {
   frame: { x: 0, y: 0, width: 393, height: 852 },
@@ -335,7 +349,7 @@ describe('MapScreen', () => {
     // only '7' lands near the centre of the close-zoom camera. Anything much
     // further south falls behind the sheet, where labels are deliberately not
     // spent.
-    mockNearby.mockResolvedValue([stop('7', 'LAGOON DR', 120)]);
+    mockNearby.mockResolvedValue([stop('7', 'LAGOON DR', 120, IN_VIEW_LON)]);
 
     await show();
     await waitFor(() => screen.getByLabelText('pin 7'));
@@ -389,7 +403,7 @@ describe('MapScreen', () => {
     // MapKit, and the two come apart; hidden-with-opacity never mounts or
     // unmounts anything. Counted rather than inspected, because what must not
     // happen is the node going away.
-    mockNearby.mockResolvedValue([stop('7', 'LAGOON DR', 120)]);
+    mockNearby.mockResolvedValue([stop('7', 'LAGOON DR', 120, IN_VIEW_LON)]);
 
     await show();
     await waitFor(() => screen.getByLabelText('pin 7'));

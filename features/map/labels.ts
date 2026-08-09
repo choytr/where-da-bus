@@ -90,10 +90,20 @@ export type Viewport = {
    */
   height: number;
   /**
-   * How much of that height is not under the sheet. Used only to skip stops a
-   * rider cannot see — they would otherwise spend the `MAX_LABELS` budget on
-   * names hidden behind the sheet, which is the other half of "hard to get the
-   * labels to show up for the stops I'm looking at".
+   * How much of that height is not under the sheet. With `width`, this is the
+   * rectangle a rider can actually see, and only stops inside it compete for
+   * the `MAX_LABELS` budget.
+   *
+   * The first version of this test looked at the bottom edge alone, which was
+   * half a fix: stops off the *side* of the screen went on quietly taking
+   * label slots, so a rider panning east from a dense block would find almost
+   * nothing named. Truman, 2026-08-08, having guessed the mechanism from the
+   * outside: "there are stops loaded on the left that have a bunch of labels.
+   * Maybe those aren't being unloaded and are eating the labels count?"
+   *
+   * They are not unloaded, and should not be — the stop set belongs to the
+   * anchor, not to the camera, which is `useAnchoredStops`' whole design. It is
+   * the *labels* that are a property of what is on screen.
    */
   visibleHeight: number;
 };
@@ -161,11 +171,18 @@ export function labelledStopIds(
 
   // Each stop paired with *the very box* in `claimed`, so the loop below can
   // exclude a stop's own tile by identity and never has to look one up.
+  /** Overlaps the rectangle the rider can see, on both axes. */
+  const onScreen = (box: Box) =>
+    box.right > 0 &&
+    box.left < viewport.width &&
+    box.bottom > 0 &&
+    box.top < viewport.visibleHeight;
+
   const candidates = stops
     .map((stop, index) => ({ stop, tile: claimed[index] ?? tileBox(stop) }))
-    // A stop behind the sheet is a stop nobody is reading, and it must not
-    // spend the label budget on a name that cannot be seen.
-    .filter(({ tile }) => tile.top < viewport.visibleHeight);
+    // A stop off the edge of the screen or behind the sheet is a stop nobody is
+    // reading, and it must not spend the budget on a name that cannot be seen.
+    .filter(({ tile }) => onScreen(tile));
 
   const ordered = [...candidates].sort((a, b) => {
     if (a.stop.stop_id === selectedId) return -1;

@@ -12,14 +12,28 @@ import type { Coords } from '../../lib/distance';
  * Expo SDK 54's `Location.geocodeAsync(address: string)` takes an address and
  * nothing else — verified against the installed type definitions, not the
  * docs. `CLGeocoder` can be given a region to search within; that parameter is
- * not exposed. So the biasing is done here, twice over and deliberately:
+ * not exposed. So the biasing is done here, and it takes three steps rather
+ * than the two it started with:
  *
  * 1. **Steer the question.** Unless the text already names the state, `, HI` is
  *    appended, which is what a person would have typed if they had thought
- *    about it.
- * 2. **Check the answer.** Whatever comes back is tested against Oahu's
- *    bounding box, because steering is a hint and not a guarantee — the whole
- *    problem is a geocoder that answers confidently from the wrong continent.
+ *    about it. Device-confirmed as worth doing: `"university"` alone resolves
+ *    to Pennsylvania, `"university, HI"` to Honolulu.
+ * 2. **Ask again without the steer, if that found nothing on the island.**
+ *    Appending can *break* a query that would have worked. Measured
+ *    2026-08-08: `"ala moana beach"` resolves correctly to Ala Moana, and
+ *    `"ala moana beach, HI"` returns zero results. A hint that turns a right
+ *    answer into no answer is worse than no hint, so the plain text gets its
+ *    turn too.
+ * 3. **Check the answer.** Whatever comes back, from either attempt, is tested
+ *    against Oahu's bounding box — steering is a hint and not a guarantee, and
+ *    the whole problem is a geocoder that answers confidently from the wrong
+ *    continent.
+ *
+ * The cost is a second network round trip on the queries that fail the first
+ * time. Apple asks for at most one geocode per user action; this is one per
+ * *submission*, worst case two, and the second only happens when the first
+ * produced nothing usable.
  *
  * The two failures are kept apart, as failures are everywhere else in this
  * app. "There is no such address here" and "that address is real, and it is not
@@ -83,25 +97,36 @@ export type GeocodeFn = (address: string) => Promise<{ latitude: number; longitu
  * the caller. Everything above is arithmetic and string handling.
  */
 export async function findOnOahu(query: string, geocode: GeocodeFn): Promise<GeocodeResult> {
-  const address = biasedQuery(query);
-  if (address === '') return { kind: 'none' };
+  const plain = query.trim();
+  if (plain === '') return { kind: 'none' };
 
-  let results: { latitude: number; longitude: number }[];
-  try {
-    results = await geocode(address);
-  } catch {
-    return { kind: 'failed' };
+  const biased = biasedQuery(plain);
+  // Only worth a second attempt when the two are actually different questions.
+  const attempts = biased === plain ? [plain] : [biased, plain];
+
+  let sawSomething = false;
+
+  for (const address of attempts) {
+    let results: { latitude: number; longitude: number }[];
+    try {
+      results = await geocode(address);
+    } catch {
+      // A thrown lookup is not "no such place" — the phone may simply be
+      // offline, and saying "nothing matched" to that would be a lie.
+      return { kind: 'failed' };
+    }
+
+    // The first result *on the island*, not the first result. The geocoder has
+    // returned one match every time it has been watched, but nothing documents
+    // that, and taking the first blindly is how Pennsylvania got on screen.
+    for (const result of results) {
+      const coords = { lat: result.latitude, lon: result.longitude };
+      if (isOnOahu(coords)) return { kind: 'found', coords };
+    }
+
+    sawSomething ||= results.length > 0;
   }
 
-  if (results.length === 0) return { kind: 'none' };
-
-  // The first result on the island, not the first result. The geocoder has
-  // returned one match every time it has been watched, but nothing documents
-  // that, and taking the first blindly is how Pennsylvania got on screen.
-  for (const result of results) {
-    const coords = { lat: result.latitude, lon: result.longitude };
-    if (isOnOahu(coords)) return { kind: 'found', coords };
-  }
-
-  return { kind: 'offIsland' };
+  // Something matched, somewhere, and none of it was here.
+  return sawSomething ? { kind: 'offIsland' } : { kind: 'none' };
 }
