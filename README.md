@@ -17,6 +17,7 @@ I will not be officially publishing this app, but if you would like to build it 
 These are basic instructions for how I've been sideloading it on my phone with a Windows machine. More details about the process are in docs/sideloading.md.
 
 #### Setup
+1. Get an api key from `api.thebus.org`.
 1. Install and setup SideStore on your phone. Roughly, the instructions are:
     - Install iLoader on your computer.
     - Turn on developer mode on your phone.
@@ -29,6 +30,7 @@ These are basic instructions for how I've been sideloading it on my phone with a
     - Itunes &rarr; File Sharing &rarr; SideStore &rarr; drag and drop the .ipa &rarr; link and sync.
 1. Make sure LocalDevVPN is turned on, as well as developer mode.
 1. Install the .ipa with SideStore on your phone.
+1. Launch the app, paste your key, and you're in!
 1. Resign the app (and SideStore) every 7 days. You don't need the computer to do this, only need LocalDevVPN on.
 
 ## Features
