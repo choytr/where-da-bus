@@ -34,6 +34,32 @@ Four causes are already eliminated with evidence — version mismatch, the New
 Architecture, the worklets babel plugin, and `flex: 1`. See round 1's log. **Do
 not add a fifth guess; this number picks the branch.**
 
+### A prediction, written down before the number arrives
+
+**This is read from library source, which is the move that has produced six
+wrong claims on this project. It is therefore a prediction to be killed or
+confirmed by the measurement, and not a finding.**
+
+`createBottomSheetScrollableComponent.tsx:77` drives the scrollable's
+`scrollEnabled` through reanimated's `useAnimatedProps`, and passes it at line
+135. All three of the library's scrollables — `BottomSheetScrollView`,
+`BottomSheetFlatList`, `BottomSheetSectionList` — come out of that one factory,
+differing only by a `SCROLLABLE_TYPE` tag and which Animated primitive they
+wrap. **Swapping `BottomSheetFlatList` for `BottomSheetScrollView` therefore
+changes nothing about the integration**, and would cost virtualization on a
+hundred-stop route.
+
+So scrolling is switched on by a **worklet-driven native prop update**, on a
+different path from the sheet's own pan gesture — which works. Worklets are
+compiled in the release bundle (verified). What is unverified is whether that
+animated prop reaches the scroll view's shadow node in a prebuilt binary.
+
+**If that is the cause, this section's number will read `content > frame`:** the
+list is sized correctly and is simply sitting there with `scrollEnabled` false.
+**If it reads `content == frame`, this prediction is wrong** and the problem is
+layout, not props. Either way the number decides it, which is why it is worth
+one glance before anything is changed.
+
 - [ ] Does the **nearby** list scroll? (Not instrumented — just try it.)
 - [ ] Does the **arrivals card** scroll on a busy stop?
 
