@@ -202,8 +202,17 @@ a data-migration tail, and it does not.
 ### Address mode
 
 Geocode on submit → `reverseGeocodeAsync` the result → **"Did you mean 2500
-Campus Rd, Honolulu?"** with Go / Cancel → Go anchors and frames the map, the
-same path a long-press *Search here* takes.
+Campus Rd, Honolulu?"** with Go / Cancel → Go anchors and frames the map.
+
+It takes the long press's *anchoring* path — `searchFrom`, which drops any open
+card, because the stop set behind it is about to be replaced — but **frames
+where the long press pans.** This sentence used to say "the same path a
+long-press *Search here* takes", and building it showed the two differ on the
+camera: a long press names a point on a map the rider is already looking at, at
+a zoom they chose, while a typed address is the map being opened somewhere else
+entirely. Keeping a street-level zoom from across town would arrive showing one
+block and none of the stops the search was for. A searched *stop* frames for
+the same reason.
 
 `data/geocode/oahu.ts` is already built and tested and is what runs here. Its
 two-attempt steer is not to be simplified: `, HI` rescues `"university"` from

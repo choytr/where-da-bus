@@ -4,6 +4,7 @@ import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { MapScreen } from '../MapScreen';
 import { MEDIUM_DETENT } from '../StopSheet';
 import { SEARCH_PLACEHOLDER } from '../SearchBar';
+import type { Place } from '../address';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
 import { NOTICES } from '../../arrivals/board';
@@ -226,6 +227,22 @@ jest.mock('expo-router', () => ({
   router: { push: (href: string) => mockPush(href) },
 }));
 
+/**
+ * The geocoder, doubled at the module boundary rather than injected: the
+ * overlay is the one place that knows about `expo-location`, which is what
+ * keeps `features/map/address.ts` testable without it. `useLocation` is doubled
+ * separately, so nothing here touches the real module either way.
+ */
+const mockGeocode = jest.fn(
+  async (_address: string): Promise<{ latitude: number; longitude: number }[]> => [],
+);
+const mockReverseGeocode = jest.fn(async (): Promise<Place[]> => []);
+
+jest.mock('expo-location', () => ({
+  geocodeAsync: (address: string) => mockGeocode(address),
+  reverseGeocodeAsync: () => mockReverseGeocode(),
+}));
+
 const mockRequest = jest.fn(async (): Promise<Coords | null> => null);
 
 const mockLocation: LocationState = {
@@ -351,6 +368,8 @@ describe('MapScreen', () => {
     mockQueries.searchRoutes.mockResolvedValue([]);
     mockQueries.stopsByIds.mockResolvedValue([]);
     mockQueries.feedEndDate.mockResolvedValue(null);
+    mockGeocode.mockResolvedValue([]);
+    mockReverseGeocode.mockResolvedValue([]);
     mockLocation.status = 'idle';
     mockLocation.coords = null;
     mockArrivalsResult = {
@@ -1065,6 +1084,150 @@ describe('MapScreen', () => {
       // Closed behind the push, so it is not underneath the route screen on the
       // way back.
       expect(screen.queryByLabelText('Find a route by number or name')).toBeNull();
+    });
+
+    /**
+     * Address mode, which is the only thing this host has that the Stops tab
+     * cannot do at all — and the only filter that waits for a submit.
+     *
+     * The steering towards the island lives in `data/geocode/oahu.ts` and its
+     * two-attempt behaviour is tested there; `features/map/address.ts` owns the
+     * labelling. What is asserted here is what the *map* does about it, which
+     * is nothing at all until a rider says Go.
+     */
+    describe('by address', () => {
+      /** UH Manoa. */
+      const CAMPUS = { latitude: 21.2969, longitude: -157.8171 };
+      /** State College, Pennsylvania — what `"university"` really returned on
+       *  a device, as one confident result. */
+      const PENNSYLVANIA = { latitude: 40.7934, longitude: -77.86 };
+
+      const CAMPUS_PLACE: Place = {
+        streetNumber: '2500',
+        street: 'Campus Rd',
+        name: null,
+        city: 'Honolulu',
+      };
+
+      const submitAddress = async (text: string) => {
+        await openSearch();
+        const field = screen.getByLabelText('Find an address');
+        await fireEvent.changeText(field, text);
+        await fireEvent(field, 'submitEditing');
+      };
+
+      it('confirms before moving the map', async () => {
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        mockReverseGeocode.mockResolvedValue([CAMPUS_PLACE]);
+        await show();
+        await waitFor(() => {
+          expect(mockNearby).toHaveBeenCalledTimes(1);
+        });
+
+        await submitAddress('2500 campus rd');
+
+        await waitFor(() => {
+          screen.getByText('Did you mean 2500 Campus Rd, Honolulu?');
+        });
+        // Asked, and nothing done yet. A bounding box makes a five-thousand
+        // kilometre miss unlikely, not impossible, and the cost of being wrong
+        // is a rider's whole view of the map.
+        expect(mockCameraMoves).toEqual([]);
+        expect(mockNearby).toHaveBeenCalledTimes(1);
+      });
+
+      it('anchors the map once confirmed', async () => {
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        mockReverseGeocode.mockResolvedValue([CAMPUS_PLACE]);
+        await show();
+        await submitAddress('2500 campus rd');
+        await waitFor(() => {
+          screen.getByText('Did you mean 2500 Campus Rd, Honolulu?');
+        });
+
+        await fireEvent.press(screen.getByLabelText('Go to 2500 Campus Rd, Honolulu'));
+
+        await waitFor(() => {
+          expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.2969, lon: -157.8171 });
+        });
+        // Framed rather than panned: an address is the map being opened
+        // somewhere else, not a hop across a street the rider is looking at.
+        expect(mockCameraMoves).toHaveLength(1);
+        expect(mockCameraMoves[0]).toMatchObject({ longitude: -157.8171 });
+        // And the rider is back on the map, with no stop selected — an address
+        // is a place, not a stop.
+        expect(screen.queryByLabelText('Find an address')).toBeNull();
+        expect(screen.queryByLabelText('Back to nearby stops')).toBeNull();
+      });
+
+      it('cancelling leaves the map alone', async () => {
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        mockReverseGeocode.mockResolvedValue([CAMPUS_PLACE]);
+        await show();
+        await waitFor(() => {
+          expect(mockNearby).toHaveBeenCalledTimes(1);
+        });
+        await submitAddress('2500 campus rd');
+        await waitFor(() => {
+          screen.getByText('Did you mean 2500 Campus Rd, Honolulu?');
+        });
+
+        await fireEvent.press(screen.getByLabelText('Not that address'));
+
+        expect(screen.queryByText(/Did you mean/)).toBeNull();
+        expect(mockCameraMoves).toEqual([]);
+        expect(mockNearby).toHaveBeenCalledTimes(1);
+        // Back to the field with the text intact: "not that place" is not
+        // "forget what I typed".
+        expect(screen.getByLabelText('Find an address').props.value).toBe('2500 campus rd');
+      });
+
+      it('an address off the island says so', async () => {
+        mockGeocode.mockResolvedValue([PENNSYLVANIA]);
+        await show();
+
+        await submitAddress('university');
+
+        await waitFor(() => {
+          screen.getByText('That address is real, but it is not on Oahu.');
+        });
+        // Not a shrug. The rider typed something that exists, and being told
+        // "no such address" would send them looking for a typo.
+        expect(screen.queryByText('No address matched that.')).toBeNull();
+        expect(mockCameraMoves).toEqual([]);
+      });
+
+      it('a failed lookup is not "no such address"', async () => {
+        mockGeocode.mockRejectedValue(new Error('offline'));
+        await show();
+
+        await submitAddress('2500 campus rd');
+
+        await waitFor(() => {
+          screen.getByText('Could not look up that address.');
+        });
+        expect(screen.queryByText('No address matched that.')).toBeNull();
+        expect(screen.queryByText(/not on Oahu/)).toBeNull();
+      });
+
+      it('confirms with the typed text when the reverse lookup fails', async () => {
+        // The geocode landed on the island; only its name is missing. Refusing
+        // to move here would fail a search that had actually succeeded.
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        mockReverseGeocode.mockRejectedValue(new Error('offline'));
+        await show();
+
+        await submitAddress('2500 campus rd');
+
+        await waitFor(() => {
+          screen.getByText('Did you mean 2500 campus rd?');
+        });
+        await fireEvent.press(screen.getByLabelText('Go to 2500 campus rd'));
+
+        await waitFor(() => {
+          expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.2969, lon: -157.8171 });
+        });
+      });
     });
 
     it('carries the required attribution over the search results', async () => {

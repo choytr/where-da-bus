@@ -5,7 +5,8 @@ Spec: `docs/superpowers/specs/2026-08-09-increment-7-peek-and-search.md`.
 **Contracts, not code.** Files touched, exported signatures, test names, and
 decisions already settled.
 
-**Tasks 1–7 are done and pushed. Tasks 8 and 9 remain**, and are sequential.
+**All nine tasks are done.** What remains is the close-out below: a screenshot
+round with Truman, a device round, and a review over the whole diff.
 
 Run after each task: `npm test`, `npm run typecheck`. Task 4 also needs
 `npm run test:scripts`. Before the increment closes, `npm ci` as well.
@@ -175,7 +176,7 @@ resolved.
 
 ---
 
-## Task 9 — Address mode — **NEXT**
+## Task 9 — Address mode — **DONE**
 
 **Files:** `features/map/SearchOverlay.tsx`, `features/map/MapScreen.tsx`,
 `features/map/__tests__/`.
@@ -202,7 +203,22 @@ confirm against the typed text in that case rather than refusing to move.
 failed lookup is not "no such address"`; `confirms with the typed text when the
 reverse lookup fails`.
 
-**Then: screenshot round — the map search, all three filters.**
+**Settled while building it.** The lookup and its labelling went into
+`features/map/address.ts` — `lookUpAddress` and `addressLabel`, both with their
+network calls injected the way `findOnOahu`'s is, so `features/map/__tests__/address.test.ts`
+exercises the whole state machine without the native module. `SearchOverlay` is
+the one place that imports `expo-location`.
+
+The label is built from `streetNumber`, `street`/`name` and `city`.
+`formattedAddress` looks like the obvious source and is documented **Android
+only**, so it is `null` on the platform this ships to.
+
+**Go frames, it does not pan** — see the spec, which said otherwise and has been
+corrected. `searchFrom` for the anchor, `frameOn` for the camera.
+
+**Then: screenshot round — the map search, all three filters.** There is no
+simulator here, so this one is Truman's to run in Expo Go; everything about how
+it *looks* is inference until then.
 
 ---
 

@@ -544,6 +544,28 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     [setAnchor, select, frameOn],
   );
 
+  /**
+   * A confirmed address, which moves the anchor and nothing else.
+   *
+   * `searchFrom` rather than a bare `setAnchor`, because this is the same kind
+   * of move as *Search here*: the stop set behind any open card is about to be
+   * replaced, and a card for a stop no longer in the list would keep polling
+   * for it. No stop is selected — an address is a place, not a stop.
+   *
+   * It **frames** where *Search here* pans. A long press names a point on a map
+   * a rider is already looking at, at a zoom they chose; a typed address is the
+   * map being opened somewhere else entirely, and keeping a street-level zoom
+   * from across town would arrive showing one block and no stops.
+   */
+  const searchAddress = useCallback(
+    (coords: Coords) => {
+      setSearching(false);
+      searchFrom(coords);
+      frameOn(coords);
+    },
+    [searchFrom, frameOn],
+  );
+
   /** A route leaves the map, so the search closes behind it rather than
    *  being underneath the route screen on the way back. */
   const openRouteFromSearch = useCallback(
@@ -782,6 +804,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
           onClose={() => setSearching(false)}
           onSelectStop={selectFromSearch}
           onSelectRoute={openRouteFromSearch}
+          onSelectAddress={searchAddress}
           tabBarOverlap={tabBarOverlap}
         />
       ) : null}
