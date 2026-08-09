@@ -35,7 +35,7 @@ function serving(body: unknown, status = 200): FetchManifest {
  */
 const wholeFeed: DatabaseFacts = {
   schemaVersion: SCHEMA_VERSION,
-  counts: { stops: 3830, routes: 118, stopRoutes: 8629 },
+  counts: { stops: 3830, routes: 118, stopRoutes: 8629, shapes: 532 },
 };
 
 function fakeFiles(options: { downloads?: string; facts?: DatabaseFacts | Error } = {}) {
@@ -239,7 +239,7 @@ describe('installUpdate', () => {
    */
   it('refuses a database too small to be a whole feed, and deletes it', async () => {
     const { files, contents, removed } = fakeFiles({
-      facts: { schemaVersion: SCHEMA_VERSION, counts: { stops: 40, routes: 3, stopRoutes: 90 } },
+      facts: { schemaVersion: SCHEMA_VERSION, counts: { stops: 40, routes: 3, stopRoutes: 90, shapes: 2 } },
     });
 
     await expect(installUpdate(manifest, files)).rejects.toThrow(/too small to be a whole feed/);

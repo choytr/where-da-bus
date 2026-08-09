@@ -57,8 +57,12 @@ against the 1.17 MB asset:
 | all 532 shapes | 201 KiB | **152 KiB** | 116 KiB |
 | 236, one per route+direction | 97 KiB | 73 KiB | 56 KiB |
 
-**Settled: all 532 shapes, keyed by `shape_id`, simplified at 10 m — ~152 KiB**,
-taking the bundled asset from 1.17 MB to roughly 1.32 MB.
+**Settled: all 532 shapes, keyed by `shape_id`, simplified at 10 m — ~152 KiB.**
+
+Built 2026-08-09: 532 shapes, 152 KiB of polyline, 236 route/directions, and the
+asset went 1.17 MB → **1.37 MB**. The estimate above said 1.32; the extra 50 KB
+is the `shapes` and `route_shapes` tables' own page overhead and indexes, which
+the polyline measurement did not include.
 
 Not the cheaper 236, because **every live arrival carries a `shape` field naming
 the exact variant that bus is running** (`docs/api/README.md:162`, present on all
@@ -89,7 +93,8 @@ the error badly; that mistake was made and corrected on 2026-08-09.
 `SCHEMA_VERSION` goes **1 → 2**, adding two tables: `shapes` and `route_shapes`.
 
 **Truman authorised rebuilding and committing the bundled floor**
-(`assets/db/gtfs.db`) so that a fresh offline install still draws lines. This is
+(`assets/db/gtfs.db`, 1.17 MB → 1.37 MB) so that a fresh offline install still
+draws lines. This is
 the sanctioned exception to `CLAUDE.md`'s ban on rebuilding it by hand — the ban
 is against casual rebuilds, and a bump leaves no choice, since the queries would
 otherwise ask the floor for a table it does not have. **The bump and the floor

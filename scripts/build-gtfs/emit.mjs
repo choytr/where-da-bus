@@ -39,6 +39,16 @@ const SCHEMA_SQL = `
     stop_id      TEXT NOT NULL,
     PRIMARY KEY (route_id, direction_id, seq)
   );
+  CREATE TABLE shapes (
+    shape_id TEXT PRIMARY KEY,
+    polyline TEXT NOT NULL
+  );
+  CREATE TABLE route_shapes (
+    route_id     TEXT NOT NULL,
+    direction_id TEXT NOT NULL,
+    shape_id     TEXT NOT NULL,
+    PRIMARY KEY (route_id, direction_id)
+  );
   CREATE TABLE meta (
     feed_start_date TEXT,
     feed_end_date   TEXT,
@@ -184,7 +194,10 @@ function survivingIdForCode(plainRows, code) {
  * stops were dropped, and closes no resources — the caller owns `db`'s
  * lifecycle.
  */
-export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedStartDate, feedEndDate }) {
+export function emitDatabase(
+  db,
+  { stops, routes, stopRoutes, routeStops, shapes = [], routeShapes = [], feedStartDate, feedEndDate },
+) {
   db.exec(SCHEMA_SQL);
 
   const { dropped: droppedStops, remap } = withoutMergedDuplicateStops(stops);
@@ -209,6 +222,10 @@ export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedSt
   );
   const insertRouteStop = db.prepare(
     'INSERT INTO route_stops (route_id, direction_id, seq, stop_id) VALUES (?, ?, ?, ?)',
+  );
+  const insertShape = db.prepare('INSERT INTO shapes (shape_id, polyline) VALUES (?, ?)');
+  const insertRouteShape = db.prepare(
+    'INSERT INTO route_shapes (route_id, direction_id, shape_id) VALUES (?, ?, ?)',
   );
   const insertMeta = db.prepare(
     'INSERT INTO meta (feed_start_date, feed_end_date, generated_at, schema_version) VALUES (?, ?, ?, ?)',
@@ -290,6 +307,29 @@ export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedSt
     routeStopsInserted += 1;
   }
 
+  // Every variant in the feed, not one per route and direction: an arrival
+  // names the exact shape its bus is running, so a short-turn draws its own
+  // line rather than the one the route view uses. ~152 KiB for all of them.
+  const knownShapes = new Set();
+  for (const shape of shapes) {
+    insertShape.run(shape.shape_id, shape.polyline);
+    knownShapes.add(shape.shape_id);
+  }
+
+  // Counted apart for the same reason the relationship tables are: a feed that
+  // renames its shape ids would lose every line here while `shapes` itself
+  // still looked full.
+  let routeShapesInserted = 0;
+  let routeShapesOrphaned = 0;
+  for (const rs of routeShapes) {
+    if (!knownRoutes.has(rs.route_id) || !knownShapes.has(rs.shape_id)) {
+      routeShapesOrphaned += 1;
+      continue;
+    }
+    insertRouteShape.run(rs.route_id, rs.direction_id, rs.shape_id);
+    routeShapesInserted += 1;
+  }
+
   insertMeta.run(feedStartDate ?? null, feedEndDate ?? null, new Date().toISOString(), SCHEMA_VERSION);
 
   db.exec("INSERT INTO stops_fts(stops_fts) VALUES('rebuild')");
@@ -301,9 +341,12 @@ export function emitDatabase(db, { stops, routes, stopRoutes, routeStops, feedSt
     routes: knownRoutes.size,
     stopRoutes: stopRoutesInserted,
     routeStops: routeStopsInserted,
+    shapes: knownShapes.size,
+    routeShapes: routeShapesInserted,
     duplicateStopsDropped: droppedStops.length,
     stopRoutesOrphaned,
     routeStopsOrphaned,
+    routeShapesOrphaned,
     stopRoutesDeduplicated,
   };
 }

@@ -3,8 +3,11 @@
  *
  * The point of this module: stop_times.txt is 73.8 MB of per-trip timing detail,
  * but the app only needs the *relationships* it implies. Those collapse to about
- * 200 KB.
+ * 200 KB. shapes.txt is a further 9.8 MB and collapses to ~152 KiB the same way,
+ * by thinning each line and encoding it.
  */
+import { simplify } from './simplify.mjs';
+import { encodePolyline } from '../../data/gtfs/polyline.ts';
 
 /** Minimal RFC 4180 CSV parser. GTFS quotes any field containing a comma. */
 export function parseCsv(text) {
@@ -141,13 +144,21 @@ export function deriveStopRoutes(stopTimesRows, tripsRows) {
 }
 
 /**
- * Ordered stops per route and direction.
+ * The one trip that stands for each route and direction, keyed
+ * `route_id\0direction_id`.
  *
  * A route has thousands of trips that mostly repeat the same path, so one
- * representative trip is enough. The trip visiting the most stops is chosen
- * because short-turn trips would otherwise truncate the route.
+ * representative is enough. The trip visiting the most stops is chosen because
+ * short-turn trips would otherwise truncate the route.
+ *
+ * **Extracted so that `deriveRouteStops` and `deriveRouteShapes` cannot
+ * disagree about which trip that is.** They must not: the stops and the road
+ * line have to come from the *same* trip, and comparing one trip's stops
+ * against another trip's shape is exactly the mistake that was made — and
+ * corrected — while measuring whether polylines were affordable at all. Two
+ * copies of this selection would drift the first time either was tuned.
  */
-export function deriveRouteStops(stopTimesRows, tripsRows) {
+export function representativeTrips(stopTimesRows, tripsRows) {
   const trips = tripToRoute(tripsRows);
 
   const countByTrip = new Map();
@@ -162,13 +173,82 @@ export function deriveRouteStops(stopTimesRows, tripsRows) {
     if (trip === undefined) continue;
     const key = `${trip.route_id}${KEY_SEP}${trip.direction_id ?? ''}`;
     const current = bestTrip.get(key);
+    // `>` and not `>=`: ties keep the first trip reached, which makes the
+    // choice a function of the feed's own row order rather than of iteration
+    // order over a Map that was built from it.
     if (current === undefined || count > current.count) {
       bestTrip.set(key, { count, tripId });
     }
   }
 
+  const representatives = new Map();
+  for (const [key, { tripId }] of bestTrip) representatives.set(key, tripId);
+  return representatives;
+}
+
+/**
+ * The `shape_id` each route and direction is drawn with — the representative
+ * trip's own shape, so the line and the stop list describe one journey.
+ *
+ * Takes the representatives rather than recomputing them; see
+ * `representativeTrips`. A representative with no `shape_id` is omitted
+ * entirely rather than carried as a blank, so the app's "this direction has no
+ * shape" case is a missing row and not an empty string.
+ */
+export function deriveRouteShapes(tripsRows, representatives) {
+  const trips = tripToRoute(tripsRows);
+
+  const out = [];
+  for (const key of [...representatives.keys()].sort()) {
+    const trip = trips.get(representatives.get(key));
+    const shapeId = trip?.shape_id ?? '';
+    if (shapeId === '') continue;
+    const [route_id, direction_id] = key.split(KEY_SEP);
+    out.push({ route_id, direction_id, shape_id: shapeId });
+  }
+  return out;
+}
+
+/**
+ * Every shape in the feed, thinned and encoded.
+ *
+ * All of them, not one per route and direction: **every live arrival names the
+ * exact variant its bus is running**, so a rider looking at a short-turn or an
+ * express run gets the line that bus is actually on rather than a
+ * representative it left ten stops ago. Measured at 10 m, all 532 variants
+ * store in ~152 KiB — the premise that this would cost "several times the
+ * asset" was wrong, and it nearly cost the feature.
+ *
+ * Points are ordered by `shape_pt_sequence` numerically. The feed writes it in
+ * steps of one from 10001, so a lexical sort puts 10010 before 1002 and the
+ * shape becomes a scribble.
+ */
+export function deriveShapes(shapesRows, toleranceMeters) {
+  const bySequence = new Map();
+  shapesRows.forEach((row, index) => {
+    const shapeId = requireField(row, 'shape_id', index, 'shapes.txt');
+    const lat = requireNumberField(row, 'shape_pt_lat', index, 'shapes.txt');
+    const lon = requireNumberField(row, 'shape_pt_lon', index, 'shapes.txt');
+    const order = requireNumberField(row, 'shape_pt_sequence', index, 'shapes.txt');
+    if (!bySequence.has(shapeId)) bySequence.set(shapeId, []);
+    bySequence.get(shapeId).push({ order, lat, lon });
+  });
+
+  const out = [];
+  for (const shapeId of [...bySequence.keys()].sort()) {
+    const ordered = bySequence.get(shapeId).sort((a, b) => a.order - b.order);
+    const thinned = simplify(ordered, toleranceMeters);
+    out.push({ shape_id: shapeId, polyline: encodePolyline(thinned) });
+  }
+  return out;
+}
+
+/**
+ * Ordered stops per route and direction, from the representative trip.
+ */
+export function deriveRouteStops(stopTimesRows, tripsRows) {
   const keptTrips = new Map();
-  for (const [key, { tripId }] of bestTrip) {
+  for (const [key, tripId] of representativeTrips(stopTimesRows, tripsRows)) {
     keptTrips.set(tripId, key);
   }
 
