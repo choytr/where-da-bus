@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFlatList,
@@ -8,10 +8,12 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet';
 import { StopRow } from '../stops/StopRow';
 import { StopCard } from './StopCard';
+import { RouteList } from './RouteList';
 import { PEEK_BAND, PEEK_ROW } from './peek';
 import { useTheme } from '../../lib/theme';
 import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
 import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
+import type { RouteDirection } from '../../data/gtfs/db';
 import type { TheBusClient } from '../../data/thebus';
 import type { AnchoredStatus } from './useAnchoredStops';
 
@@ -52,6 +54,20 @@ const TOP_GAP = 16;
 const MEDIUM_FRACTION = 0.4985;
 
 const NEARBY_HEADING = 'Nearby Stops';
+
+const LEAVE_ROUTE_LABEL = 'Stop showing this route';
+const FLIP_LABEL = 'Show the other direction';
+
+/**
+ * Where a direction ends up, which is what a rider recognises — the same
+ * wording `features/routes/RouteScreen.tsx` uses, and for the same reason.
+ * GTFS's `direction_id` is `0` or `1` and never says which is which; the last
+ * stop in the sequence is what the sign on the front of the bus says.
+ */
+export function directionLabel(direction: RouteDirection | null): string {
+  const last = direction?.stops[direction.stops.length - 1]?.stop_name;
+  return last === undefined ? '' : `Toward ${last}`;
+}
 
 /**
  * The three detents, in **points**, against the height of the sheet's own
@@ -161,6 +177,31 @@ export type StopSheetProps = {
    * the bar by construction.
    */
   tabBarOverlap: number;
+  /**
+   * The route the map is drawing, or null when it is not in route mode.
+   *
+   * Passed in rather than read from the store here so this component stays a
+   * plain function of its props — the same reason `client` and `detents` are
+   * passed — and so the sheet's own tests can drive all three modes without
+   * touching module state.
+   *
+   * Optional because "not in route mode" is the sheet's normal condition and
+   * every existing caller and test predates it.
+   */
+  routeView?: RouteView | null;
+};
+
+/** What the sheet needs in order to draw a route, from `MapScreen`. */
+export type RouteView = {
+  route: RouteSummary | null;
+  /** The direction being drawn, already clamped. Null while it is still loading. */
+  direction: RouteDirection | null;
+  /** Its stops, carrying their distance from the anchor so rows and pins agree. */
+  stops: readonly StopWithDistance[];
+  /** How many directions the route has. One means no flip control. */
+  directionCount: number;
+  onFlip: () => void;
+  onLeave: () => void;
 };
 
 export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSheet(
@@ -178,6 +219,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     client,
     detents,
     tabBarOverlap,
+    routeView = null,
   },
   ref,
 ) {
@@ -275,7 +317,60 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
         `flex: 1` above it.
       */}
       <View style={styles.fill}>
-        {selectedStop === null ? (
+        {selectedStop !== null ? null : routeView !== null ? (
+          <>
+            {/*
+              Exactly `PEEK_BAND` tall like the other two bands, or the resting
+              sheet changes height the moment a route is picked and reads as a
+              twitch. Everything in it therefore has to fit on one line.
+            */}
+            <View testID="route-band" style={[styles.band, styles.bandRow, { borderBottomColor: palette.border }]}>
+              <View style={styles.bandMain}>
+                <Text
+                  accessibilityRole="header"
+                  numberOfLines={1}
+                  style={[styles.heading, { color: palette.text }]}
+                >
+                  {routeView.route === null ? 'Route' : `Route ${routeView.route.short_name}`}
+                </Text>
+                <Text numberOfLines={1} style={[styles.bandMeta, { color: palette.muted }]}>
+                  {directionLabel(routeView.direction)}
+                </Text>
+              </View>
+
+              {/*
+                Hidden when there is nothing to flip to. A control that does
+                nothing is worse than an absent one, and 34 of Oahu's routes run
+                in a single direction.
+              */}
+              {routeView.directionCount > 1 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={FLIP_LABEL}
+                  onPress={routeView.onFlip}
+                  style={[styles.bandButton, { borderColor: palette.border }]}
+                >
+                  <Text style={[styles.bandGlyph, { color: palette.text }]}>⇄</Text>
+                </Pressable>
+              ) : null}
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={LEAVE_ROUTE_LABEL}
+                onPress={routeView.onLeave}
+                style={[styles.bandButton, { borderColor: palette.border }]}
+              >
+                <Text style={[styles.bandGlyph, { color: palette.text }]}>✕</Text>
+              </Pressable>
+            </View>
+
+            <RouteList
+              stops={routeView.stops}
+              selectedStopId={null}
+              onSelect={onSelect}
+            />
+          </>
+        ) : (
           <>
             {/*
               Outside the scroll, so it is still there at the peek and does not
@@ -318,18 +413,26 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
               }
             />
           </>
-        ) : (
-          /*
-            Mounted only while a stop is selected, which is what keeps exactly one
-            arrivals poll running: unmounting tears down useArrivals' fetch and its
-            60-second timer with it, so changing selection cannot leave the
-            previous stop polling in the background.
-          */
+        )}
+
+        {/*
+          Mounted only while a stop is selected, which is what keeps exactly one
+          arrivals poll running: unmounting tears down useArrivals' fetch and its
+          60-second timer with it, so changing selection cannot leave the
+          previous stop polling in the background.
+
+          The back control names what it goes back *to*, which in route mode is
+          the route's own stop list rather than the nearby one.
+        */}
+        {selectedStop === null ? null : (
           <StopCard
             stop={selectedStop}
             meters={selectedStop.meters}
             routes={routesByStop.get(selectedStop.stop_id) ?? []}
             isFavorite={favoriteIds.includes(selectedStop.stop_id)}
+            backLabel={
+              routeView?.route == null ? undefined : `‹ Route ${routeView.route.short_name}`
+            }
             onBack={onBack}
             onToggleFavorite={onToggleFavorite}
             onPressRoute={onOpenRoute}
@@ -374,6 +477,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   heading: { fontSize: 17, fontWeight: '700' },
+  /** The route band packs a title, a direction and two controls onto one line. */
+  bandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bandMain: { flex: 1 },
+  bandMeta: { fontSize: 12, marginTop: 1 },
+  bandButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bandGlyph: { fontSize: 15, lineHeight: 18 },
   /** Never squeezed by the list above it, and never squeezing it either. */
   legend: { flexShrink: 0 },
   empty: { paddingHorizontal: 16, paddingTop: 8 },

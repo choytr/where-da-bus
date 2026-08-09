@@ -12,7 +12,6 @@ import * as Linking from 'expo-linking';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { type LongPressEvent, type MarkerPressEvent } from 'react-native-maps';
 import type BottomSheet from '@gorhom/bottom-sheet';
-import { router } from 'expo-router';
 import { schedule } from '../../lib/schedule';
 import { useAnchoredStops } from './useAnchoredStops';
 import { StopMarker } from './StopMarker';
@@ -36,7 +35,8 @@ import {
 } from './StopSheet';
 import { SearchBar, SEARCH_BAR_ALLOWANCE } from './SearchBar';
 import { SearchOverlay } from './SearchOverlay';
-import { useStopQueries, NEARBY_RADIUS_METERS } from '../../data/gtfs/db';
+import { enterRouteMode, flipDirection, leaveRouteMode, useRouteMode } from './routeMode';
+import { useStopQueries, NEARBY_RADIUS_METERS, type RouteDirection } from '../../data/gtfs/db';
 import {
   addFavorite,
   loadFavorites,
@@ -45,7 +45,7 @@ import {
 import type { TheBusClient } from '../../data/thebus';
 import { useTheme } from '../../lib/theme';
 import type { RouteSummary, Stop, StopWithDistance } from '../../data/gtfs/types';
-import type { Coords } from '../../lib/distance';
+import { metersBetween, type Coords } from '../../lib/distance';
 
 /**
  * The map tab: stops around one anchor, as pins and as a list, which are two
@@ -227,7 +227,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     requestLocation,
     locationStatus,
   } = useAnchoredStops();
-  const { routesForStops } = useStopQueries();
+  const { routesForStops, routeById, routeStops } = useStopQueries();
 
   const map = useRef<MapView | null>(null);
   const sheet = useRef<BottomSheet | null>(null);
@@ -253,6 +253,18 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const [zoomEnabled, setZoomEnabled] = useState(true);
   const releaseZoom = useRef<(() => void) | null>(null);
   const [routesByStop, setRoutesByStop] = useState<Map<string, RouteSummary[]>>(new Map());
+  /**
+   * The route the map is drawing, from a module-level store rather than from
+   * this component's state — see `routeMode.ts`. Leaving the tab and coming
+   * back must not drop it, and holding it here would make that a bet on whether
+   * React Navigation keeps a tab scene mounted.
+   */
+  const routeMode = useRouteMode();
+  const [routeDetail, setRouteDetail] = useState<{
+    routeId: string;
+    route: RouteSummary | null;
+    directions: RouteDirection[];
+  } | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
 
   /**
@@ -288,7 +300,12 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * anchor move — this button, a long press, ⌖ — retires the offer, because
    * `anchor` is a fresh object each time it moves.
    */
-  const offering = offeredFor === anchor;
+  /**
+   * Never offered in route mode: *Search this area* replaces the anchor's stop
+   * set, and in route mode that set is not what the pins are showing, so taking
+   * it up would appear to do nothing at all.
+   */
+  const offering = offeredFor === anchor && routeMode === null;
 
   /**
    * The map's chrome, stacked downward from the safe area: the search bar
@@ -441,8 +458,76 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     };
   }, []);
 
+  /**
+   * The route's stops and identity, loaded when route mode changes.
+   *
+   * Keyed on the route id alone, not on the direction: flipping direction is a
+   * choice about what to *draw* from data already in hand, and re-querying for
+   * it would blank the sheet for a frame every time a rider tapped the control.
+   *
+   * `routeDetail` carries the id it was loaded for, so a render between the
+   * store changing and this effect resolving draws nothing rather than drawing
+   * the previous route's stops under the new route's name.
+   */
   useEffect(() => {
-    const ids = stops.map((stop) => stop.stop_id);
+    if (routeMode === null) {
+      setRouteDetail(null);
+      return;
+    }
+    const { routeId } = routeMode;
+    let cancelled = false;
+    void Promise.all([routeById(routeId), routeStops(routeId)])
+      .then(([route, directions]) => {
+        if (!cancelled) setRouteDetail({ routeId, route, directions });
+      })
+      .catch(() => {
+        if (!cancelled) setRouteDetail({ routeId, route: null, directions: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [routeMode, routeById, routeStops]);
+
+  /** Null unless the loaded detail is for the route currently being shown. */
+  const loadedRoute = routeDetail?.routeId === routeMode?.routeId ? routeDetail : null;
+
+  /**
+   * The direction being drawn, clamped: `routeMode` stores an index because it
+   * cannot know how many directions a route has, and 34 of Oahu's routes run
+   * only one way.
+   */
+  const direction = useMemo(() => {
+    const directions = loadedRoute?.directions ?? [];
+    if (directions.length === 0) return null;
+    return directions[Math.min(routeMode?.directionIndex ?? 0, directions.length - 1)] ?? null;
+  }, [loadedRoute, routeMode]);
+
+  /**
+   * The route's stops carrying their distance from the anchor.
+   *
+   * The distance is not shown in the route list — rows show the sequence — but
+   * the pins and the label culler both take `StopWithDistance`, and selecting
+   * one opens the card, which shows how far away it is. Measuring from the
+   * anchor is the same thing every other distance on this screen means.
+   */
+  const routePins = useMemo(
+    () =>
+      (direction?.stops ?? []).map((stop) => ({
+        ...stop,
+        meters: metersBetween(anchor, stop),
+      })),
+    [direction, anchor],
+  );
+
+  /**
+   * What the map draws pins for: the route's stops in route mode, the anchor's
+   * otherwise. **One set, never both** — two overlapping stop sets on one map is
+   * how a rider stops being able to tell what they are looking at.
+   */
+  const pins = routeMode === null ? stops : routePins;
+
+  useEffect(() => {
+    const ids = pins.map((stop) => stop.stop_id);
     if (ids.length === 0) return;
 
     let cancelled = false;
@@ -454,7 +539,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     return () => {
       cancelled = true;
     };
-  }, [stops, routesForStops]);
+  }, [pins, routesForStops]);
 
   /**
    * Pin tap and row tap take exactly this path, so the two cannot drift into
@@ -587,8 +672,28 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     [select, holdZoomOff],
   );
 
+  /**
+   * Picking a route **on the map** draws it here rather than pushing
+   * `/route/[id]` — the whole point of the increment. `RouteScreen` is untouched
+   * and is still what the Stops tab opens.
+   *
+   * The open card is dropped: the stop set behind it is about to be replaced by
+   * the route's own, and a card for a stop no longer among the pins would keep
+   * polling for it. The same reasoning as `searchFrom`.
+   */
   const openRoute = useCallback((route: RouteSummary) => {
-    router.push(`/route/${encodeURIComponent(route.route_id)}`);
+    setSelectedStop(null);
+    setPending(null);
+    enterRouteMode(route.route_id);
+  }, []);
+
+  /**
+   * The X, and the only thing that leaves route mode. Panning does not, and
+   * changing tab does not — both were put to Truman explicitly.
+   */
+  const leaveRoute = useCallback(() => {
+    setSelectedStop(null);
+    leaveRouteMode();
   }, []);
 
   /**
@@ -644,8 +749,11 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     [searchFrom, frameOn],
   );
 
-  /** A route leaves the map, so the search closes behind it rather than
-   *  being underneath the route screen on the way back. */
+  /**
+   * A route picked out of the search draws it here. The search closes first, so
+   * what a rider sees underneath is the route appearing on the map they were
+   * already looking at rather than a screen being pushed over it.
+   */
   const openRouteFromSearch = useCallback(
     (route: RouteSummary) => {
       setSearching(false);
@@ -721,7 +829,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const labelled = useMemo(
     () =>
       labelledStopIds(
-        stops,
+        pins,
         camera ?? region,
         {
           width: windowWidth,
@@ -732,7 +840,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         },
         selectedStop?.stop_id ?? null,
       ),
-    [stops, camera, region, windowWidth, mapHeight, detent, detents, selectedStop],
+    [pins, camera, region, windowWidth, mapHeight, detent, detents, selectedStop],
   );
 
   const banner = locationStatus === 'denied' ? LOCATION_DENIED : LOCATION_ERROR;
@@ -767,7 +875,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
           showsMyLocationButton={false}
           toolbarEnabled={false}
         >
-          {stops.map((stop) => (
+          {pins.map((stop) => (
             <StopMarker
               key={stop.stop_id}
               stop={stop}
@@ -850,6 +958,18 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         client={client}
         detents={detents}
         tabBarOverlap={tabBarOverlap}
+        routeView={
+          routeMode === null
+            ? null
+            : {
+                route: loadedRoute?.route ?? null,
+                direction,
+                stops: routePins,
+                directionCount: loadedRoute?.directions.length ?? 0,
+                onFlip: flipDirection,
+                onLeave: leaveRoute,
+              }
+        }
       />
 
       {/*

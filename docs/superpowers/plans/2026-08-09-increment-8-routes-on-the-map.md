@@ -232,6 +232,29 @@ mode like every other Data-showing mode, and still omitted at the peek. **Hide
 the *Search this area* offer in route mode** — it would replace an anchor whose
 stops are not the ones on screen.
 
+**What was built.** The contract as written. Three things worth knowing.
+
+`RouteList` is its own component rather than a mode inside `StopSheet`, and its
+rows show the **sequence number**, not a distance — matching `RouteScreen`. A
+route's stop list is a sequence; "400 m away" says nothing a rider wants at the
+moment they are reading the run.
+
+`MapScreen` keys the route query on the **route id alone, never the direction**.
+Flipping is a choice about what to draw from data already in hand, and
+re-querying would blank the sheet for a frame on every tap. `routeDetail` carries
+the id it was loaded for, so a render between the store changing and the query
+resolving draws nothing rather than the previous route's stops under the new
+route's name.
+
+Route stops are mapped to `StopWithDistance` against the anchor rather than
+widening `StopMarker` and `labelledStopIds` to take a bare `Stop`. It touches two
+fewer files and the distance is real — it is what the card shows when one of
+those stops is tapped.
+
+**The store leaks between tests, and that is the price of it surviving a tab
+change.** `MapScreen.test.tsx` calls `leaveRouteMode()` in `beforeEach`; without
+it, one test entering route mode makes every later test render the route's pins.
+
 **Tests:** `entering route mode survives a remount`; `leaving clears it`;
 `flipping moves to the other direction and back`; `a route result draws the route
 instead of leaving the map`; `the route's stops are the pins`; `the sheet lists

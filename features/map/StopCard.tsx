@@ -27,6 +27,10 @@ import type { TheBusClient } from '../../data/thebus';
  */
 
 const BACK_LABEL = 'Back to nearby stops';
+/**
+ * What the back control goes back *to*. Route mode replaces it, because from a
+ * route's stop list "Nearby" would be a lie about where the card came from.
+ */
 const BACK_TEXT = '‹ Nearby';
 
 export type StopCardProps = {
@@ -35,6 +39,8 @@ export type StopCardProps = {
   meters: number | null;
   routes: RouteSummary[];
   isFavorite: boolean;
+  /** Overrides `‹ Nearby` when the card was opened from something else. */
+  backLabel?: string;
   onBack: () => void;
   onToggleFavorite: (stopId: string) => void;
   onPressRoute: (route: RouteSummary) => void;
@@ -47,6 +53,7 @@ export function StopCard({
   meters,
   routes,
   isFavorite,
+  backLabel,
   onBack,
   onToggleFavorite,
   onPressRoute,
@@ -80,7 +87,7 @@ export function StopCard({
           onPress={onBack}
           hitSlop={12}
         >
-          <Text style={[styles.back, { color: palette.text }]}>{BACK_TEXT}</Text>
+          <Text style={[styles.back, { color: palette.text }]}>{backLabel ?? BACK_TEXT}</Text>
         </Pressable>
 
         <Pressable

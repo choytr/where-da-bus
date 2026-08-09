@@ -5,11 +5,13 @@ import { MapScreen, COMPASS_LAYOUT_OFFSET } from '../MapScreen';
 import { MEDIUM_DETENT, PEEK_DETENT, detentsFor, tabBarOverlapOf, visibleAbove } from '../StopSheet';
 import { centredOn } from '../region';
 import { SEARCH_PLACEHOLDER } from '../SearchBar';
+import { leaveRouteMode } from '../routeMode';
 import type { Place } from '../address';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
 import { NOTICES } from '../../arrivals/board';
 import type { RouteSummary, Stop, StopWithDistance } from '../../../data/gtfs/types';
+import type { RouteDirection } from '../../../data/gtfs/db';
 import type { ArrivalsResult } from '../../../data/thebus/types';
 import type { TheBusClient } from '../../../data/thebus';
 import type { LocationState } from '../../stops/useLocation';
@@ -214,6 +216,29 @@ const mockQueries = {
   searchRoutes: jest.fn(async (_query: string): Promise<RouteSummary[]> => []),
   stopsByIds: jest.fn(async (): Promise<Stop[]> => []),
   feedEndDate: jest.fn(async (): Promise<string | null> => null),
+  routeById: jest.fn(async (routeId: string): Promise<RouteSummary | null> => ({
+    route_id: routeId,
+    short_name: '1',
+    long_name: 'Kalihi - Waikiki',
+  })),
+  routeStops: jest.fn(async (): Promise<RouteDirection[]> => [
+    {
+      directionId: '0',
+      shapeId: 's-out',
+      stops: [
+        { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+        { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
+      ],
+    },
+    {
+      directionId: '1',
+      shapeId: 's-back',
+      stops: [
+        { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
+        { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+      ],
+    },
+  ]),
 };
 
 jest.mock('../../../data/gtfs/db', () => ({
@@ -393,6 +418,11 @@ function show() {
 
 describe('MapScreen', () => {
   beforeEach(() => {
+    // Route mode is module state — deliberately, so that changing tab cannot
+    // drop it — which means it also survives a test. One test entering it and
+    // the next rendering the route's pins instead of the anchor's is the price,
+    // and this is the whole of it.
+    leaveRouteMode();
     jest.clearAllMocks();
     mockArrivalCalls.length = 0;
     mockSnapCalls.length = 0;
@@ -1123,9 +1153,15 @@ describe('MapScreen', () => {
       expect(mockNearby).toHaveBeenCalledTimes(1);
     });
 
-    it('opens the route screen by route_id, from a row showing neither', async () => {
+    /**
+     * The increment's whole point: picking a route on the map draws it *here*.
+     * This used to assert a push to `/route/25`, and that assertion is now the
+     * bug — `RouteScreen` is still what the Stops tab opens, and the map keeps
+     * the rider on the map.
+     */
+    it('draws the route on the map instead of leaving it', async () => {
       // `route_id: '25'` is route 32. The row shows the number on the bus and
-      // the tap navigates by the id, and those must not be the same string.
+      // the lookup uses the id, and those must not be the same string.
       mockQueries.searchRoutes.mockResolvedValue([
         { route_id: '25', short_name: '32', long_name: 'Mapunapuna-Airport' },
       ]);
@@ -1138,9 +1174,11 @@ describe('MapScreen', () => {
 
       await fireEvent.press(screen.getByLabelText('Route 32'));
 
-      expect(mockPush).toHaveBeenCalledWith('/route/25');
-      // Closed behind the push, so it is not underneath the route screen on the
-      // way back.
+      await waitFor(() => screen.getByTestId('route-band'));
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockQueries.routeStops).toHaveBeenCalledWith('25');
+      // Closed behind it, so the route is revealed on the map rather than
+      // appearing under a search that is still up.
       expect(screen.queryByLabelText('Find a route by number or name')).toBeNull();
     });
 
@@ -1508,6 +1546,147 @@ describe('MapScreen', () => {
       // Still usable at the end of all that, which is the whole assertion.
       await longPress();
       screen.getByLabelText('pin pending-anchor');
+    });
+  });
+  describe('MapScreen route mode', () => {
+    /**
+     * Getting into route mode the way a rider does — through the search — rather
+     * than by poking the store, so these exercise the wiring as well as the state.
+     */
+    async function showRoute() {
+      const route = { route_id: '25', short_name: '32', long_name: 'Mapunapuna-Airport' };
+      mockQueries.searchRoutes.mockResolvedValue([route]);
+      mockQueries.routeById.mockResolvedValue(route);
+      await show();
+      await fireEvent.press(screen.getByLabelText(SEARCH_PLACEHOLDER));
+      await fireEvent.press(screen.getByLabelText('Search by routes'));
+      await fireEvent.changeText(screen.getByLabelText('Find a route by number or name'), '32');
+      await waitFor(() => screen.getByLabelText('Route 32'));
+      await fireEvent.press(screen.getByLabelText('Route 32'));
+      await waitFor(() => screen.getByTestId('route-band'));
+    }
+
+    it('names the route and where the direction ends up', async () => {
+      await showRoute();
+
+      expect(screen.getByText('Route 32')).toBeTruthy();
+      expect(screen.getByText('Toward WAIKIKI')).toBeTruthy();
+    });
+
+    it('lists the route’s stops in the order it serves them', async () => {
+      await showRoute();
+
+      expect(screen.getByLabelText('Stop 1, KALIHI TRANSIT CENTER')).toBeTruthy();
+      expect(screen.getByLabelText('Stop 2, WAIKIKI')).toBeTruthy();
+    });
+
+    /**
+     * One set of pins, never two. Two overlapping stop sets on one map is how a
+     * rider stops being able to tell what they are looking at.
+     */
+    it('draws the route’s stops as the pins, and not the nearby ones', async () => {
+      mockNearby.mockResolvedValue([stop('7', 'SOMEWHERE ELSE', 40)]);
+      await showRoute();
+
+      // The double labels a marker by its `identifier`, which is the stop id.
+      expect(screen.getByLabelText('pin r1')).toBeTruthy();
+      expect(screen.getByLabelText('pin r2')).toBeTruthy();
+      expect(screen.queryByLabelText('pin 7')).toBeNull();
+    });
+
+    it('flips to the other direction', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('Show the other direction'));
+
+      await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
+      expect(screen.getByLabelText('Stop 1, WAIKIKI')).toBeTruthy();
+    });
+
+    it('leaves route mode from the X, and puts the nearby stops back', async () => {
+      mockNearby.mockResolvedValue([stop('7', 'SOMEWHERE ELSE', 40)]);
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+      await waitFor(() => screen.getByTestId('nearby-band'));
+      expect(screen.queryByTestId('route-band')).toBeNull();
+      expect(screen.getByLabelText('pin 7')).toBeTruthy();
+      expect(screen.queryByLabelText('pin r1')).toBeNull();
+    });
+
+    /** Truman settled this explicitly: only the X leaves. */
+    it('stays in route mode when the map is panned', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('pan the camera away'));
+
+      expect(screen.getByTestId('route-band')).toBeTruthy();
+    });
+
+    it('stays in route mode when the map is tapped', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('map surface'));
+
+      expect(screen.getByTestId('route-band')).toBeTruthy();
+    });
+
+    /**
+     * *Search this area* replaces the anchor's stop set, which in route mode is
+     * not what the pins are showing — so taking it up would appear to do nothing.
+     */
+    it('does not offer to search this area while a route is showing', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('pan the camera away'));
+
+      expect(screen.queryByLabelText('Search this area')).toBeNull();
+    });
+
+    it('offers to search this area again once the route is dismissed', async () => {
+      await showRoute();
+      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+      await fireEvent.press(screen.getByLabelText('pan the camera away'));
+
+      await waitFor(() => screen.getByLabelText('Search this area'));
+    });
+
+    it('opens a route stop’s card, with a back control naming the route', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('Stop 1, KALIHI TRANSIT CENTER'));
+
+      await waitFor(() => screen.getByTestId('stop-card-band'));
+      expect(screen.getByText('‹ Route 32')).toBeTruthy();
+    });
+
+    it('goes back from a stop’s card to the route’s stop list', async () => {
+      await showRoute();
+      await fireEvent.press(screen.getByLabelText('Stop 1, KALIHI TRANSIT CENTER'));
+      await waitFor(() => screen.getByTestId('stop-card-band'));
+
+      await fireEvent.press(screen.getByText('‹ Route 32'));
+
+      await waitFor(() => screen.getByTestId('route-band'));
+      expect(screen.getByLabelText('Stop 2, WAIKIKI')).toBeTruthy();
+    });
+
+    /** A route the feed runs one way has nothing to flip to. */
+    it('offers no flip control for a route with a single direction', async () => {
+      mockQueries.routeStops.mockResolvedValue([
+        {
+          directionId: '0',
+          shapeId: 's-out',
+          stops: [
+            { stop_id: 'r1', stop_code: '901', stop_name: 'ONE WAY ONLY', lat: 21.33, lon: -157.87 },
+          ],
+        },
+      ]);
+      await showRoute();
+
+      expect(screen.queryByLabelText('Show the other direction')).toBeNull();
     });
   });
 });

@@ -8,6 +8,7 @@ import {
   PEEK_DETENT,
   MEDIUM_DETENT,
   FULL_DETENT,
+  type RouteView,
 } from '../StopSheet';
 import { PEEK_BAND, PEEK_ROW } from '../peek';
 import { TestTheme } from '../../../lib/testing/theme';
@@ -91,10 +92,21 @@ const INSET_SCENE = WINDOW_HEIGHT - TAB_BAR;
 const OVERLAP = tabBarOverlapOf(INSET_SCENE, WINDOW_HEIGHT, TAB_BAR);
 const DETENTS = detentsFor(INSET_SCENE, OVERLAP, TOP_INSET);
 
+/** A route the sheet can draw, in one direction with two stops. */
+const ROUTE_VIEW: RouteView = {
+  route: { route_id: '25', short_name: '32', long_name: 'Mapunapuna-Airport' },
+  direction: { directionId: '0', shapeId: 's-out', stops: STOPS },
+  stops: STOPS,
+  directionCount: 2,
+  onFlip: jest.fn(),
+  onLeave: jest.fn(),
+};
+
 const show = (
   selectedStop: StopWithDistance | null,
   onBack = jest.fn(),
   overlap = OVERLAP,
+  routeView: RouteView | null = null,
 ) =>
   render(
     <TestTheme>
@@ -112,6 +124,7 @@ const show = (
         client={client}
         detents={DETENTS}
         tabBarOverlap={overlap}
+        routeView={routeView}
       />
     </TestTheme>,
   );
@@ -188,15 +201,78 @@ describe('StopSheet', () => {
    * twitch. Asserted on the two heights rather than by rendering at the peek,
    * because Jest runs no layout.
    */
-  it('gives both modes a top band of the same height', async () => {
+  /**
+   * All three, not two. The resting sheet is the handle, one band and one row;
+   * a band of a different height in any mode changes the sheet's height the
+   * moment a rider switches to it, and reads as a twitch.
+   */
+  it('gives all three modes a top band of the same height', async () => {
     await show(null);
     const heading = StyleSheet.flatten(screen.getByTestId('nearby-band').props.style);
 
     await show(STOPS[0]);
     const card = StyleSheet.flatten(screen.getByTestId('stop-card-band').props.style);
 
+    await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
+    const route = StyleSheet.flatten(screen.getByTestId('route-band').props.style);
+
     expect(heading.height).toBe(PEEK_BAND);
     expect(card.height).toBe(PEEK_BAND);
+    expect(route.height).toBe(PEEK_BAND);
+  });
+
+  describe('route mode', () => {
+    it('names the route and where this direction ends up', async () => {
+      await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
+
+      screen.getByText('Route 32');
+      screen.getByText('Toward KAPALULU PL');
+    });
+
+    it('lists the route’s stops in order, by sequence rather than distance', async () => {
+      await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
+
+      screen.getByLabelText('Stop 1, LAGOON DR');
+      screen.getByLabelText('Stop 2, KAPALULU PL');
+    });
+
+    it('shows the route instead of the nearby list', async () => {
+      await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
+
+      expect(screen.queryByTestId('nearby-band')).toBeNull();
+      expect(screen.queryByTestId('nearby-stops')).toBeNull();
+    });
+
+    it('offers the flip and the dismiss', async () => {
+      const routeView = { ...ROUTE_VIEW, onFlip: jest.fn(), onLeave: jest.fn() };
+      await show(null, jest.fn(), OVERLAP, routeView);
+
+      await fireEvent.press(screen.getByLabelText('Show the other direction'));
+      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+      expect(routeView.onFlip).toHaveBeenCalled();
+      expect(routeView.onLeave).toHaveBeenCalled();
+    });
+
+    /** A control that does nothing is worse than an absent one. */
+    it('offers no flip for a route that runs one way', async () => {
+      await show(null, jest.fn(), OVERLAP, { ...ROUTE_VIEW, directionCount: 1 });
+
+      expect(screen.queryByLabelText('Show the other direction')).toBeNull();
+      screen.getByLabelText('Stop showing this route');
+    });
+
+    /**
+     * The route's stop list presents Data, so it owes the legend like every
+     * other surface. The peek is still the exception, and for the same reason.
+     */
+    it('pins the legend under the route’s stop list', async () => {
+      await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
+
+      await fireEvent.press(screen.getByLabelText(`settle the sheet at ${MEDIUM_DETENT}`));
+
+      screen.getByTestId('sheet-attribution');
+    });
   });
 
   it('titles the card from BoardHeader, not from its band', async () => {
