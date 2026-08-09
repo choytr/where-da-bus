@@ -20,3 +20,18 @@
  * direction without him.
  */
 export const PEEK_BAND = 44;
+
+/**
+ * One more row's worth of content below the band, so the resting sheet shows
+ * the nearest stop rather than only naming itself.
+ *
+ * Sized off a full `StopRow`: 12 pt of padding either side of a 16 pt name, a
+ * 13 pt meta line 2 pt under it, and a route chip 8 pt under that. The card
+ * mode spends the same height on `BoardHeader`'s name, code and age, which fit
+ * it almost exactly — so both modes still come out the same height without
+ * either being padded to match the other.
+ *
+ * A row without route chips is shorter and leaves a little air. That is the
+ * right way round: the peek never clips a row it has started drawing.
+ */
+export const PEEK_ROW = 92;

@@ -113,13 +113,19 @@ It costs ~35 pt of the 45% detent, which the scroll-footer version did not.
 spec recorded them as dropped. He asked for the heading back after seeing the
 handle-only peek: **"having just the top tab thing visible is horrendous."**
 
-So the peek is the handle plus **one band**, `PEEK_BAND`, and both modes fill
-exactly that band — otherwise the resting sheet changes height the moment a stop
-is selected, which reads as a twitch. The list fills it with *Nearby Stops*. The
-card fills it with **‹ Nearby · the stop's name · ★**, because that band is now
-the whole of the resting sheet and a back control on its own says nothing about
-*which* stop is open. `BoardHeader` is told to drop its own copy of the name in
-this host, so it is not printed twice a few points apart.
+So the peek is the handle, **one band and one row** — `PEEK_BAND` naming the
+mode, `PEEK_ROW` showing something under it. Both modes fill exactly the band,
+otherwise the resting sheet changes height the moment a stop is selected, which
+reads as a twitch. The list fills it with *Nearby Stops* and shows its nearest
+stop below; the card fills it with **‹ Nearby · ★** and shows `BoardHeader` —
+name, code, age — below.
+
+The row was added on the fourth round: a band alone said what the sheet was
+without showing anything. It also retired a one-round experiment where the
+card's band carried the stop's name, which existed only because a band-only peek
+left *‹ Nearby ★* saying nothing about which stop was open. With a row beneath
+it the name is back in `BoardHeader` at its own size, and this host is identical
+to `/stop/[code]` again.
 
 The withdrawal's reasoning was sound and simply did not survive contact: it
 assumed a peek tall enough to show a `StopRow` or the card's header, where a

@@ -8,7 +8,7 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet';
 import { StopRow } from '../stops/StopRow';
 import { StopCard } from './StopCard';
-import { PEEK_BAND } from './peek';
+import { PEEK_BAND, PEEK_ROW } from './peek';
 import { useTheme } from '../../lib/theme';
 import { Attribution } from '../../lib/Attribution';
 import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
@@ -66,10 +66,11 @@ const NEARBY_HEADING = 'Nearby Stops';
  * zero when the scene is already inset above it. Derived from the same
  * measurement rather than from a belief about React Navigation.
  *
- * **The peek is the handle plus one band**, `PEEK_BAND`. It has now been all
- * three things on a device: ~211 pt showing a full row (too much map spent),
- * the handle alone (Truman: "horrendous"), and this. One band is enough to say
- * what the sheet is without being a view in its own right.
+ * **The peek is the handle, one band and one row** — `PEEK_BAND` naming the
+ * mode, `PEEK_ROW` showing the nearest stop under it. Four device rounds
+ * settled that: `'14%'` left about a dozen points of content, ~211 pt sized to
+ * the card's header spent too much map, the handle alone was "horrendous", and
+ * a band alone said what the sheet was without showing anything.
  *
  * The tallest detent is 90% of the container **or** as tall as it can be while
  * still clearing the safe area, whichever is shorter. The cap is what makes the
@@ -84,7 +85,7 @@ export function detentsFor(
   const medium = Math.round(containerHeight * 0.45);
   const clearsNotch = containerHeight - topInset - TOP_GAP;
   return [
-    HANDLE_HEIGHT + PEEK_BAND + tabBarOverlap,
+    HANDLE_HEIGHT + PEEK_BAND + PEEK_ROW + tabBarOverlap,
     medium,
     // Never below medium, however small the container or however deep the
     // notch — an ordering violation would make the sheet unsnappable.

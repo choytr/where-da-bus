@@ -9,7 +9,7 @@ import {
   MEDIUM_DETENT,
   FULL_DETENT,
 } from '../StopSheet';
-import { PEEK_BAND } from '../peek';
+import { PEEK_BAND, PEEK_ROW } from '../peek';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
 import type { StopWithDistance } from '../../../data/gtfs/types';
@@ -123,12 +123,12 @@ const show = (
  * cannot be told about it.
  */
 describe('the detents', () => {
-  it('derives a peek that is the grab handle and one band', () => {
-    // Three device rounds settled this. `'14%'` left about a dozen points of
+  it('derives a peek that is the grab handle, one band and one row', () => {
+    // Four device rounds settled this. `'14%'` left about a dozen points of
     // content; sizing it to the card's header gave ~211 pt and spent too much
-    // map; the handle alone was Truman's "horrendous". One band says what the
-    // sheet is without being a view in its own right.
-    expect(DETENTS[PEEK_DETENT]).toBe(24 + PEEK_BAND);
+    // map; the handle alone was Truman's "horrendous"; a band alone said what
+    // the sheet was without showing anything.
+    expect(DETENTS[PEEK_DETENT]).toBe(24 + PEEK_BAND + PEEK_ROW);
     expect(DETENTS[PEEK_DETENT]).toBeLessThan(DETENTS[MEDIUM_DETENT]);
   });
 
@@ -143,7 +143,7 @@ describe('the detents', () => {
     );
 
     expect(OVERLAP).toBe(0);
-    expect(overlaid[PEEK_DETENT]).toBe(24 + PEEK_BAND + TAB_BAR);
+    expect(overlaid[PEEK_DETENT]).toBe(24 + PEEK_BAND + PEEK_ROW + TAB_BAR);
     // Either way, the same band is what shows above the bar.
     expect(overlaid[PEEK_DETENT] - TAB_BAR).toBe(DETENTS[PEEK_DETENT]);
   });
@@ -195,20 +195,17 @@ describe('StopSheet', () => {
     expect(card.height).toBe(PEEK_BAND);
   });
 
-  it('names the stop in the card’s band, which is all the resting sheet shows', async () => {
-    // "‹ Nearby ★" on its own would say nothing about which stop is open, and
-    // that band is the whole of the peek.
+  it('titles the card from BoardHeader, not from its band', async () => {
+    // The name lived in the band for one round, while the peek was the band and
+    // nothing else. The peek now shows a row below it, so the name is back at
+    // its own size in `BoardHeader` — which keeps this host identical to
+    // `/stop/[code]`, and keeps it off the band's cramped single line.
     await show(STOPS[0]);
 
-    within(screen.getByTestId('stop-card-band')).getByText('LAGOON DR');
-  });
-
-  it('does not print the stop’s name twice', async () => {
-    // It is in the band now, so `BoardHeader` is told to leave it out — the
-    // same name a few points apart reads as a rendering fault.
-    await show(STOPS[0]);
-
-    expect(screen.getAllByText('LAGOON DR')).toHaveLength(1);
+    const band = within(screen.getByTestId('stop-card-band'));
+    expect(band.queryByText('LAGOON DR')).toBeNull();
+    band.getByLabelText('Back to nearby stops');
+    screen.getByText('LAGOON DR');
   });
 
   it('shows the nearby list when nothing is selected', async () => {
