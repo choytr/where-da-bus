@@ -635,3 +635,50 @@ Three corrections worth carrying:
 `tracksViewChanges` still toggles a prop on those same components. If it
 returns: another `.ips`, then look at anything that makes React insert, remove
 or reorder a child view inside a `react-native-maps` component.
+
+---
+
+## Round 4 — 2026-08-08 afternoon, the map settles
+
+`IMG_4525`–`IMG_4529`. Truman: "No interactions are really broken anymore", and
+after the label work, "overall the experience really is way better than before.
+Good instinct on the label flipping."
+
+**M46. The culler never checked labels against *tiles*.** *Observed*
+`IMG_4527`: names running underneath other stops' icons. It only ever compared
+label boxes with other label boxes. Every tile is now claimed as an obstacle
+before any label is placed, a label may flip above its tile when there is no
+room beneath, and at most six names appear at once.
+
+**M47. The projection divided by the wrong height, and it caused both remaining
+complaints at once.** *Found by reading, prompted by* "sometimes the labels do
+overlap and sometimes it's really hard to get the labels to show up for the
+stops I'm looking at."
+
+`labelledStopIds` was handed the height *above the sheet* as its viewport, but
+the map is full-screen and the camera's region spans the whole window. Every
+stop separation therefore came out short by the sheet's fraction: boxes
+comfortably apart on screen were computed as touching, which over-culled, while
+the skewed centre let genuine overlaps through. One mistake, both symptoms.
+
+Fixed by projecting against the full window height and passing `visibleHeight`
+separately — which turned out to be worth having anyway: **stops behind the
+sheet were spending the six-label budget on names nobody could see.** They still
+count as obstacles, because they are still drawn.
+
+**M48. Tapping a pin no longer counts toward the double-tap zoom.** Truman chose
+the blunt fix knowing the cost: the map refuses to zoom for 320 ms after a pin
+tap. A deliberate pinch inside that window does nothing. The alternative was
+native, and leaving the Expo Go loop is a larger decision than this one.
+
+### Still open on the map, and deliberately left
+
+- **Labels still overlap sometimes**, and some stops are hard to get a label
+  for. *Observed* after the fixes above; better, not solved. The selected stop
+  keeps its label whatever collides, which is a deliberate escape hatch and one
+  known source of overlap.
+- **`MAX_LABELS = 6` is a guess** that has never been tuned on a device.
+- **Truman's idea for later: place labels to the *side* of a pin**, not only
+  above and below. Both reference apps do it, it roughly doubles the placements
+  available again, and it is a change to one pure function plus one style. His
+  words: "that can be later."

@@ -330,10 +330,15 @@ describe('MapScreen', () => {
   it('writes a stop name on the map once the camera is close enough', async () => {
     // Truman, 2026-08-08, with screenshots of Apple Maps and Google Maps: both
     // put the name beside the icon and neither hides it behind a bubble.
-    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+    //
+    // Stop '7' rather than '5' because `stop` derives latitude from the id, and
+    // only '7' lands near the centre of the close-zoom camera. Anything much
+    // further south falls behind the sheet, where labels are deliberately not
+    // spent.
+    mockNearby.mockResolvedValue([stop('7', 'LAGOON DR', 120)]);
 
     await show();
-    await waitFor(() => screen.getByLabelText('pin 5'));
+    await waitFor(() => screen.getByLabelText('pin 7'));
     await fireEvent.press(screen.getByLabelText('zoom in close'));
 
     await waitFor(() => expect(labelOpacity('LAGOON DR')).toBe(1));
@@ -384,10 +389,10 @@ describe('MapScreen', () => {
     // MapKit, and the two come apart; hidden-with-opacity never mounts or
     // unmounts anything. Counted rather than inspected, because what must not
     // happen is the node going away.
-    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+    mockNearby.mockResolvedValue([stop('7', 'LAGOON DR', 120)]);
 
     await show();
-    await waitFor(() => screen.getByLabelText('pin 5'));
+    await waitFor(() => screen.getByLabelText('pin 7'));
     const before = screen.getAllByText('LAGOON DR').length;
 
     await fireEvent.press(screen.getByLabelText('zoom in close'));

@@ -9,7 +9,7 @@ import type { StopWithDistance } from '../../../data/gtfs/types';
  * draw.
  */
 
-const VIEWPORT = { width: 400, height: 700 };
+const VIEWPORT = { width: 400, height: 700, visibleHeight: 700 };
 
 /** Centred on downtown Honolulu, spanning about 1 km. */
 const CLOSE: Region = {
@@ -30,13 +30,36 @@ function stop(id: string, lat: number, lon: number, meters: number): StopWithDis
   };
 }
 
-/** Far enough apart on screen that their label boxes cannot touch. */
+/**
+ * Three stops in a column, far enough apart that their boxes cannot touch and
+ * close enough that all three are on screen. At this zoom 0.0012° is about 84
+ * points, against a label box 36 points tall.
+ */
 function spreadOut(): StopWithDistance[] {
   return [
     stop('a', 21.3069, -157.8583, 10),
-    stop('b', 21.3009, -157.8583, 20),
-    stop('c', 21.2949, -157.8583, 30),
+    stop('b', 21.3057, -157.8583, 20),
+    stop('c', 21.3045, -157.8583, 30),
   ];
+}
+
+/**
+ * Twelve stops that all fit on screen and can all be labelled — two columns
+ * far enough apart horizontally that their names never meet. Used for the cap,
+ * which is about *choosing* between placeable labels rather than about running
+ * out of room.
+ */
+function grid(): StopWithDistance[] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const column = i % 2;
+    const row = Math.floor(i / 2);
+    return stop(
+      `s${i}`,
+      21.3069 - row * 0.00143,
+      -157.8583 + (column === 0 ? -0.0025 : 0.0025),
+      i * 10,
+    );
+  });
 }
 
 /** Just the ids, for the cases that do not care which side a label went. */
@@ -131,7 +154,43 @@ describe('labelledStopIds', () => {
   });
 
   it('survives a zero-sized viewport rather than dividing by it', () => {
-    expect(labelledStopIds(spreadOut(), CLOSE, { width: 0, height: 0 }, null).size).toBe(0);
+    const empty = { width: 0, height: 0, visibleHeight: 0 };
+
+    expect(labelledStopIds(spreadOut(), CLOSE, empty, null).size).toBe(0);
+  });
+
+  it('does not spend the label budget on stops hidden behind the sheet', () => {
+    // Truman, 2026-08-08: "sometimes it's really hard to get the labels to show
+    // up for the stops I'm looking at." Six of the seven stops here sit under
+    // the sheet, and were taking the whole cap with them.
+    const behindTheSheet = Array.from({ length: 6 }, (_, i) =>
+      // Well below centre: at this zoom these land past y = 600.
+      stop(`hidden${i}`, 21.3069 - 0.0045 - i * 0.0002, -157.8583, 10 + i),
+    );
+    const inView = stop('visible', 21.3069, -157.8583, 900);
+
+    const half = { ...VIEWPORT, visibleHeight: 400 };
+    const labelled = labelledStopIds([...behindTheSheet, inView], CLOSE, half, null);
+
+    expect(labelled.has('visible')).toBe(true);
+    expect([...labelled.keys()].every((id) => !id.startsWith('hidden'))).toBe(true);
+  });
+
+  it('still treats a hidden stop as an obstacle', () => {
+    // It is drawn on the part of the map under the sheet, and a label reaching
+    // down from a visible stop would run straight into it.
+    const visible = stop('visible', 21.3069, -157.8583, 10);
+    const justBelow = stop('justBelow', 21.3069 - 0.000486, -157.8583, 20);
+
+    const labelled = labelledStopIds(
+      [visible, justBelow],
+      CLOSE,
+      // The sheet's edge falls between the two.
+      { ...VIEWPORT, visibleHeight: 355 },
+      null,
+    );
+
+    expect(labelled.get('visible')).not.toBe('below');
   });
 
   it('will not write a name underneath another stop\'s tile', () => {
@@ -158,21 +217,13 @@ describe('labelledStopIds', () => {
   });
 
   it('caps how many names the map carries at once', () => {
-    // Truman's word for the uncapped version was "dense". Twelve stops in a
-    // column, all of them placeable, and the map still takes six.
-    const many = Array.from({ length: 12 }, (_, i) =>
-      stop(`s${i}`, 21.3069 - i * 0.0016, -157.8583, i * 10),
-    );
-
-    expect(labelledStopIds(many, CLOSE, VIEWPORT, null).size).toBe(6);
+    // Truman's word for the uncapped version was "dense". Twelve placeable
+    // stops on screen, and the map still takes six.
+    expect(labelledStopIds(grid(), CLOSE, VIEWPORT, null).size).toBe(6);
   });
 
   it('spends the cap on the nearest stops', () => {
-    const many = Array.from({ length: 12 }, (_, i) =>
-      stop(`s${i}`, 21.3069 - i * 0.0016, -157.8583, i * 10),
-    );
-
-    const labelled = labelledStopIds(many, CLOSE, VIEWPORT, null);
+    const labelled = labelledStopIds(grid(), CLOSE, VIEWPORT, null);
 
     expect(labelled.has('s0')).toBe(true);
     expect(labelled.has('s11')).toBe(false);
@@ -181,10 +232,6 @@ describe('labelledStopIds', () => {
   it('does not let the cap crowd out the selection', () => {
     // The selected stop is placed before the cap is counted, so tapping the
     // furthest pin on a busy screen still shows which one was tapped.
-    const many = Array.from({ length: 12 }, (_, i) =>
-      stop(`s${i}`, 21.3069 - i * 0.0016, -157.8583, i * 10),
-    );
-
-    expect(labelledStopIds(many, CLOSE, VIEWPORT, 's11').has('s11')).toBe(true);
+    expect(labelledStopIds(grid(), CLOSE, VIEWPORT, 's11').has('s11')).toBe(true);
   });
 });

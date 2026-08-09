@@ -504,7 +504,13 @@ export function MapScreen({ client }: MapScreenProps) {
       labelledStopIds(
         stops,
         camera ?? region,
-        { width: windowWidth, height: Math.round(windowHeight * visibleAbove(detent)) },
+        {
+          width: windowWidth,
+          // The whole window: the map is full-screen and the camera's region
+          // spans all of it. `visibleHeight` is a separate question.
+          height: windowHeight,
+          visibleHeight: Math.round(windowHeight * visibleAbove(detent)),
+        },
         selectedStop?.stop_id ?? null,
       ),
     [stops, camera, region, windowWidth, windowHeight, detent, selectedStop],

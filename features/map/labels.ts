@@ -73,7 +73,30 @@ function overlaps(a: Box, b: Box): boolean {
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
-export type Viewport = { width: number; height: number };
+export type Viewport = {
+  width: number;
+  /**
+   * The **whole** map view, which is the full window: the map runs under the
+   * status bar and behind the sheet on purpose. The camera's region spans this,
+   * so this is what the projection divides by.
+   *
+   * It was the height *above the sheet* for one build, and that was simply
+   * wrong. Every stop separation came out short by the sheet's fraction, so
+   * boxes that were comfortably apart on screen were computed as touching —
+   * which over-culled — while the skewed centre let genuine overlaps through.
+   * Truman had both symptoms at once on 2026-08-08: "sometimes the labels do
+   * overlap and sometimes it's really hard to get the labels to show up for the
+   * stops I'm looking at."
+   */
+  height: number;
+  /**
+   * How much of that height is not under the sheet. Used only to skip stops a
+   * rider cannot see — they would otherwise spend the `MAX_LABELS` budget on
+   * names hidden behind the sheet, which is the other half of "hard to get the
+   * labels to show up for the stops I'm looking at".
+   */
+  visibleHeight: number;
+};
 
 /** Which side of its tile a label sits on. */
 export type LabelPlacement = 'below' | 'above';
@@ -131,19 +154,24 @@ export function labelledStopIds(
     };
   };
 
-  // Each stop paired with its own tile up front, so the loop below never has to
-  // look one up and never has to reason about a missing one.
-  const candidates = stops.map((stop) => ({ stop, tile: tileBox(stop) }));
+  // Tiles are claimed before any label is placed. They are opaque, they cannot
+  // move, and every one of them is drawn whether or not it is named — including
+  // the ones behind the sheet, which a label above them could still run into.
+  const claimed: Box[] = stops.map(tileBox);
+
+  // Each stop paired with *the very box* in `claimed`, so the loop below can
+  // exclude a stop's own tile by identity and never has to look one up.
+  const candidates = stops
+    .map((stop, index) => ({ stop, tile: claimed[index] ?? tileBox(stop) }))
+    // A stop behind the sheet is a stop nobody is reading, and it must not
+    // spend the label budget on a name that cannot be seen.
+    .filter(({ tile }) => tile.top < viewport.visibleHeight);
 
   const ordered = [...candidates].sort((a, b) => {
     if (a.stop.stop_id === selectedId) return -1;
     if (b.stop.stop_id === selectedId) return 1;
     return a.stop.meters - b.stop.meters;
   });
-
-  // Tiles are claimed before any label is placed. They are opaque, they cannot
-  // move, and every one of them is drawn whether or not it is named.
-  const claimed: Box[] = candidates.map((candidate) => candidate.tile);
 
   // A label always overlaps its *own* tile — it is drawn hard against it — so
   // that one box is excluded by identity rather than by geometry.
