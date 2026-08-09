@@ -8,8 +8,9 @@ up. Update it in place rather than adding a dated section each time.
 When an increment ships, its write-up in this file collapses to a pointer.
 
 Last updated: **2026-08-09**. **Increments 1–6 are shipped, device-verified and
-merged.** **Increment 7 is in progress on `dev`: Tasks 1–7 are done, pushed and
-green; Tasks 8 and 9 remain.** `main` is still at Increment 6.
+merged.** **Increment 7's nine tasks are all written and green on `dev`**; what
+is left is its close-out — a screenshot round, a device round, and a review over
+the whole diff. `main` is still at Increment 6.
 
 ---
 
@@ -20,11 +21,17 @@ Read, in order:
 1. `docs/superpowers/specs/2026-08-09-increment-7-peek-and-search.md`
 2. `docs/superpowers/plans/2026-08-09-increment-7-peek-and-search.md`
 
-**The next action is Task 8** — the map's persistent search bar and its
-fullscreen search — then Task 9, Address mode. Do not re-grill the increment and
-do not re-open what the spec settled.
+**The next action is the close-out**, in this order:
 
-### What Increment 7 has shipped so far
+1. **A screenshot round with Truman** — the map's search bar against ⌖ and the
+   *Search this area* pill, and the fullscreen search on all three filters.
+   Every one of those placements is provisional and none of it has been seen.
+2. **A device round**: `gh workflow run ios-ipa.yml --ref dev`.
+3. **A review over the whole diff**, at the increment boundary, per `CLAUDE.md`.
+
+Do not re-grill the increment and do not re-open what the spec settled.
+
+### What Increment 7 built
 
 The map sheet's detents are points computed from a **measured** container. Its
 resting peek is the grab handle, a band naming the mode, and one row. Tapping a
@@ -32,7 +39,17 @@ row in the sheet centres the map on that stop; tapping a pin does not. The Stops
 tab has `Stops | Routes` chips over one shared search engine (`useSearch`), and
 a nudge that offers the filter which would have answered.
 
-**Four things a cold session will otherwise get wrong:**
+The map now carries a **persistent search bar** — a button wearing a field's
+clothes, `features/map/SearchBar.tsx` — opening a **fullscreen search**
+(`SearchOverlay.tsx`) with all three filters, defaulting to Address. A stop
+result anchors the map, frames the camera and opens the card **without leaving
+the map**, which is the only thing this host does that the Stops tab cannot. A
+route result opens `/route/[id]`. Address mode geocodes on submit and asks
+*"Did you mean 2500 Campus Rd, Honolulu?"* before anything moves;
+`features/map/address.ts` holds that lookup and its labelling, both with their
+network calls injected so they test without the native module.
+
+**Six things a cold session will otherwise get wrong:**
 
 - **`detentsFor` takes a measured height, never `useWindowDimensions()`.** The
   tab scene is inset above the tab bar; computing against the window breaks the
@@ -45,20 +62,34 @@ a nudge that offers the filter which would have answered.
   stated counter-argument.
 - **Route search must match `short_name`, never `route_id`.** `route_id: '13'`
   is route `14`; `route_id: '40'` is route **C**.
+- **The search overlay is a sibling of `MapView`, never a child.** The rule the
+  map section of `docs/backlog.md` exists for, and the one with a SIGABRT behind
+  it.
+- **Searching *frames* the camera; the long press *pans* it.** Both anchor the
+  same way. A typed address or a searched stop is the map being opened somewhere
+  else, so the window is rebuilt from the query radius; a long press names a
+  point on a map the rider is already looking at, at a zoom they chose.
 
 **Increment 8 has a name: *routes on the map*** — a route result drawing that
 route's stops, polylines, and the one-bus-behind-a-single-arrival view. All
 three mount children inside `MapView`, which is why they are together and why
 they are not in 7.
 
-### Address search — the hard part is done
+### Address search — built, and untried on a device
 
-`data/geocode/oahu.ts` is built and tested and **nothing consumes it yet**;
-Task 9 is what consumes it. `useAnchoredStops`' anchor machinery does the rest.
+`data/geocode/oahu.ts` is consumed by `features/map/address.ts`, which
+`SearchOverlay` calls on submit. **`SearchOverlay` is the only file that imports
+`expo-location` for this**, which is what keeps the lookup testable without the
+native module.
 
 - **The geocoder has no regional bias**, and biasing it is a two-step dance with
   a fallback, because the steer that rescues `"beach"` from *Montana* also
   breaks `"ala moana beach"`. That is all handled; do not simplify it away.
+- **A failed reverse lookup must not lose a good geocode.** The point is already
+  known to be on the island; the confirmation is asked against what the rider
+  typed instead. There is a test named for this.
+- **`formattedAddress` is Android-only** and `null` here, so the label is built
+  from `streetNumber`, `street`/`name` and `city`.
 - **Autocomplete is out, re-verified 2026-08-09** against the installed type
   definitions. `geocodeAsync` returns `{ latitude, longitude, altitude?,
   accuracy? }` — nothing printable — and one result every time, so a suggestion
@@ -68,12 +99,19 @@ Task 9 is what consumes it. `useAnchoredStops`' anchor machinery does the rest.
 
 ## Where things stand
 
-`dev` is ahead of `main` by Increment 7's first seven tasks. **509 Jest, 91
-`node --test`, clean typecheck, clean `npm ci`** — the last verified after
-`@react-navigation/bottom-tabs` became a direct dependency.
+`dev` is ahead of `main` by the whole of Increment 7. **529 Jest, 91
+`node --test`, clean typecheck, clean `npm ci`** — the last verified again after
+Task 9.
 
-**The map is device-verified and Truman is happy with it.** 2026-08-09, on the
-sheet: "Ok I like this a lot better… This is perfect."
+**The sheet is device-verified and Truman is happy with it.** 2026-08-09: "Ok I
+like this a lot better… This is perfect." **The search is not** — nothing about
+Tasks 8 and 9 has been on a phone or in front of him.
+
+**One thing to raise at the screenshot round rather than fix unasked:** in
+Address mode, `ResultList`'s *"Type an address, then search."* hint shows only
+while the field is empty, so once a rider has typed there is nothing on screen
+telling them the return key is what runs it. `returnKeyType="search"` is set,
+which is as far as this went without redesigning a settled component.
 
 ## Read these, in this order
 
@@ -99,7 +137,7 @@ Read the plan for the increment you care about rather than the diff.
 | 4 | Each user brings their own AppID; no secret in the build |
 | 5 | The data refreshes itself, from a weekly Action |
 | 6 | Six correctness fixes, then a screenshot-driven UI pass over the map |
-| 7 | The sheet at rest, and search across stops, routes and addresses *(in progress)* |
+| 7 | The sheet at rest, and search across stops, routes and addresses *(written, not yet device-verified)* |
 
 Increment 6's record is `docs/superpowers/specs/2026-08-04-increment-6-correctness-and-ui.md`,
 its plan, and `docs/superpowers/logs/2026-08-04-increment-6-ui.md` — the UI log
