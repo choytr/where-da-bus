@@ -43,9 +43,23 @@ behind three separately-reported complaints: the peek showing only legal text,
 "it peeks but doesn't show any meaningful information", and "the stop code's
 spacing to the bottom bar is really tight and awkward".
 
-**The tab bar does not clip the sheet; it is drawn over it.** The sheet's
-content keeps rendering underneath, which is why the stop code's descenders
-appear to touch the bar. Nothing was reserving space for it.
+**~~The tab bar does not clip the sheet; it is drawn over it.~~** *Wrong, and
+corrected 2026-08-09 by measurement.* This was inferred rather than measured,
+and building on it broke both ends of the sheet: the peek showed a screenful of
+stops it was meant to hide, and the tallest detent ran up under the status bar.
+
+The sheet's container is **React Navigation's tab scene, which is inset above
+the bar** — 83 pt shorter than the window on Truman's phone. A snap point of
+90% × *window* inside that container lands 7 pt from the top; a peek of
+`tabBar + handle` shows the whole `tabBar` worth of content above the bar. Two
+symptoms, one cause.
+
+`MapScreen` now measures its own root with `onLayout` and derives everything
+from that, including how much of it the bar covers (`tabBarOverlapOf`). That is
+correct under either arrangement, which is the point: it never has to be right
+about React Navigation. **This is the fifth time on this project that reasoning
+about native behaviour instead of measuring it produced a confident wrong
+answer.**
 
 ### What the peek shows
 

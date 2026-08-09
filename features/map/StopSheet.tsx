@@ -44,38 +44,68 @@ export const FULL_DETENT = 2;
  */
 const HANDLE_HEIGHT = 24;
 
+/** Clear air between the raised sheet and the notch. */
+const TOP_GAP = 16;
+
 /**
- * The three detents, in **points**.
+ * The three detents, in **points**, against the height of the sheet's own
+ * container.
  *
- * They were percentage strings until Increment 7, and the peek was `'14%'` —
- * ~119 pt on Truman's device, of which the tab bar took ~83 and the handle 24,
- * leaving on the order of 16 pt for content. That one number is behind three
- * separately-reported complaints, and a percentage cannot fix it: the thing the
- * peek has to clear is a bar whose height is measured in points and differs per
- * device.
+ * **`containerHeight` is measured, never assumed.** Increment 7 first computed
+ * these against the window and got both ends wrong on a device: the peek showed
+ * a screenful of content it was supposed to hide, and the tallest detent ran up
+ * under the status bar. Both are the same mistake — the sheet's container is
+ * whatever view it is mounted in, and React Navigation's tab scene is not the
+ * window. `MapScreen` measures it with `onLayout` and passes it here, so this
+ * is right whether or not the tab bar overlays the scene.
+ *
+ * `tabBarOverlap` is how much of that container the tab bar covers, which is
+ * zero when the scene is already inset above it. Derived from the same
+ * measurement rather than from a belief about React Navigation.
  *
  * **The peek shows the handle and nothing else.** It was briefly sized to fit
- * `StopCard`'s header — ~211 pt, one full row plus a sliver — and on a device
- * Truman's verdict was that it took too much map for what it bought. A peek
- * that shows *part* of something has to be right about which part, and there
- * was no version of that anyone was happy with; a peek that shows nothing is
- * honest about being a grab handle, and the map gets the height back. What
- * belongs in a resting sheet is a question for a later increment, with a device
- * in hand.
+ * `StopCard`'s header — ~211 pt, one full row plus a sliver — and Truman's
+ * verdict was that it took too much map for what it bought. A peek that shows
+ * *part* of something has to be right about which part, and there was no
+ * version of that anyone was happy with; a peek that shows nothing is honest
+ * about being a grab handle, and the map gets the height back. What belongs in
+ * a resting sheet is a question for a later increment, with a device in hand.
  *
- * So the peek is arithmetic and the other two are not — medium and full are
- * genuinely "about half" and "nearly all" of the screen, which is what a
- * fraction says well.
+ * The tallest detent is 90% of the container **or** as tall as it can be while
+ * still clearing the safe area, whichever is shorter. The cap is what makes the
+ * notch unreachable by construction rather than by a fraction that happens to
+ * work out on one phone.
  */
 export function detentsFor(
+  containerHeight: number,
+  tabBarOverlap: number,
+  topInset: number,
+): readonly [number, number, number] {
+  const medium = Math.round(containerHeight * 0.45);
+  const clearsNotch = containerHeight - topInset - TOP_GAP;
+  return [
+    HANDLE_HEIGHT + tabBarOverlap,
+    medium,
+    // Never below medium, however small the container or however deep the
+    // notch — an ordering violation would make the sheet unsnappable.
+    Math.round(Math.max(Math.min(containerHeight * 0.9, clearsNotch), medium + 1)),
+  ];
+}
+
+/**
+ * How much of `containerHeight` the tab bar is drawn over.
+ *
+ * Zero when React Navigation has already inset the scene above the bar, and the
+ * bar's full height when the scene runs underneath it. Both happen, depending
+ * on version and options, and the difference is the whole of the bug above — so
+ * it is subtracted out of a measurement instead of being decided in advance.
+ */
+export function tabBarOverlapOf(
+  containerHeight: number,
   windowHeight: number,
   tabBarHeight: number,
-): readonly [number, number, number] {
-  return [
-    tabBarHeight + HANDLE_HEIGHT,
-    Math.round(windowHeight * 0.45),
-    Math.round(windowHeight * 0.9),
-  ];
+): number {
+  return Math.max(0, Math.min(tabBarHeight, containerHeight - (windowHeight - tabBarHeight)));
 }
 
 /**
@@ -131,14 +161,12 @@ export type StopSheetProps = {
    */
   detents: readonly number[];
   /**
-   * How much of the sheet's bottom the tab bar covers.
-   *
-   * The bar does not clip the sheet — it is **drawn over** it, and the content
-   * underneath goes on rendering with nothing reserving space. That is why the
-   * stop code's descenders appeared to touch the bar, and it is true at every
-   * detent rather than only at the peek.
+   * How much of the sheet's bottom edge the tab bar is drawn over, from
+   * `tabBarOverlapOf` — zero when the scene is already inset above the bar.
+   * Only the pinned legend needs it; everything above the legend is clear of
+   * the bar by construction.
    */
-  tabBarHeight: number;
+  tabBarOverlap: number;
 };
 
 export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSheet(
@@ -155,7 +183,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     onDetentChange,
     client,
     detents,
-    tabBarHeight,
+    tabBarOverlap,
   },
   ref,
 ) {
@@ -170,11 +198,8 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
    */
   const listContent = useMemo(() => ({ paddingBottom: CONTENT_INSET }), []);
 
-  /**
-   * Lifts the pinned legend off the tab bar, which is drawn *over* the sheet
-   * rather than clipping it.
-   */
-  const footer = useMemo(() => ({ paddingBottom: tabBarHeight }), [tabBarHeight]);
+  /** Lifts the pinned legend off whatever the tab bar covers, if anything. */
+  const footer = useMemo(() => ({ paddingBottom: tabBarOverlap }), [tabBarOverlap]);
 
   /**
    * The detent the sheet has settled on, tracked here as well as reported, so

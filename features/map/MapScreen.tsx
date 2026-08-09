@@ -6,6 +6,7 @@ import {
   Text,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +28,7 @@ import {
 import {
   StopSheet,
   detentsFor,
+  tabBarOverlapOf,
   FULL_DETENT,
   MEDIUM_DETENT,
   PEEK_DETENT,
@@ -150,9 +152,31 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+
+  /**
+   * The height of this screen's own root view — which is the map's height, and
+   * the sheet's container.
+   *
+   * **Measured, not derived from the window.** React Navigation's tab scene may
+   * or may not be inset above the tab bar, and Increment 7 got both ends of the
+   * sheet wrong by assuming it was not: a peek meant to show only the grab
+   * handle showed a screenful of stops, and the tallest detent ran up under the
+   * status bar. One `onLayout` answers it exactly, on every device and every
+   * navigator version, which no amount of reading the library could.
+   *
+   * `windowHeight` until the first layout, which is the closest thing to an
+   * answer available before one.
+   */
+  const [measured, setMeasured] = useState<number | null>(null);
+  const onScreenLayout = useCallback((event: LayoutChangeEvent) => {
+    setMeasured(event.nativeEvent.layout.height);
+  }, []);
+  const mapHeight = measured ?? windowHeight;
+
+  const tabBarOverlap = tabBarOverlapOf(mapHeight, windowHeight, tabBarHeight);
   const detents = useMemo(
-    () => detentsFor(windowHeight, tabBarHeight),
-    [windowHeight, tabBarHeight],
+    () => detentsFor(mapHeight, tabBarOverlap, insets.top),
+    [mapHeight, tabBarOverlap, insets.top],
   );
   const {
     anchor,
@@ -210,12 +234,12 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
       // Against the *visible* centre, not the window's — the window's centre is
       // under the sheet on purpose, see `regionAround`.
       if (
-        hasDriftedFrom(anchor, region, DRIFT_FRACTION, visibleAbove(detents, detent, windowHeight))
+        hasDriftedFrom(anchor, region, DRIFT_FRACTION, visibleAbove(detents, detent, mapHeight))
       ) {
         setOfferedFor(anchor);
       }
     },
-    [anchor, detent, detents, windowHeight],
+    [anchor, detent, detents, mapHeight],
   );
 
   /**
@@ -279,12 +303,12 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         regionAround(
           center,
           NEARBY_RADIUS_METERS,
-          visibleAbove(detents, detent, windowHeight),
+          visibleAbove(detents, detent, mapHeight),
         ),
         CAMERA_MS,
       );
     },
-    [detent, detents, windowHeight],
+    [detent, detents, mapHeight],
   );
 
   /**
@@ -304,11 +328,11 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
       // ones to preserve.
       const base = camera ?? region;
       map.current?.animateToRegion(
-        centredOn(base, center, visibleAbove(detents, against, windowHeight)),
+        centredOn(base, center, visibleAbove(detents, against, mapHeight)),
         CAMERA_MS,
       );
     },
-    [camera, region, detent, detents, windowHeight],
+    [camera, region, detent, detents, mapHeight],
   );
 
   /** Set once the camera has been put on the rider, so it is not done twice. */
@@ -450,8 +474,8 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
 
   const searchThisArea = useCallback(() => {
     if (camera === null) return;
-    searchFrom(visibleCentre(camera, visibleAbove(detents, detent, windowHeight)));
-  }, [camera, detent, detents, windowHeight, searchFrom]);
+    searchFrom(visibleCentre(camera, visibleAbove(detents, detent, mapHeight)));
+  }, [camera, detent, detents, mapHeight, searchFrom]);
 
   /**
    * Restarted on every pin tap rather than left to run out, so tapping through
@@ -556,12 +580,12 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
           width: windowWidth,
           // The whole window: the map is full-screen and the camera's region
           // spans all of it. `visibleHeight` is a separate question.
-          height: windowHeight,
-          visibleHeight: Math.round(windowHeight * visibleAbove(detents, detent, windowHeight)),
+          height: mapHeight,
+          visibleHeight: Math.round(mapHeight * visibleAbove(detents, detent, mapHeight)),
         },
         selectedStop?.stop_id ?? null,
       ),
-    [stops, camera, region, windowWidth, windowHeight, detent, detents, selectedStop],
+    [stops, camera, region, windowWidth, mapHeight, detent, detents, selectedStop],
   );
 
   const banner =
@@ -579,7 +603,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     // No SafeAreaView around the map. A map is one of the few things that
     // should run under the status bar and behind the tab bar; insetting it
     // would leave grey bars top and bottom. What sits *on* it takes the insets.
-    <View style={styles.fill}>
+    <View style={styles.fill} onLayout={onScreenLayout}>
       {/*
         At full height the map is a sliver above the sheet, and every touch that
         lands on it is a miss — a pin tapped by accident, or an anchor gesture
@@ -681,7 +705,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         onDetentChange={setDetent}
         client={client}
         detents={detents}
-        tabBarHeight={tabBarHeight}
+        tabBarOverlap={tabBarOverlap}
       />
     </View>
   );

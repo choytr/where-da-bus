@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import {
   StopSheet,
   detentsFor,
+  tabBarOverlapOf,
   visibleAbove,
   PEEK_DETENT,
   MEDIUM_DETENT,
@@ -77,11 +78,23 @@ const stop = (id: string, name: string, meters: number): StopWithDistance => ({
 
 const STOPS = [stop('5', 'LAGOON DR', 120), stop('6', 'KAPALULU PL', 340)];
 
-/** Truman's device: 852 pt of window under an 83 pt tab bar. */
-const WINDOW_HEIGHT = 852;
+/**
+ * Truman's device: an 896 pt window, an 83 pt tab bar, a 48 pt top inset. The
+ * scene turned out to be inset above the bar, so the sheet's container is
+ * 813 pt and the bar covers none of it — which is the whole point of measuring.
+ */
+const WINDOW_HEIGHT = 896;
 const TAB_BAR = 83;
+const TOP_INSET = 48;
+const INSET_SCENE = WINDOW_HEIGHT - TAB_BAR;
+const OVERLAP = tabBarOverlapOf(INSET_SCENE, WINDOW_HEIGHT, TAB_BAR);
+const DETENTS = detentsFor(INSET_SCENE, OVERLAP, TOP_INSET);
 
-const show = (selectedStop: StopWithDistance | null, onBack = jest.fn()) =>
+const show = (
+  selectedStop: StopWithDistance | null,
+  onBack = jest.fn(),
+  overlap = OVERLAP,
+) =>
   render(
     <TestTheme>
       <StopSheet
@@ -96,8 +109,8 @@ const show = (selectedStop: StopWithDistance | null, onBack = jest.fn()) =>
         onOpenRoute={jest.fn()}
         onDetentChange={jest.fn()}
         client={client}
-        detents={detentsFor(WINDOW_HEIGHT, TAB_BAR)}
-        tabBarHeight={TAB_BAR}
+        detents={DETENTS}
+        tabBarOverlap={overlap}
       />
     </TestTheme>,
   );
@@ -110,38 +123,50 @@ const show = (selectedStop: StopWithDistance | null, onBack = jest.fn()) =>
  */
 describe('the detents', () => {
   it('derives a peek that is the grab handle and nothing else', () => {
-    const detents = detentsFor(WINDOW_HEIGHT, TAB_BAR);
+    // The old `'14%'` left about a dozen points of content, which is what three
+    // separately-reported complaints were about. It was then sized to fit the
+    // card's header, ~211 pt, and on a device that took too much map for what
+    // it bought. A peek showing *part* of something has to be right about which
+    // part; a peek showing nothing is honest about being a handle.
+    expect(DETENTS[PEEK_DETENT]).toBe(24);
+    expect(DETENTS[PEEK_DETENT]).toBeLessThan(DETENTS[MEDIUM_DETENT]);
+  });
 
-    // The old `'14%'` was 119 pt here, of which the tab bar took 83 and the
-    // grab handle 24 — about a dozen points of content, which is what three
-    // separately-reported complaints were all about. It was then briefly sized
-    // to fit the card's header, ~211 pt, and on a device that took too much map
-    // for what it bought. A peek showing *part* of something has to be right
-    // about which part; a peek showing nothing is honest about being a handle.
-    expect(detents[PEEK_DETENT]).toBe(TAB_BAR + 24);
-    // Still a peek: well under the detent above it, and clear of the bar.
-    expect(detents[PEEK_DETENT]).toBeLessThan(detents[MEDIUM_DETENT]);
-    expect(detents[PEEK_DETENT]).toBeGreaterThan(TAB_BAR);
+  it('adds the tab bar to the peek only where the bar actually covers the sheet', () => {
+    // The bug this measurement exists to close. Assuming the bar overlaid a
+    // scene that was in fact inset above it added 83 pt to the peek, so a sheet
+    // meant to show a grab handle showed a screenful of stops.
+    const overlaid = detentsFor(WINDOW_HEIGHT, tabBarOverlapOf(WINDOW_HEIGHT, WINDOW_HEIGHT, TAB_BAR), TOP_INSET);
+
+    expect(OVERLAP).toBe(0);
+    expect(overlaid[PEEK_DETENT]).toBe(24 + TAB_BAR);
+    // Either way, the handle is what shows above the bar.
+    expect(overlaid[PEEK_DETENT] - TAB_BAR).toBe(DETENTS[PEEK_DETENT]);
+  });
+
+  it('keeps the tallest detent clear of the notch', () => {
+    // Truman, 2026-08-09: the top edge went under the status bar. It was 90% of
+    // the *window* inside a container 83 pt shorter, which landed 7 pt from the
+    // top. Capped against the safe area, the fraction can no longer do that.
+    const top = INSET_SCENE - DETENTS[FULL_DETENT];
+
+    expect(top).toBeGreaterThanOrEqual(TOP_INSET);
+    expect(DETENTS[FULL_DETENT]).toBeGreaterThan(DETENTS[MEDIUM_DETENT]);
+  });
+
+  it('caps the tallest detent on a deep notch rather than letting the fraction win', () => {
+    // A short container under a deep inset is where 90% and "clears the notch"
+    // disagree, and the cap has to be the one that wins.
+    const cramped = detentsFor(600, 0, 120);
+
+    expect(600 - cramped[FULL_DETENT]).toBeGreaterThanOrEqual(120);
+    expect(cramped[FULL_DETENT]).toBeGreaterThan(cramped[MEDIUM_DETENT]);
   });
 
   it('derives the same fraction from points that the percentages used to give', () => {
-    const detents = detentsFor(WINDOW_HEIGHT, TAB_BAR);
-
-    // Medium and full are genuinely "about half" and "nearly all" of the
-    // screen, so those two are unchanged by the move to points — which is what
-    // keeps `region.ts` and every camera call taking the same fraction it did.
-    expect(visibleAbove(detents, MEDIUM_DETENT, WINDOW_HEIGHT)).toBeCloseTo(0.55, 3);
-    expect(visibleAbove(detents, FULL_DETENT, WINDOW_HEIGHT)).toBeCloseTo(0.1, 3);
-  });
-
-  it('a taller tab bar raises the peek by the same amount', () => {
-    const short = detentsFor(WINDOW_HEIGHT, 49);
-    const tall = detentsFor(WINDOW_HEIGHT, 83);
-
-    expect(tall[PEEK_DETENT] - short[PEEK_DETENT]).toBe(34);
-    // And only the peek. The other two are about the screen, not the chrome.
-    expect(tall[MEDIUM_DETENT]).toBe(short[MEDIUM_DETENT]);
-    expect(tall[FULL_DETENT]).toBe(short[FULL_DETENT]);
+    // Medium is still "about half" of the container, which is what keeps
+    // `region.ts` and every camera call taking the fraction they always did.
+    expect(visibleAbove(DETENTS, MEDIUM_DETENT, INSET_SCENE)).toBeCloseTo(0.55, 3);
   });
 });
 
@@ -176,13 +201,27 @@ describe('StopSheet', () => {
    * Asserted on the style because the failure is a layout one, and Jest runs no
    * layout: there is nothing behavioural to observe off-device.
    */
-  it('pins the legend clear of the tab bar', async () => {
+  /**
+   * Only as much clearance as the tab bar actually takes. Padding by the bar's
+   * full height on a scene already inset above it is how the sheet ended up
+   * with 83 pt of dead space under its content.
+   */
+  it('pins the legend clear of whatever the tab bar covers', async () => {
+    await show(null, jest.fn(), TAB_BAR);
+    await raise();
+
+    expect(
+      StyleSheet.flatten(screen.getByTestId('sheet-attribution').props.style).paddingBottom,
+    ).toBe(TAB_BAR);
+  });
+
+  it('reserves nothing when the scene is already inset above the tab bar', async () => {
     await show(null);
     await raise();
 
-    const padding = StyleSheet.flatten(screen.getByTestId('sheet-attribution').props.style)
-      .paddingBottom;
-    expect(padding).toBeGreaterThanOrEqual(TAB_BAR);
+    expect(
+      StyleSheet.flatten(screen.getByTestId('sheet-attribution').props.style).paddingBottom,
+    ).toBe(0);
   });
 
   /**

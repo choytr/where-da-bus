@@ -27,11 +27,17 @@ confirms it.
 **Contract:**
 
 ```
-detentsFor(windowHeight: number, tabBarHeight: number): readonly [number, number, number]
-visibleAbove(detents: readonly number[], index: number): number   // 1 − detents[index] / windowHeight
+detentsFor(containerHeight, tabBarOverlap, topInset): readonly [number, number, number]
+tabBarOverlapOf(containerHeight, windowHeight, tabBarHeight): number
+visibleAbove(detents: readonly number[], index: number, containerHeight: number): number
 MapScreenProps: { client, tabBarHeight: number }
-StopSheetProps: { …, detents: readonly number[], tabBarHeight: number }
+StopSheetProps: { …, detents: readonly number[], tabBarOverlap: number }
 ```
+
+**`containerHeight` is measured, not the window.** `MapScreen` reads its own
+root view's height with `onLayout`. The tab scene is inset above the bar, so the
+window is 83 pt too tall — which broke the peek and the tallest detent at once.
+See the spec.
 
 `DETENTS` stops being a module constant. `PEEK_DETENT` / `MEDIUM_DETENT` /
 `FULL_DETENT` stay as indices. `visibleAbove` no longer parses strings.
