@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -19,6 +19,11 @@ import {
   removeFavorite,
 } from '../../data/storage/favorites';
 import { StopRow } from './StopRow';
+import { FilterChips } from '../search/FilterChips';
+import { RouteRow } from '../search/RouteRow';
+import { SearchNudge } from '../search/SearchNudge';
+import { nudgeFor } from '../search/nudge';
+import { useSearch, type SearchFilter, type SearchState } from '../search/useSearch';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
 import { DISCLAIMER } from '../../lib/legal';
 import { Attribution } from '../../lib/Attribution';
@@ -44,6 +49,8 @@ import { useTheme } from '../../lib/theme';
  */
 const SEARCH_RUNNING = 'Searching…';
 const SEARCH_EMPTY = 'No stops match that.';
+const ROUTES_EMPTY = 'No routes match that.';
+const ROUTES_PROMPT = 'Search for a route by number or name.';
 const NO_FAVORITES_TITLE = 'No saved stops yet';
 const NO_FAVORITES_BODY =
   'Search for a stop by number or name, then tap its star to keep it here.';
@@ -63,25 +70,8 @@ const FAVORITES_PROBLEM = 'Something went wrong reading your saved favorites.';
 const feedExpiredNotice = (endsOn: Date): string =>
   `Stop names and locations on this device were published for service through ${formatFeedDate(endsOn)}. A few may have changed since.`;
 
-/**
- * `running` carries whatever the rider was already looking at, so a keystroke
- * never blanks the list out from under a thumb already reaching for a row —
- * the same rule the arrival board follows. `failed` carries no stops,
- * deliberately: results that could not be fetched are not results.
- */
-type SearchState =
-  | { state: 'off' }
-  | { state: 'running'; stops: Stop[] }
-  | { state: 'done'; stops: Stop[] }
-  | { state: 'failed' };
-
-/**
- * How long typing has to pause before the database is asked anything. A query
- * per keystroke is a query storm on the native bridge — none of which can be
- * called back once queued — for results nobody reads, since the rider is still
- * typing. Short enough to feel immediate at the end of a word.
- */
-const SEARCH_DEBOUNCE_MS = 175;
+/** The two this tab offers. There is no Address here — it cannot geocode. */
+const FILTERS: readonly SearchFilter[] = ['stops', 'routes'];
 
 /** Digits only means the rider typed the number printed on the pole. */
 const isNumericQuery = (value: string): boolean => /^\d+$/.test(value.trim());
@@ -91,22 +81,32 @@ const isNumericQuery = (value: string): boolean => /^\d+$/.test(value.trim());
  * keyed on the visible list do not re-run every render.
  */
 const NO_STOPS: Stop[] = [];
+const NO_ROUTES: RouteSummary[] = [];
 
 /**
- * The four separate things this screen asks the database, tracked separately.
+ * The three separate things this screen asks the database on its own account,
+ * tracked separately.
  *
  * They fail independently — `routesForStops` can fall over on a result set
  * while `feedEndDate` answered fine at mount — so a single flag would be
  * cleared by whichever of them happened to succeed last, taking a live problem
  * off screen with it. Naming them is what lets a success clear only its own
- * failure.
+ * failure. The search itself is no longer among them: `useSearch` reports its
+ * own failure, and the notice below folds that in.
  */
-type DatabaseQuery = 'feed' | 'search' | 'favorite-stops' | 'routes';
+type DatabaseQuery = 'feed' | 'favorite-stops' | 'routes';
 
 const NOTHING_FAILING: ReadonlySet<DatabaseQuery> = new Set();
 
-const keptStops = (search: SearchState): Stop[] =>
-  search.state === 'running' || search.state === 'done' ? search.stops : NO_STOPS;
+const foundStops = (search: SearchState): Stop[] =>
+  search.state === 'running' || search.state === 'done'
+    ? search.results.flatMap((result) => (result.kind === 'stop' ? [result.stop] : []))
+    : NO_STOPS;
+
+const foundRoutes = (search: SearchState): RouteSummary[] =>
+  search.state === 'running' || search.state === 'done'
+    ? search.results.flatMap((result) => (result.kind === 'route' ? [result.route] : []))
+    : NO_ROUTES;
 
 /**
  * Whether a saved stop is one the rider could have meant by what they typed.
@@ -144,11 +144,11 @@ const KEYBOARD_DISMISS_MODE = Platform.select({
 
 export function StopsScreen() {
   const { palette } = useTheme();
-  const { searchByName, searchByCode, routesForStops, stopsByIds, feedEndDate } =
-    useStopQueries();
+  const { routesForStops, stopsByIds, feedEndDate } = useStopQueries();
 
   const [query, setQuery] = useState('');
-  const [search, setSearch] = useState<SearchState>({ state: 'off' });
+  const [filter, setFilter] = useState<SearchFilter>('stops');
+  const { state: search, otherMatches } = useSearch(query, filter);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [favoriteStops, setFavoriteStops] = useState<Stop[]>([]);
   const [routesByStop, setRoutesByStop] = useState<Map<string, RouteSummary[]>>(new Map());
@@ -158,10 +158,6 @@ export function StopsScreen() {
   // Read once: baked into the bundled asset, and it cannot change while the app
   // is running.
   const [feedEnd, setFeedEnd] = useState<string | null>(null);
-  // What is on screen right now, so the first keystroke can carry it into the
-  // `running` state. A ref rather than a dependency: the search effect must not
-  // re-run — and re-debounce — every time the list underneath it changes.
-  const onScreen = useRef<Stop[]>(NO_STOPS);
 
   /**
    * Navigation by URL rather than by a passed-in callback. The router owns the
@@ -236,56 +232,6 @@ export function StopsScreen() {
   }, []);
 
   useEffect(() => {
-    const trimmed = query.trim();
-    if (trimmed === '') {
-      setSearch({ state: 'off' });
-      return;
-    }
-
-    let cancelled = false;
-    // On the first keystroke there is no previous search to carry, so what
-    // carries through is the favorites list the rider was reading a moment ago.
-    setSearch((previous) => ({
-      state: 'running',
-      stops: previous.state === 'off' ? onScreen.current : keptStops(previous),
-    }));
-
-    const run = async () => {
-      if (isNumericQuery(trimmed)) {
-        const stop = await searchByCode(trimmed);
-        if (cancelled) return;
-        setSearch({ state: 'done', stops: stop === null ? [] : [stop] });
-        noteQuery('search', true);
-        return;
-      }
-      const found = await searchByName(trimmed);
-      if (cancelled) return;
-      setSearch({ state: 'done', stops: found });
-      noteQuery('search', true);
-    };
-
-    // React Native's setTimeout hands back a plain numeric id, but @types/node
-    // is in this program (see tsconfig) and its ambient overload — returning
-    // NodeJS.Timeout — wins, so the handle is converted rather than declared.
-    // Number() is a real conversion and exact on both: React Native returns the
-    // id itself, and NodeJS.Timeout converts to its id.
-    const handle: number = Number(
-      setTimeout(() => {
-        run().catch(() => {
-          if (cancelled) return;
-          setSearch({ state: 'failed' });
-          noteQuery('search', false);
-        });
-      }, SEARCH_DEBOUNCE_MS),
-    );
-
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [query, searchByCode, searchByName, noteQuery]);
-
-  useEffect(() => {
     // Resolved from the database rather than from any list already on screen: a
     // favorite must stay visible wherever the rider is, and must keep the order
     // they saved them in.
@@ -318,7 +264,9 @@ export function StopsScreen() {
   // Search replaces the list rather than adding to it. With the field empty,
   // favorites are the list.
   const searching = search.state !== 'off';
-  const searchStops = keptStops(search);
+  const searchStops = foundStops(search);
+  const routeResults = foundRoutes(search);
+  const onRoutes = filter === 'routes';
 
   /**
    * Matching favorites are pinned above the rest of the results, in the order
@@ -329,6 +277,10 @@ export function StopsScreen() {
    * A favorite that is also a result appears once, at the top, not twice.
    */
   const visible: Stop[] = useMemo(() => {
+    // Under the Routes filter there is no stop list at all — favorites are
+    // stops, and pinning them beneath a Routes chip would be answering a
+    // question nobody asked.
+    if (onRoutes) return NO_STOPS;
     if (!searching) return favoriteStops;
 
     const pinned = favoriteStops.filter((stop) => favoriteMatches(stop, query));
@@ -336,14 +288,7 @@ export function StopsScreen() {
 
     const pinnedIds = new Set(pinned.map((stop) => stop.stop_id));
     return [...pinned, ...searchStops.filter((stop) => !pinnedIds.has(stop.stop_id))];
-  }, [searching, searchStops, favoriteStops, query]);
-
-  // Holds a committed list, and is read by the search effect above — which runs
-  // first in the same commit and therefore still sees the previous render's
-  // list, the one actually on screen when the key was pressed.
-  useEffect(() => {
-    onScreen.current = visible;
-  }, [visible]);
+  }, [onRoutes, searching, searchStops, favoriteStops, query]);
 
   useEffect(() => {
     const ids = visible.map((stop) => stop.stop_id);
@@ -384,7 +329,15 @@ export function StopsScreen() {
     [favoriteIds],
   );
 
-  const showEmptyState = !searching && favoriteStops.length === 0;
+  const showEmptyState = !onRoutes && !searching && favoriteStops.length === 0;
+
+  /**
+   * The one line that makes a wrong filter recoverable. Computed here rather
+   * than inside `SearchNudge` because the answer is needed twice: a nudge
+   * reading "1 route matches — switch to Routes" already says the stop search
+   * came back empty, so the plain notice must not also be on screen.
+   */
+  const nudge = nudgeFor({ query, filter, filters: FILTERS, state: search, matches: otherMatches });
 
   /**
    * One line, ranked — not a stack of notices.
@@ -396,7 +349,7 @@ export function StopsScreen() {
    * favorites notice back rather than leaving the screen claiming all is well.
    */
   const problem =
-    failedQueries.size > 0
+    failedQueries.size > 0 || search.state === 'failed'
       ? DATABASE_PROBLEM
       : favoritesFailed
         ? FAVORITES_PROBLEM
@@ -413,15 +366,23 @@ export function StopsScreen() {
       <TextInput
         value={query}
         onChangeText={setQuery}
-        placeholder="Stop number or name"
+        placeholder={onRoutes ? 'Route number or name' : 'Stop number or name'}
         placeholderTextColor={palette.muted}
-        accessibilityLabel="Find a stop by number or name"
+        // The label follows the filter, because it is what a rider who cannot
+        // see the chips is told the field is for.
+        accessibilityLabel={
+          onRoutes ? 'Find a route by number or name' : 'Find a stop by number or name'
+        }
         style={[styles.search, { color: palette.text, borderColor: palette.border }]}
         autoCorrect={false}
         autoCapitalize="none"
         clearButtonMode="while-editing"
         inputMode="search"
       />
+
+      <FilterChips filters={FILTERS} selected={filter} onSelect={setFilter} />
+
+      <SearchNudge nudge={nudge} onSwitchFilter={setFilter} />
 
       {problem === null ? null : (
         <Text style={[styles.notice, { color: palette.warning }]}>{problem}</Text>
@@ -440,10 +401,19 @@ export function StopsScreen() {
       {/*
         Keyed on what is actually on screen, not on what the database returned:
         a saved stop pinned above the results is a match, and "No stops match
-        that" over a visible row would be a plain contradiction.
+        that" over a visible row would be a plain contradiction. Suppressed
+        under a nudge, which says the same thing and adds what to do about it.
       */}
-      {search.state === 'done' && visible.length === 0 ? (
-        <Text style={[styles.notice, { color: palette.muted }]}>{SEARCH_EMPTY}</Text>
+      {search.state === 'done' && nudge === null && (onRoutes ? routeResults : visible).length === 0 ? (
+        <Text style={[styles.notice, { color: palette.muted }]}>
+          {onRoutes ? ROUTES_EMPTY : SEARCH_EMPTY}
+        </Text>
+      ) : null}
+
+      {/* A blank screen under the Routes chip would read as a search that
+          returned nothing, which is exactly the ambiguity §4 forbids. */}
+      {onRoutes && !searching ? (
+        <Text style={[styles.notice, { color: palette.muted }]}>{ROUTES_PROMPT}</Text>
       ) : null}
 
       {showEmptyState ? (
@@ -456,35 +426,51 @@ export function StopsScreen() {
         </View>
       ) : null}
 
-      <FlatList
-        data={visible}
-        keyExtractor={(stop) => stop.stop_id}
-        // Lifts the list clear of the keyboard as it opens, so the row being
-        // typed towards is not the one under the keyboard.
-        automaticallyAdjustKeyboardInsets
-        keyboardDismissMode={KEYBOARD_DISMISS_MODE}
-        // Without this, the first tap on a row while the keyboard is up is
-        // swallowed by the dismissal and the rider has to tap twice.
-        keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => (
-          <StopRow
-            stop={item}
-            routes={routesByStop.get(item.stop_id) ?? []}
-            meters={null}
-            isFavorite={isFavorite(favoriteIds, item.stop_id)}
-            onToggleFavorite={toggleFavorite}
-            onPress={openStop}
-            onPressRoute={openRoute}
-          />
-        )}
-        // The disclaimer is required by nothing and can live at the end of the
-        // scroll. The legend cannot — see below.
-        ListFooterComponent={
-          <Text style={[styles.legal, styles.disclaimer, { color: palette.muted }]}>
-            {DISCLAIMER}
-          </Text>
-        }
-      />
+      {onRoutes ? (
+        <FlatList
+          data={routeResults}
+          keyExtractor={(route) => route.route_id}
+          automaticallyAdjustKeyboardInsets
+          keyboardDismissMode={KEYBOARD_DISMISS_MODE}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => <RouteRow route={item} onPress={openRoute} />}
+          ListFooterComponent={
+            <Text style={[styles.legal, styles.disclaimer, { color: palette.muted }]}>
+              {DISCLAIMER}
+            </Text>
+          }
+        />
+      ) : (
+        <FlatList
+          data={visible}
+          keyExtractor={(stop) => stop.stop_id}
+          // Lifts the list clear of the keyboard as it opens, so the row being
+          // typed towards is not the one under the keyboard.
+          automaticallyAdjustKeyboardInsets
+          keyboardDismissMode={KEYBOARD_DISMISS_MODE}
+          // Without this, the first tap on a row while the keyboard is up is
+          // swallowed by the dismissal and the rider has to tap twice.
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item }) => (
+            <StopRow
+              stop={item}
+              routes={routesByStop.get(item.stop_id) ?? []}
+              meters={null}
+              isFavorite={isFavorite(favoriteIds, item.stop_id)}
+              onToggleFavorite={toggleFavorite}
+              onPress={openStop}
+              onPressRoute={openRoute}
+            />
+          )}
+          // The disclaimer is required by nothing and can live at the end of the
+          // scroll. The legend cannot — see below.
+          ListFooterComponent={
+            <Text style={[styles.legal, styles.disclaimer, { color: palette.muted }]}>
+              {DISCLAIMER}
+            </Text>
+          }
+        />
+      )}
 
       {/*
         Outside the list, so it is on screen whether or not anyone scrolls.

@@ -21,6 +21,7 @@ const mockQueries = {
   nearby: jest.fn(async (): Promise<Stop[]> => []),
   searchByName: jest.fn(async (_query: string): Promise<Stop[]> => []),
   searchByCode: jest.fn(async (_code: string): Promise<Stop | null> => null),
+  searchRoutes: jest.fn(async (_query: string): Promise<RouteSummary[]> => []),
   routesForStops: jest.fn(
     async (_stopIds: string[]): Promise<Map<string, RouteSummary[]>> => new Map(),
   ),
@@ -30,6 +31,16 @@ const mockQueries = {
 
 jest.mock('../../../data/gtfs/db', () => ({
   useStopQueries: () => mockQueries,
+}));
+
+/**
+ * The router, so a route result can be shown to navigate by `route_id` — the
+ * one place the id belongs. Nothing else in this suite navigates.
+ */
+const mockPush = jest.fn();
+
+jest.mock('expo-router', () => ({
+  router: { push: (href: string) => mockPush(href) },
 }));
 
 /**
@@ -110,6 +121,7 @@ describe('StopsScreen', () => {
     jest.useFakeTimers();
     mockQueries.searchByName.mockResolvedValue([]);
     mockQueries.searchByCode.mockResolvedValue(null);
+    mockQueries.searchRoutes.mockResolvedValue([]);
     mockQueries.stopsByIds.mockResolvedValue([]);
     mockQueries.routesForStops.mockResolvedValue(new Map());
     mockQueries.feedEndDate.mockResolvedValue(FEED_VALID_FOR_DECADES);
@@ -178,8 +190,20 @@ describe('StopsScreen', () => {
     expect(screen.queryByText('LAGOON DR + IOLANA PL')).toBeNull();
   });
 
-  it('looks a purely numeric query up by stop code, not by name', async () => {
+  /**
+   * **This replaced "looks a purely numeric query up by stop code, not by
+   * name" in Increment 7**, and the old rule was losing real matches.
+   *
+   * 431 of the feed's 3,830 stop names contain a digit — `LILIHA ST + 1657`,
+   * `18TH AVE + KILAUEA AVE`, `MONSARRAT AVE + 3251`. Short-circuiting a
+   * numeric query to the exact code lookup meant none of them could ever be
+   * found by the number in their name. Numeric input is not evidence of a
+   * code, which is the same finding that rules out a query classifier
+   * entirely — see `useSearch`.
+   */
+  it('looks a numeric query up by code and by name, leading with the code', async () => {
     mockQueries.searchByCode.mockResolvedValue(stopA);
+    mockQueries.searchByName.mockResolvedValue([stopB]);
 
     await renderScreen();
     await typeSearch('596');
@@ -187,7 +211,11 @@ describe('StopsScreen', () => {
     await waitFor(() => {
       expect(mockQueries.searchByCode).toHaveBeenCalledWith('596');
     });
-    expect(mockQueries.searchByName).not.toHaveBeenCalled();
+    expect(mockQueries.searchByName).toHaveBeenCalledWith('596');
+    await waitFor(() => {
+      screen.getByText('LAGOON DR + IOLANA PL');
+    });
+    screen.getByText('LAGOON DR + KAPALULU PL');
   });
 
   it('says nothing matched rather than falling back to the empty state', async () => {
@@ -410,6 +438,101 @@ describe('StopsScreen', () => {
         expect(screen.queryByText(DATABASE_PROBLEM)).toBeNull();
         expect(screen.queryByText(FAVORITES_PROBLEM)).toBeNull();
       });
+    });
+  });
+
+  /**
+   * The chips exist because inference is impossible: 73 route numbers are also
+   * valid stop codes, so "40" is Route 40 *and* stop 40 and no classifier can
+   * choose between them. There is no Address chip here — this screen cannot
+   * geocode; that belongs to the map.
+   */
+  describe('the Routes filter', () => {
+    const route = (id: string, short: string, long: string): RouteSummary => ({
+      route_id: id,
+      short_name: short,
+      long_name: long,
+    });
+
+    const chooseRoutes = () => fireEvent.press(screen.getByLabelText('Search by routes'));
+
+    async function typeRouteSearch(text: string) {
+      await fireEvent.changeText(screen.getByLabelText('Find a route by number or name'), text);
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+    }
+
+    it('defaults to searching stops', async () => {
+      mockQueries.searchByName.mockResolvedValue([stopA]);
+
+      await renderScreen();
+      await typeSearch('lagoon');
+
+      await waitFor(() => {
+        screen.getByText('LAGOON DR + IOLANA PL');
+      });
+      expect(screen.queryByLabelText('Search by address')).toBeNull();
+    });
+
+    it('finds a route once the Routes filter is chosen', async () => {
+      mockQueries.searchRoutes.mockResolvedValue([route('26', '40', 'Honolulu-Makaha')]);
+
+      await renderScreen();
+      await chooseRoutes();
+      await typeRouteSearch('40');
+
+      await waitFor(() => {
+        screen.getByText('Honolulu-Makaha');
+      });
+      // The number on the bus, never the feed's id — route 40's id is 26.
+      screen.getByText('40');
+      expect(screen.queryByText('26')).toBeNull();
+    });
+
+    it('opens the route screen from a route result', async () => {
+      mockQueries.searchRoutes.mockResolvedValue([route('26', '40', 'Honolulu-Makaha')]);
+
+      await renderScreen();
+      await chooseRoutes();
+      await typeRouteSearch('40');
+      await waitFor(() => {
+        screen.getByLabelText('Route 40');
+      });
+
+      await fireEvent.press(screen.getByLabelText('Route 40'));
+
+      // Navigation goes by `route_id`, which is the one place it belongs.
+      expect(mockPush).toHaveBeenCalledWith('/route/26');
+    });
+
+    it('offers the Routes filter when a stop search finds only routes', async () => {
+      // Picking the wrong chip has to be one tap from right, or a filter is a
+      // dead end.
+      mockQueries.searchRoutes.mockResolvedValue([route('26', '40', 'Honolulu-Makaha')]);
+
+      await renderScreen();
+      await typeSearch('40');
+
+      await waitFor(() => {
+        screen.getByText('1 route matches — switch to Routes');
+      });
+
+      await fireEvent.press(screen.getByLabelText('1 route matches — switch to Routes'));
+
+      await waitFor(() => {
+        screen.getByText('Honolulu-Makaha');
+      });
+    });
+
+    it('says what it is waiting for rather than showing a blank list', async () => {
+      await renderScreen();
+      await chooseRoutes();
+
+      screen.getByText('Search for a route by number or name.');
+      // Favorites are stops; pinning them under a Routes chip would answer a
+      // question nobody asked.
+      expect(screen.queryByText('No saved stops yet')).toBeNull();
     });
   });
 
