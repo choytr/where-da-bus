@@ -107,19 +107,45 @@ native module.
 
 ## Where things stand
 
-`dev` is ahead of `main` by the whole of Increment 7. **529 Jest, 91
-`node --test`, clean typecheck, clean `npm ci`** — the last verified again after
-Task 9.
+`dev` is ahead of `main` by the whole of Increment 7. **539 Jest, 91
+`node --test`, clean typecheck, clean `npm ci`.**
 
-**The sheet is device-verified and Truman is happy with it.** 2026-08-09: "Ok I
-like this a lot better… This is perfect." **The search is not** — nothing about
-Tasks 8 and 9 has been on a phone or in front of him.
+**The sheet and the search have both been through Expo Go**, over five rounds on
+2026-08-09, and Truman is happy with them. On the sheet: "Ok I like this a lot
+better… This is perfect." `MEDIUM_FRACTION` is his and he settled it at
+`0.4985`; `PEEK_BAND` and `PEEK_ROW` are the other two knobs. **Expo Go is not
+the `.ipa`** — the device round in section 1 of the checklist is still what
+confirms the scrolling.
 
-**One thing to raise at the screenshot round rather than fix unasked:** in
-Address mode, `ResultList`'s *"Type an address, then search."* hint shows only
-while the field is empty, so once a rider has typed there is nothing on screen
-telling them the return key is what runs it. `returnKeyType="search"` is set,
-which is as far as this went without redesigning a settled component.
+**What those five rounds changed, so it is not undone by accident:**
+
+- **Every list in the app carries `flex: 1`.** A scroll view that is a flex
+  child of a sized column without it sizes to its *content*, so its frame equals
+  its content and there is nothing to scroll — while every scroll affordance
+  still reports present. `08e189d` found this in one list on 2026-08-08 and
+  fixed only that one; the other six followed on 2026-08-09.
+- **`LEGEND_GAP` in `lib/Attribution.tsx`** is the single number for the air
+  above a pinned legend. It replaced `insets.bottom + 24` on the screens that
+  pin the legend at the display's foot — once the legend takes the inset itself,
+  a list reserving it too pays for it twice, and the result was a visible band of
+  dead space.
+- **The compass is placed by a relationship, not a number:**
+  `compassTop = controlsTop + CONTROL_SIZE + CONTROL_INSET` puts it under ⌖ with
+  the same gap ⌖ has under the search bar. The one measured constant is
+  `COMPASS_LAYOUT_OFFSET` — 54 pt down, 5 pt in — which is what MapKit adds
+  between the margins it is given and where it actually draws. **Re-measure that
+  pair if an SDK bump moves the compass; recompute nothing else.**
+- **There is no `idle` location banner.** *"Showing downtown Honolulu"* flashed
+  on every launch because `onMapReady` calls `requestLocation()` from `idle`, so
+  `idle` lasts from the map's first frame to the request going out. Only
+  `denied` and `error` are states a rider sits in, and both say what to do.
+- **The nudge auto-submits into Address mode; the Address *chip* does not.** A
+  chip is a mode change; the nudge is a rider answering a question with yes.
+
+**Two tests were rewritten to assert relationships rather than literals**, after
+Truman's own tuning broke one: the medium-detent framing test and the compass
+placement test both compute their expectations from the screen's own helpers, so
+turning a knob no longer breaks a test about something else. Copy that shape.
 
 ## Read these, in this order
 
