@@ -9,10 +9,16 @@ When an increment ships, its write-up in this file collapses to a pointer.
 
 Last updated: **2026-08-09**. **Increments 1–7 are shipped and merged**, and
 `main` is at Increment 7. Increment 7's whole-diff review came back with one
-cosmetic finding, now in `docs/backlog.md`; its device round passed but was
-recorded only collectively — see the caveat in
-`docs/superpowers/logs/2026-08-09-increment-7-device-round.md`, which matters if
-a list turns out not to scroll.
+cosmetic finding, now in `docs/backlog.md`.
+
+**Increment 7's device round never happened.** This file previously said it
+passed; Truman said on 2026-08-09 that he had not run it. Every box in
+`docs/superpowers/logs/2026-08-09-increment-7-device-round.md` is still unticked
+and those checks are still owed — they are folded into Increment 8's round 2.
+The five **Expo Go** rounds did happen and are not in question; what never
+happened is the `.ipa`, which is the artefact that differs. This is how the
+sheet's lists came to be unable to scroll on a real build through two whole
+increments without anyone noticing.
 
 ---
 
