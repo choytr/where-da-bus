@@ -8,28 +8,37 @@ up. Update it in place rather than adding a dated section each time.
 When an increment ships, its write-up in this file collapses to a pointer.
 
 Last updated: **2026-08-09**. **Increments 1–6 are shipped, device-verified and
-merged.** **Increment 7's nine tasks are all written and green on `dev`**; what
-is left is its close-out — a screenshot round, a device round, and a review over
-the whole diff. `main` is still at Increment 6.
+merged.** **Increment 7 is code-complete and pushed on `dev`**, with five rounds
+of Expo Go feedback folded in; an `.ipa` device round is running and the
+whole-diff review is **still owed**. `main` is still at Increment 6.
 
 ---
 
 ## Start here
 
-Read, in order:
+**The live thread is Increment 8's grilling, which is mid-question.** See the
+section near the bottom of this file — it carries measurements that cost real
+effort and must not be re-derived.
 
-1. `docs/superpowers/specs/2026-08-09-increment-7-peek-and-search.md`
-2. `docs/superpowers/plans/2026-08-09-increment-7-peek-and-search.md`
+Two things are owed on Increment 7 before it can close, and neither blocks the
+grilling:
 
-**The next action is the close-out**, in this order:
+1. **The whole-diff review at the increment boundary**, per `CLAUDE.md`. It has
+   not happened. This is where the cross-cutting findings live, and Increment 7
+   is nine tasks plus five feedback rounds — the largest diff the project has
+   reviewed at once.
+2. **The device round.** Truman started the build himself on 2026-08-09 and
+   expects nothing to break. The checklist is
+   `docs/superpowers/logs/2026-08-09-increment-7-device-round.md`, ordered by
+   risk — **section 1 is the seven lists whose `flex: 1` was changed on the
+   strength of one report and confirmed on none of them.** Findings go in that
+   file's table, marked `observed` or `inferred`.
 
-1. **A screenshot round with Truman** — the map's search bar against ⌖ and the
-   *Search this area* pill, and the fullscreen search on all three filters.
-   Every one of those placements is provisional and none of it has been seen.
-2. **A device round**: `gh workflow run ios-ipa.yml --ref dev`.
-3. **A review over the whole diff**, at the increment boundary, per `CLAUDE.md`.
+Then merging to `main`, which needs Truman's explicit permission.
 
-Do not re-grill the increment and do not re-open what the spec settled.
+Increment 7's spec and plan are
+`docs/superpowers/specs/2026-08-09-increment-7-peek-and-search.md` and its plan.
+Do not re-grill it and do not re-open what the spec settled.
 
 ### What Increment 7 built
 
@@ -70,10 +79,9 @@ network calls injected so they test without the native module.
   else, so the window is rebuilt from the query radius; a long press names a
   point on a map the rider is already looking at, at a zoom they chose.
 
-**Increment 8 has a name: *routes on the map*** — a route result drawing that
-route's stops, polylines, and the one-bus-behind-a-single-arrival view. All
-three mount children inside `MapView`, which is why they are together and why
-they are not in 7.
+**Increment 8 is *routes on the map*, and its grilling is under way** — see the
+section at the foot of this file, which carries the measurements and the open
+question.
 
 ### Address search — built, and untried on a device
 
@@ -137,7 +145,7 @@ Read the plan for the increment you care about rather than the diff.
 | 4 | Each user brings their own AppID; no secret in the build |
 | 5 | The data refreshes itself, from a weekly Action |
 | 6 | Six correctness fixes, then a screenshot-driven UI pass over the map |
-| 7 | The sheet at rest, and search across stops, routes and addresses *(written, not yet device-verified)* |
+| 7 | The sheet at rest, and search across stops, routes and addresses *(code complete; .ipa round and whole-diff review owed)* |
 
 Increment 6's record is `docs/superpowers/specs/2026-08-04-increment-6-correctness-and-ui.md`,
 its plan, and `docs/superpowers/logs/2026-08-04-increment-6-ui.md` — the UI log
@@ -210,11 +218,64 @@ only because the throwaway probe showed the unbiased reply beside the verdict.
 independent unofficial app against ours. Both of its actionable findings are
 built. Read it before touching the vehicle endpoint or the map.
 
+## Increment 8 — *routes on the map*, grilling in progress
+
+Opened 2026-08-09 with the `grilling` skill, as Truman expects for every
+increment. **One question has been put to him and is unanswered.** Resume there
+rather than starting over; the skill's rule is one question at a time, each with
+a recommendation, and facts looked up rather than asked.
+
+### What the increment was named as, in Increment 7's spec
+
+A route result draws (a) that route's stops as the map's pins, (b) polylines
+under them, and (c) the one-bus-behind-a-single-arrival view. They were grouped
+because all three mount children inside `MapView` — the code path with the
+SIGABRT history in `docs/backlog.md`.
+
+### Measured 2026-08-09 — do not re-derive
+
+- **The bundled asset has no shape data at all.** `scripts/build-gtfs` reads
+  exactly five files — `feed_info`, `routes`, `stop_times`, `stops`, `trips` —
+  and emits `stops`, `routes`, `stop_routes`, `route_stops`, `meta` and the FTS
+  tables. Confirmed against the built asset, not just the script.
+- **`shapes.txt` is 9.8 MB: 278,384 points across 532 shapes**, averaging 523
+  points each, longest 2,516. **The whole asset today is 1.2 MB.**
+- `trips.txt` does carry `shape_id`, so shapes are joinable to routes. 532
+  shapes for 118 routes means many trip patterns per route, so "the" line for a
+  route is a *choice* of representative shape per direction, the way
+  `route_stops` already chooses for stops.
+- **`Arrival` already carries `tripId`, `vehicle` and `position`**
+  (`Coords | null`, never the `"0"`/`"???"` sentinels), already parsed and
+  already tested. The one-bus view needs no new endpoint and no XML parser.
+
+**So the three parts have wildly unequal prices.** (a) and (c) need no data
+change whatsoever. (b) needs a new table, a **`SCHEMA_VERSION` bump** (it is
+`1`), a republished generation, and an asset several times its current size —
+the exact data-migration tail Increment 7 recorded itself as having avoided.
+
+### The open question
+
+Does the polyline stay in Increment 8, or does the increment become stops-as-pins
+plus the bus view, leaving polylines to their own increment where the bump, the
+republish and the size *are* the subject?
+
+**The recommendation put to him was to cut polylines out**, on three grounds:
+every rider carries the asset in the bundle whether or not they ever open a
+route; a schema bump means an old binary must be *refused* the new generation,
+which deserves its own device round; and the SIGABRT risk they were grouped for
+is fully exercised by stops-as-pins alone.
+
+The follow-up already queued, if he cuts them: a cheap line drawn by connecting
+the route's stops in order costs nothing and is wrong at every curve — is that
+better or worse than no line at all?
+
 ## Suggested skills
 
-- **Not `grilling`** for the rest of Increment 7 — it has had its grilling
-  (2026-08-09) and the spec records what it settled. The skill comes back out
-  for Increment 8, and Truman expects it.
+- **`grilling` is already open on Increment 8** and mid-question. Not for
+  Increment 7, which had its own on 2026-08-09 and whose spec records what it
+  settled.
+- **`superpowers:requesting-code-review`** for Increment 7's owed whole-diff
+  review, once the device round is in.
 - **`superpowers:systematic-debugging`** — whenever the app's *appearance* or a
   native-layer bug comes up. It is what stopped a fix being aimed at a cause the
   backlog merely asserted.
