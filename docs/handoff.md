@@ -7,71 +7,67 @@ up. Update it in place rather than adding a dated section each time.
 `CLAUDE.md` are the record; anything already in them belongs there, not here.
 When an increment ships, its write-up in this file collapses to a pointer.
 
-Last updated: **2026-08-08**. **Increments 1–6 are shipped, device-verified and
-merged.** `dev` and `main` are level. Nothing is half-finished.
+Last updated: **2026-08-09**. **Increments 1–6 are shipped, device-verified and
+merged.** `dev` and `main` are level. **Increment 7 is specced and planned; no
+code is written yet.**
 
 ---
 
 ## Start here
 
-**There is no work in flight.** Increment 6 closed on 2026-08-08: both halves
-done, four device rounds, merged to `main` with Truman's permission, and the two
-things owed at merge are done — the geocoder probe is deleted and the forced
-`gtfs-data.yml` publish has run.
+**Increment 7 was grilled on 2026-08-09 and is ready to execute.** Read, in
+order:
 
-**The next increment has not been specced, and the first move is a grilling.**
-That is how every increment here starts; see *How work gets done* in
-`CLAUDE.md`. Do not spec or plan before it.
+1. `docs/superpowers/specs/2026-08-09-increment-7-peek-and-search.md`
+2. `docs/superpowers/plans/2026-08-09-increment-7-peek-and-search.md`
 
-**The two candidates for it, both from Increment 6's own findings:**
+**The next action is Task 1.** Do not re-grill it and do not re-open the
+decisions the spec records — several of them look obviously wrong until you read
+the measurement underneath.
 
-1. **The peek detent, and what the map sheet says at rest.** The best-understood
-   piece of work in the backlog, and the only one with a measurement behind it.
-   See below.
-2. **Address search.** The design is settled and the hard part is built; what
-   remains is UI. See below.
+### Increment 7 in one paragraph
 
-Live vehicles remain a later increment and route polylines were cut from that
-work entirely — settled at the 2026-08-04 grilling, do not reopen.
+The map sheet's collapsed height becomes a computed number of points sized off
+the *selected-stop card*, so the peek shows a real stop row instead of ~16 pt of
+nothing, and no sheet content ever renders under the tab bar again. Tapping a
+row centres the map on that stop in the part of it a rider can actually see.
+Then a search with three filter chips — **Address / Stops / Routes** — across
+two hosts: the Stops tab gains Routes, and the map gains a persistent bar
+opening a fullscreen search that defaults to Address.
 
-### The peek detent — measured, unfixed, and ready
+**Four things a cold session will otherwise get wrong:**
 
-The sheet's collapsed height is `'14%'` in `DETENTS` (`features/map/StopSheet.tsx`).
-On Truman's device that is about **119 pt**; the tab bar takes ~83 of them
-(49 pt of bar over a 34 pt inset) and the grab handle another ~20. **That leaves
-on the order of 16 pt for content.**
+- **Headings are dropped.** They were Truman's own opening proposal and he
+  withdrew them during the grilling. Once the peek shows a real row, a
+  `StopRow` and the card's ‹ Back bar are already unmistakable.
+- **No classifier.** 73 route numbers are also valid stop codes — `40` is both
+  Route 40 and stop 40 — and an address heuristic would refuse exactly the
+  queries the device probe proved work. The chips exist because inference is
+  impossible, not because it was too much effort.
+- **Pin taps do not pan the map; row taps do.** Truman's call, made against the
+  stated counter-argument. Look for the cost on the device round.
+- **Route search must match `short_name`, never `route_id`.** `route_id: '13'`
+  is route `14`.
 
-That single number is behind three separately-reported complaints — the peek
-showing only legal text, "it peeks but doesn't show any meaningful information",
-and "the stop code's spacing to the bottom bar is really tight and awkward".
-
-**Truman's proposal is headings — "Nearby Stops" and "Selected Stop" — and it is
-right but cannot be built first.** There is nowhere to put a heading in 16 pt.
-The peek has to become a computed pixel height (tab bar + safe area + handle +
-one real row) instead of a percentage.
-
-**The trap**: that means changing `visibleAbove()`, which parses the percentage
-strings, and which the camera framing in `region.ts` depends on. `region.test.ts`
-covers it well. This is why it was not rushed alongside a crash fix.
+**Increment 8 has a name now: *routes on the map*** — a route result drawing
+that route's stops, polylines, and the one-bus-behind-a-single-arrival view.
+All three mount children inside `MapView`, which is why they are together and
+why they are not in 7.
 
 ### Address search — the hard part is done
 
-`data/geocode/oahu.ts` is built and tested and **nothing consumes it yet**. The
-search field, the results state and the wiring into `setAnchor` are what remain;
-`useAnchoredStops`' anchor machinery already does the rest.
-
-Read the geocoder probe's full findings table in the Increment 6 UI log before
-designing it. Two of them change what you would build:
+`data/geocode/oahu.ts` is built and tested and **nothing consumes it yet**;
+Task 9 is what consumes it. `useAnchoredStops`' anchor machinery does the rest.
 
 - **The geocoder has no regional bias**, and biasing it is a two-step dance with
   a fallback, because the steer that rescues `"beach"` from *Montana* also
   breaks `"ala moana beach"`. That is all handled; do not simplify it away.
-- **Autocomplete is not feasible on this dependency set.** `geocodeAsync`
-  returns coordinates and no formatted address, so a suggestion list would have
-  nothing to print. Truman asked, was shown why, and **agreed to the middle
-  option: geocode on submit, then `reverseGeocodeAsync` the one result and show
-  a single "Did you mean…?" confirmation.** That is the design for the next
-  increment. Full reasoning in the UI log.
+- **Autocomplete is out, re-verified 2026-08-09** against the installed type
+  definitions. `geocodeAsync` returns `{ latitude, longitude, altitude?,
+  accuracy? }` — nothing printable — and one result every time, so a suggestion
+  list costs two round trips per keystroke to render one row, and `CLGeocoder`
+  throttles per app. The shipped shape is geocode on submit, reverse-geocode,
+  and a single **"Did you mean…?"** confirmation.
 
 ## Where things stand
 
@@ -195,8 +191,8 @@ built. Read it before touching the vehicle endpoint or the map.
 
 ## Suggested skills
 
-- **`grilling`** — first, before anything else. The next increment has not been
-  specced and Truman opens one by having his thinking attacked.
+- **Not `grilling`** — Increment 7 has already had its grilling (2026-08-09) and
+  the spec records what it settled. The skill comes back out for Increment 8.
 - **`superpowers:systematic-debugging`** — whenever the app's *appearance* or a
   native-layer bug comes up. It is what stopped a fix being aimed at a cause the
   backlog merely asserted.
