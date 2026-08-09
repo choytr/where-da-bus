@@ -24,15 +24,23 @@ increments without anyone noticing.
 
 ## Start here
 
-**Increment 8's seven tasks are all built.** The next action is **device round
-1**: the `.ipa` from `gh run 31330482911` (off `dev`, built at Task 4) carries
-route mode and the route line but **no live buses** — deliberately, so the pin
-swap and the polyline are not confounded with the sixty-second bus churn. Round
-2 needs a *fresh* build once round 1 comes back.
+**Increment 8 is built and both device rounds are done.** Route mode, the red
+route line and the live buses have all been seen working on an `.ipa`. The next
+action is **a review pass over the whole diff**, then the merge to `main`, which
+needs Truman's explicit permission.
 
-After both rounds: a review pass over the whole diff, then `docs/backlog.md`
-takes what is not worth fixing now — including **where `adherence` is shown**,
-which is parsed and carried but rendered nowhere.
+`docs/backlog.md` takes what is not worth fixing now — **where `adherence` is
+shown**, **stop pins covering the route line**, and **bus labels being
+unreadable among the stop pins**. The last two are Truman's own calls from the
+device rounds.
+
+**The device-round checklist is retired as a practice.** Truman ended it on
+2026-08-09: *"drop them / mark them as fine, honestly. We'll fix bugs as I come
+across them."* Do not write another one and do not resurrect the unticked boxes
+in `2026-08-09-increment-8-device-round-2.md` as owed work. What earned its keep
+was the *instrumented* check — one number on screen answered in a glance what
+four rounds of reasoning could not — so instrument, ask for one reading, and
+stop.
 
 Do not re-grill the increment, and do not re-derive its measurements — several
 cost a 73 MB file parse and one overturned a premise this document previously
@@ -117,6 +125,16 @@ native module.
 `main` is at Increment 7. **`dev` is seven commits ahead with all of Increment 8
 built and unverified on a device.** 651 Jest across 44 suites, 130 `node --test`,
 clean typecheck and clean `npm ci` — verified locally 2026-08-09.
+
+**The sheet's lists could not scroll on any real build, for two increments, and
+that is fixed.** The content column was `flex: 1` against a parent that
+`@gorhom/bottom-sheet` leaves unbounded until it has measured its container, so
+a list sized itself to its rendered rows — measured at **2846 pt inside a sheet
+730 pt tall**. `flex: 1` is kept, because it is the library's design and is what
+keeps the pinned legend on screen at every detent; a `maxHeight` off the tallest
+detent now guards the window before the measurement lands. **It was never an
+Expo Go versus `.ipa` difference** — that was a red herring that cost four
+eliminations; a short list fits inside a huge frame and looks fine.
 
 **Three things in that diff would be silently got wrong.** The bundled floor was
 rebuilt and committed with the schema bump, as authorised. `manifest.json` must

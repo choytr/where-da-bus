@@ -135,6 +135,20 @@ wrong, correct the entry rather than only the code.
 
 ### Map, from the device rounds
 
+- **Bus labels are unreadable with every stop pin showing.** Observed on a device
+  2026-08-09, device round 2, Route 2 through Kalihi: the buses work — green dots
+  labelled `171 · here 30 s ago` — but the labels overlap each other and the
+  stop pins, and on a dense stretch the map is mostly furniture. Truman: *"It's
+  not very readable with every stop icon showing. We can address that in the
+  future, good work getting it working for now."*
+
+  Deferred by him, not triaged away. Whoever picks it up: `labels.ts` already
+  culls *stop* names by collision and `MAX_LABELS`, and buses currently bypass
+  that entirely — every bus is always labelled, because the age is the reason the
+  bus is drawn at all. The obvious moves are to cull bus labels the same way, to
+  drop stop labels while a route is showing, or to shrink the stop pins in route
+  mode. All three are UI calls and need a device.
+
 - **Stop pins cover the route line, and that is accepted.** Observed on a device
   2026-08-09, device round 1: on a dense stretch — Route 10 through Alewa
   Heights — the pins are almost continuous and the line shows only between them.

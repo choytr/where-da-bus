@@ -214,16 +214,20 @@ describe('StopSheet', () => {
    * Asserted as a relationship against the sheet's own detents rather than as a
    * literal, so tuning a detent cannot break a test about something else.
    */
-  it('bounds its content column to a real height, never flex', async () => {
+  it('caps its content column, while still flexing to the sheet', async () => {
     await show(null);
 
     const column = StyleSheet.flatten(screen.getByTestId('sheet-content').props.style);
 
-    expect(typeof column.height).toBe('number');
-    expect(column.height).toBeLessThanOrEqual(DETENTS[FULL_DETENT]);
-    expect(column.height).toBeGreaterThan(DETENTS[MEDIUM_DETENT]);
-    // `flex: 1` against an unbounded parent is what this replaced.
-    expect(column.flex).toBeUndefined();
+    // `flex: 1` is the library's design and is kept: the sheet gives this
+    // container an animated height, and flexing to it is what keeps the pinned
+    // legend on screen at every detent.
+    expect(column.flex).toBe(1);
+    // The cap only binds before the sheet has measured its container, which is
+    // the window in which the list ran to 2846 pt on a device.
+    expect(typeof column.maxHeight).toBe('number');
+    expect(column.maxHeight).toBeLessThanOrEqual(DETENTS[FULL_DETENT]);
+    expect(column.maxHeight).toBeGreaterThan(DETENTS[MEDIUM_DETENT]);
   });
 
   /**

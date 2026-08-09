@@ -2,7 +2,6 @@ import { useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { useTheme } from '../../lib/theme';
-import { SHOW_SCROLL_PROBE, useScrollProbe } from './scrollProbe';
 import { LEGEND_GAP } from '../../lib/Attribution';
 import type { Stop, StopWithDistance } from '../../data/gtfs/types';
 
@@ -29,7 +28,6 @@ export type RouteListProps = {
 
 export function RouteList({ stops, selectedStopId, onSelect }: RouteListProps) {
   const { palette } = useTheme();
-  const probe = useScrollProbe();
 
   const renderItem = useCallback(
     ({ item, index }: { item: StopWithDistance; index: number }) => (
@@ -44,30 +42,23 @@ export function RouteList({ stops, selectedStopId, onSelect }: RouteListProps) {
   );
 
   return (
-    // The wrapping view is the probe's frame; delete both with `scrollProbe.ts`.
-    <View style={styles.fill} onLayout={probe.onLayout}>
-      {SHOW_SCROLL_PROBE ? (
-        <Text style={[styles.probe, { color: palette.muted }]}>{probe.readout}</Text>
-      ) : null}
-      <BottomSheetFlatList
-        testID="route-stops"
-        // Load-bearing. A scroll view that is a flex child of a sized column
-        // without it sizes to its *content*, so its frame equals its content
-        // and there is nothing to scroll — while every scroll affordance still
-        // reports present. Every list in this app carries it, for that reason.
-        style={styles.fill}
-        data={stops}
-        keyExtractor={(stop) => stop.stop_id}
-        renderItem={renderItem}
-        onContentSizeChange={probe.onContentSizeChange}
-        contentContainerStyle={styles.content}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={[styles.emptyText, { color: palette.muted }]}>{NOTICES.noStops}</Text>
-          </View>
-        }
-      />
-    </View>
+    <BottomSheetFlatList
+      testID="route-stops"
+      // Load-bearing, and only half the story: a scroll view that is a flex
+      // child sizes to its *content* without it — but `flex: 1` bounds a child
+      // against its parent only if the parent is bounded too, which is what
+      // `StopSheet`'s `maxContentHeight` is about.
+      style={styles.fill}
+      data={stops}
+      keyExtractor={(stop) => stop.stop_id}
+      renderItem={renderItem}
+      contentContainerStyle={styles.content}
+      ListEmptyComponent={
+        <View style={styles.empty}>
+          <Text style={[styles.emptyText, { color: palette.muted }]}>{NOTICES.noStops}</Text>
+        </View>
+      }
+    />
   );
 }
 
@@ -127,8 +118,6 @@ const styles = StyleSheet.create({
   main: { flex: 1 },
   name: { fontSize: 15, fontWeight: '600' },
   code: { fontSize: 12, marginTop: 2, fontVariant: ['tabular-nums'] },
-  /** Temporary; see `scrollProbe.ts`. */
-  probe: { fontSize: 11, paddingHorizontal: 16, paddingVertical: 2 },
   empty: { paddingHorizontal: 16, paddingTop: 8 },
   emptyText: { fontSize: 14, lineHeight: 20 },
 });

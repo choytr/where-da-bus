@@ -265,26 +265,33 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
   );
 
   /**
-   * The content column's height, in points — **not `flex: 1`**.
+   * A ceiling on the content column — **alongside `flex: 1`, not instead of it**.
    *
-   * Measured on a device 2026-08-09: with `flex: 1` the route list's frame came
-   * back as **2846 pt inside a sheet at most ~730 pt tall**, against 3363 pt of
-   * content. The list therefore scrolled by 517 pt and stopped, with the rest
-   * unreachable. `flex: 1` bounds a child against its parent, and this parent
-   * was not bounded, so the list sized itself to however many rows
-   * virtualization had rendered — which is also why it scrolled a little,
-   * stopped, and then allowed a little more.
+   * `flex: 1` is the right answer and is kept. `@gorhom/bottom-sheet` gives the
+   * children's container a definite height of its own — the sheet's *current*
+   * height less the grab handle, animated as the sheet moves — so a `flex: 1`
+   * column tracks the sheet exactly, and the legend pinned at its foot stays on
+   * screen at every detent. That is the design and this does not replace it.
    *
-   * This is the same family as the bug `08e189d` fixed on 2026-08-08, and the
-   * reason that fix did not reach the sheet: adding `flex: 1` to six children
+   * **But that height is only there once the sheet has measured its container.**
+   * Until then the library's own style returns no height at all, and `flex: 1`
+   * against an unbounded parent bounds nothing: the list sizes to however many
+   * rows virtualization has drawn. Measured on a device 2026-08-09 — the route
+   * list reported a frame of **2846 pt inside a sheet at most ~730 pt tall**,
+   * against 3363 pt of content, so it scrolled 517 pt and stopped dead with the
+   * rest unreachable.
+   *
+   * This is the same family as the bug `08e189d` fixed on 2026-08-08, and it is
+   * why that fix never reached the sheet: adding `flex: 1` to six children
    * cannot bound anything when the column above them is unbounded.
    *
-   * The height is knowable rather than inheritable — it is the tallest detent,
-   * less the grab handle that sits above the content. Taking it from `detents`
-   * means the column cannot disagree with the sheet it lives in, and every list
-   * inside it gets a real frame to be `flex: 1` against.
+   * So the cap. When the library has its height, `flex: 1` wins and this never
+   * binds; when it does not, this stops the column running away. It is
+   * deliberately a `maxHeight` rather than a `height` — a fixed height would
+   * pin the column to the *tallest* detent at every detent, pushing the legend
+   * below the visible sheet at medium.
    */
-  const contentHeight = Math.max(0, (detents[FULL_DETENT] ?? 0) - HANDLE_HEIGHT);
+  const maxContentHeight = Math.max(0, (detents[FULL_DETENT] ?? 0) - HANDLE_HEIGHT);
 
   const animationConfigs = useBottomSheetSpringConfigs({
     damping: 90,
@@ -346,7 +353,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
         rather than living at the foot of each one's scroll. Both modes are
         `flex: 1` above it.
       */}
-      <View testID="sheet-content" style={{ height: contentHeight }}>
+      <View testID="sheet-content" style={[styles.fill, { maxHeight: maxContentHeight }]}>
         {selectedStop !== null ? null : routeView !== null ? (
           <>
             {/*

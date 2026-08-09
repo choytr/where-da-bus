@@ -11,8 +11,28 @@ folded in here rather than left to rot in a file marked done.
 **Mark each line `observed` or `inferred`, and say which.** Anything not written
 down here dies with the context window.
 
-Ordered by risk. **Sections 1 and 2 are worth more than everything below them**;
-if you run out of patience, stop after 2 and say so.
+---
+
+# CLOSED 2026-08-09 — sections 1 and 2 ran, 3 to 8 were dropped by Truman
+
+**Sections 1 and 2 are done and both found something.** Section 1's number found
+the scroll bug; section 2 confirmed live buses work and turned up a readability
+finding, now in `docs/backlog.md`.
+
+**Sections 3 to 8 were dropped on Truman's instruction**, not skipped and not
+forgotten: *"As for all the other things reflagged in inc 8 device round 2…
+drop them/mark them as fine, honestly. We'll fix bugs as I come across them."*
+
+That is a deliberate change of policy and it is his to make. **Do not silently
+resurrect these as owed work**, and do not write another checklist of this
+shape — the appetite is for fixing what is hit in use, not for auditing. What
+survives from it is the one thing that earned its keep: the *instrumented*
+check in section 1, which answered in one glance what four rounds of reasoning
+could not.
+
+The sections below are kept verbatim as the record of what was and was not
+looked at. **Every unticked box below is unverified and is expected to stay
+that way.**
 
 ---
 
