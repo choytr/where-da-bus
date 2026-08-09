@@ -18,16 +18,22 @@ a list turns out not to scroll.
 
 ## Start here
 
-**Increment 8 is specced and planned. The next action is to execute Task 1** of
-`docs/superpowers/plans/2026-08-09-increment-8-routes-on-the-map.md` — shapes in
-the asset, `SCHEMA_VERSION` 1 → 2, and the bundled floor rebuilt in the same
-commit.
+**Increment 8's seven tasks are all built.** The next action is **device round
+1**: the `.ipa` from `gh run 31330482911` (off `dev`, built at Task 4) carries
+route mode and the route line but **no live buses** — deliberately, so the pin
+swap and the polyline are not confounded with the sixty-second bus churn. Round
+2 needs a *fresh* build once round 1 comes back.
+
+After both rounds: a review pass over the whole diff, then `docs/backlog.md`
+takes what is not worth fixing now — including **where `adherence` is shown**,
+which is parsed and carried but rendered nowhere.
 
 Do not re-grill the increment, and do not re-derive its measurements — several
 cost a 73 MB file parse and one overturned a premise this document previously
-asserted. They are all now in the spec,
+asserted. They are all in the spec,
 `docs/superpowers/specs/2026-08-09-increment-8-routes-on-the-map.md`, which is
-their permanent home.
+their permanent home. The plan carries a *What was built* note per task
+recording where reality disagreed with it.
 
 Nothing is owed on Increment 7. It is merged.
 
@@ -102,9 +108,16 @@ native module.
 
 ## Where things stand
 
-`dev` and `main` are level at Increment 7. **539 Jest across 38 suites, 91
-`node --test`, clean typecheck** — verified locally 2026-08-09 immediately
-before the merge.
+`main` is at Increment 7. **`dev` is seven commits ahead with all of Increment 8
+built and unverified on a device.** 651 Jest across 44 suites, 130 `node --test`,
+clean typecheck and clean `npm ci` — verified locally 2026-08-09.
+
+**Three things in that diff would be silently got wrong.** The bundled floor was
+rebuilt and committed with the schema bump, as authorised. `manifest.json` must
+keep describing a **v1** generation forever, because it is compiled into binaries
+already on phones. And a stored pointer says nothing about the *schema* of the
+file it names — `isReadableGeneration` is what stops a v2 binary opening the v1
+generation still sitting on Truman's phone.
 
 **The sheet and the search have both been through Expo Go**, over five rounds on
 2026-08-09, and Truman is happy with them. On the sheet: "Ok I like this a lot
