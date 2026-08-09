@@ -86,6 +86,46 @@ and it has been put to Truman:
   - Still will not scroll → the list itself, and `flex: 1` is not the cause since
     every list outside the sheet has the same treatment and works.
 
+## Truman's answer, and what it eliminated
+
+> "It already is at the top, but it won't scroll, just like before. Interestingly
+> it's fine in Expo Go right now, but the build you made is broken."
+
+**Observed.** So the sheet does reach its tallest detent, and the list still will
+not move. And the decisive fact: **same JavaScript, different native layer.**
+
+Four causes eliminated on that axis, each with evidence rather than argument:
+
+| Candidate | Evidence | Verdict |
+|---|---|---|
+| JS/native version mismatch, which Expo Go masks because it ships its own native modules and only runs your JS | `npx expo install --check` → *Dependencies are up to date* | Eliminated |
+| New Architecture differing between Expo Go and the prebuild | `npx expo prebuild --clean` writes no `newArchEnabled` to `ios/Podfile.properties.json`, so both take the SDK default | Eliminated |
+| The Reanimated/worklets babel plugin not running in a release bundle — plausible, since this project has **no `babel.config.js` at all** | `npx expo export --platform ios` then `strings` the Hermes bundle: `__workletHash` and `__initData` are both present | Eliminated |
+| `flex: 1`, the fix six lists received on 2026-08-09 | All seven lists carry it; the four outside the sheet scroll | Eliminated |
+
+**Root cause not yet found, and not guessed at.** Note that `/ios` is prebuild
+output and was deleted again after being read; `expo prebuild` also adds `ios`
+and `android` scripts to `package.json`, which were reverted.
+
+## The measurement round 2 carries
+
+`docs/backlog.md` on the last scroll bug that misled four investigations:
+*"measure — log `contentInset` from the `onScroll` payload against the list's
+`onLayout` frame — rather than read."* That is what `features/map/scrollProbe.ts`
+does, temporarily, on the route's stop list only.
+
+One muted line above the list reads `frame N · content M · …`. What it settles:
+
+- **`content > frame`** — the frame is right and the gesture is being swallowed
+  somewhere between the sheet's pan and the list's scroll.
+- **`content == frame`** — the list has been handed an unbounded height, has laid
+  every row out inside its own frame, and genuinely has nothing to scroll. That
+  is the failure Increment 7's checklist described in advance: *"announces itself
+  as scrollable and then will not move."*
+
+**Delete `scrollProbe.ts` and its call site once the number is in.**
+`SHOW_SCROLL_PROBE` is the single switch.
+
 ## Not in this build, so not tested
 
 - Live buses on the route (Task 6) and the arrival→bus highlight (Task 7).
