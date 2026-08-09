@@ -81,7 +81,7 @@ account.** Consequences that are not obvious from reading the code:
 
 ## Architecture
 
-Current as of Increment 5. Routing is **expo-router**: `package.json`'s `main`
+Current as of Increment 7. Routing is **expo-router**: `package.json`'s `main`
 is `expo-router/entry`, and every file under `app/` is a URL.
 
 ```
@@ -90,8 +90,11 @@ app/(tabs)/            index -> MapScreen, stops -> StopsScreen, settings
 app/stop/[code].tsx    -> ArrivalsScreen        (/stop/596)
 app/route/[id].tsx     -> RouteScreen           (/route/1L)
 AppShell.tsx           safe-area + gesture + theme + key gate + database gate
-features/map/          MapScreen, StopSheet, StopCard, region.ts, useAnchoredStops
-features/stops/        StopsScreen, StopRow, useLocation — nearby, search, favorites
+features/map/          MapScreen, StopSheet, StopCard, region.ts, labels.ts,
+                       peek.ts (the sheet's band), useAnchoredStops
+features/search/       useSearch (one engine, both hosts), FilterChips,
+                       ResultList, RouteRow, SearchNudge, nudge.ts
+features/stops/        StopsScreen, StopRow, useLocation — search, favorites
 features/arrivals/     ArrivalsScreen, ArrivalRow, BoardHeader, board.ts, format.ts
 features/routes/       RouteScreen — ordered stop list, entirely offline
 features/settings/     appearance, the API key, stop-data freshness
@@ -103,6 +106,7 @@ data/thebus/           TheBusClient: client.ts, parse.ts, time.ts, cache.ts,
                        provider.tsx (holds the user's key, builds the client)
 data/storage/          favorites, theme, database pointer (AsyncStorage);
                        apiKey.ts (keychain)
+data/geocode/          oahu.ts — address lookup, biased to the island
 lib/                   distance, legal, theme.tsx, schedule.ts (see below)
 scripts/build-gtfs/    the GTFS feed -> assets/db/gtfs.db, plus publish.mjs
 scripts/pdf-text.mjs   reads docs/api/*.pdf (see below)
@@ -189,13 +193,9 @@ stops an old binary being handed a database it cannot read.
 
 ## How work gets done here
 
-The shape below is a correction. Increment 1's plan ran 8,015 words against
-6,250 words of shipped source, because it carried near-complete code for each of
-its nine tasks — so the code was written twice, and nine per-task review rounds
-followed. The process cost more than the implementation. Increment 2 then
-overcorrected into no spec and no plan at all, which left its decisions
-recoverable only by reading twelve commits. These bullets are the settled
-middle.
+These bullets are a settled middle between two failures: a first increment
+whose plan was longer than the code it produced, and a second with no spec or
+plan at all whose decisions were recoverable only from twelve commits.
 
 - **The design conversation comes first.** Truman asks to be grilled before an
   increment is specced, and it is where the real decisions get made — see
@@ -223,9 +223,6 @@ middle.
   marks which of its claims are vendor quotes and which are readings of a
   single example — re-confirm the readings against the live API, not against
   the PDFs again.
-
-**Increment 2 is not being back-filled.** A spec for shipped work is ceremony;
-`docs/handoff.md` and its commit messages hold the reasoning.
 
 **Device verification is not what gets cut.** Nine review rounds, 90 Jest tests
 and a clean typecheck all missed that `SafeAreaView` had no provider and the
@@ -348,19 +345,18 @@ in **`lib/legal.ts`** so it cannot be silently dropped, and is rendered through
 
 **The non-affiliation disclaimer is ours, not theirs.** Verified 2026-08-08
 against the full Terms of Use: the words *affiliate*, *endorse* and their
-variants appear nowhere in the document. Earlier revisions of this file said the
-terms required one. They do not — it is kept because it is true and prudent for
-an unofficial app, which means its wording and placement are ours to choose.
+variants appear nowhere in it. Nothing requires one — it is kept because it is
+true and prudent for an unofficial app, which means its wording and placement
+are ours to choose. It lives in Settings' About and nowhere else; Truman had it
+removed from the lists on 2026-08-09.
 
 **The legend closes the content it attributes; it does not lead it.** The clause
 is "You must present the Data with the following legend, prominently displayed",
 and that obligation attaches to *presenting the Data* — not to the top of a
 screen, not to repetition within one, and not to a screen that presents no Data.
-So `KeyGate` carries it not at all, Settings carries it in About, and the four
-data surfaces carry it as a footer. This replaced a top-of-every-screen
-placement on 2026-08-08, after a device round where the collapsed map sheet's
-entire visible content was two lines of legal text and a clipped stop name.
-`lib/Attribution.tsx` records the argument against, which is real.
+So `KeyGate` carries it not at all, Settings carries it in About, and every data
+surface pins it below its scroll. The map sheet omits it at the collapsed
+detent, which shows no Data. `lib/Attribution.tsx` holds the reasoning.
 
 They are in `lib/` rather than on a screen for a concrete reason: while they
 lived on the stop list, the arrival board had to import that screen — and with

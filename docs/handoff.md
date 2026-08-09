@@ -8,51 +8,48 @@ up. Update it in place rather than adding a dated section each time.
 When an increment ships, its write-up in this file collapses to a pointer.
 
 Last updated: **2026-08-09**. **Increments 1–6 are shipped, device-verified and
-merged.** `dev` and `main` are level. **Increment 7 is specced and planned; no
-code is written yet.**
+merged.** **Increment 7 is in progress on `dev`: Tasks 1–7 are done, pushed and
+green; Tasks 8 and 9 remain.** `main` is still at Increment 6.
 
 ---
 
 ## Start here
 
-**Increment 7 was grilled on 2026-08-09 and is ready to execute.** Read, in
-order:
+Read, in order:
 
 1. `docs/superpowers/specs/2026-08-09-increment-7-peek-and-search.md`
 2. `docs/superpowers/plans/2026-08-09-increment-7-peek-and-search.md`
 
-**The next action is Task 1.** Do not re-grill it and do not re-open the
-decisions the spec records — several of them look obviously wrong until you read
-the measurement underneath.
+**The next action is Task 8** — the map's persistent search bar and its
+fullscreen search — then Task 9, Address mode. Do not re-grill the increment and
+do not re-open what the spec settled.
 
-### Increment 7 in one paragraph
+### What Increment 7 has shipped so far
 
-The map sheet's collapsed height becomes a computed number of points sized off
-the *selected-stop card*, so the peek shows a real stop row instead of ~16 pt of
-nothing, and no sheet content ever renders under the tab bar again. Tapping a
-row centres the map on that stop in the part of it a rider can actually see.
-Then a search with three filter chips — **Address / Stops / Routes** — across
-two hosts: the Stops tab gains Routes, and the map gains a persistent bar
-opening a fullscreen search that defaults to Address.
+The map sheet's detents are points computed from a **measured** container. Its
+resting peek is the grab handle, a band naming the mode, and one row. Tapping a
+row in the sheet centres the map on that stop; tapping a pin does not. The Stops
+tab has `Stops | Routes` chips over one shared search engine (`useSearch`), and
+a nudge that offers the filter which would have answered.
 
 **Four things a cold session will otherwise get wrong:**
 
-- **Headings are dropped.** They were Truman's own opening proposal and he
-  withdrew them during the grilling. Once the peek shows a real row, a
-  `StopRow` and the card's ‹ Back bar are already unmistakable.
+- **`detentsFor` takes a measured height, never `useWindowDimensions()`.** The
+  tab scene is inset above the tab bar; computing against the window breaks the
+  peek and the tallest detent simultaneously, and looks like two bugs.
 - **No classifier.** 73 route numbers are also valid stop codes — `40` is both
   Route 40 and stop 40 — and an address heuristic would refuse exactly the
   queries the device probe proved work. The chips exist because inference is
-  impossible, not because it was too much effort.
+  impossible.
 - **Pin taps do not pan the map; row taps do.** Truman's call, made against the
-  stated counter-argument. Look for the cost on the device round.
+  stated counter-argument.
 - **Route search must match `short_name`, never `route_id`.** `route_id: '13'`
-  is route `14`.
+  is route `14`; `route_id: '40'` is route **C**.
 
-**Increment 8 has a name now: *routes on the map*** — a route result drawing
-that route's stops, polylines, and the one-bus-behind-a-single-arrival view.
-All three mount children inside `MapView`, which is why they are together and
-why they are not in 7.
+**Increment 8 has a name: *routes on the map*** — a route result drawing that
+route's stops, polylines, and the one-bus-behind-a-single-arrival view. All
+three mount children inside `MapView`, which is why they are together and why
+they are not in 7.
 
 ### Address search — the hard part is done
 
@@ -71,29 +68,12 @@ Task 9 is what consumes it. `useAnchoredStops`' anchor machinery does the rest.
 
 ## Where things stand
 
-`main` and `dev` are level at Increment 6. **456 Jest, 82 `node --test`, clean
-typecheck, clean `npm ci`.**
+`dev` is ahead of `main` by Increment 7's first seven tasks. **509 Jest, 91
+`node --test`, clean typecheck, clean `npm ci`** — the last verified after
+`@react-navigation/bottom-tabs` became a direct dependency.
 
-**The map is the part that changed most, and it is now device-verified.** Truman,
-2026-08-08: "No interactions are really broken anymore… the app is now showing
-labels when/where it realistically should. It feels pretty nice to use."
-
-### Increment 6, in one paragraph each
-
-**The correctness half** fixed six known-broken things from the backlog, then a
-bug-hunting pass found a seventh: the arrival board broke on the last evening of
-every month, because Hawaii is UTC−10 and `hawaiiDateTime` validated its calendar
-*after* applying the offset. Ten hours, twelve times a year, looking exactly like
-the API being down.
-
-**The UI half** was screenshot-driven across four device rounds and has no plan
-file by design. It rebuilt the map's markers, moved the provider's legend off the
-top of every screen, masked the API key, fixed the map's controls and its legal
-label, and built the geocoder's Oahu biasing.
-
-**The map crash is diagnosed and its two recorded causes were both wrong.** Full
-entry in `docs/backlog.md`. The short version is in *Lessons* below, because the
-way it was found matters more than the fix.
+**The map is device-verified and Truman is happy with it.** 2026-08-09, on the
+sheet: "Ok I like this a lot better… This is perfect."
 
 ## Read these, in this order
 
@@ -119,6 +99,7 @@ Read the plan for the increment you care about rather than the diff.
 | 4 | Each user brings their own AppID; no secret in the build |
 | 5 | The data refreshes itself, from a weekly Action |
 | 6 | Six correctness fixes, then a screenshot-driven UI pass over the map |
+| 7 | The sheet at rest, and search across stops, routes and addresses *(in progress)* |
 
 Increment 6's record is `docs/superpowers/specs/2026-08-04-increment-6-correctness-and-ui.md`,
 its plan, and `docs/superpowers/logs/2026-08-04-increment-6-ui.md` — the UI log
@@ -128,12 +109,12 @@ line by line.
 ## Working agreement with Truman
 
 - **Work on `dev`. Merging to `main` needs his explicit permission every time.**
-- **Batch the pushes.** Every push to `dev` runs the Tests workflow, and a
-  session of small pushes buried the Actions list — his words, 2026-08-08:
-  "there's like some 70 test runs on GitHub Actions now." Run `npm test`,
-  `npm run test:scripts` and `npm run typecheck` locally, commit as often as is
-  useful, and push once the work is coherent. Committing often is free; pushing
-  often is not.
+- **Push at a task boundary or when he asks — never after an individual fix or
+  a round of device feedback.** Every push to `dev` runs the Tests workflow. He
+  has said this twice, the second time in caps (2026-08-09): "STOP PUSHING TO
+  DEV SO MUCH — what if we just push after a big task instead of after every
+  little change." Commit as often as is useful; that is free. Verify locally
+  every time, because CI is no longer catching anything per-commit.
 - He drives largely from his phone and prefers autonomous execution: do the
   work, report honestly, ask only when the answer changes what you would build.
 - **He starts the dev server himself.** Never run `npm start` or `npx expo
@@ -156,11 +137,13 @@ line by line.
 There is no simulator here and no device on this side. Say which of the two you
 are doing, every time.
 
-**Reading native source is not measuring.** Increment 6 produced four wrong
-claims this way, and then a fifth of mine. The map crash's two recorded causes
-were both readings; the real cause was an out-of-range array insert in React
-Native's Fabric mounting layer, and one `.ips` file off the phone settled in a
-single look what six weeks of reasoning had not. **Get the artefact.**
+**Reading native source is not measuring, and this includes layout.** Six wrong
+claims so far. The map crash's two recorded causes were both readings; one
+`.ips` file off the phone settled in a single look what six weeks of reasoning
+had not. The sixth was Increment 7 asserting that the tab bar overlaid the map
+scene when it does not, which broke the sheet at both ends. **Get the
+artefact** — and where the artefact is a layout, prefer a formula that measures
+over one that has to be told.
 
 **Expo Go crashes are logged, under `Expo Go-…` rather than the app's name**
 (Settings → Privacy & Security → Analytics & Improvements → Analytics Data).
@@ -191,8 +174,9 @@ built. Read it before touching the vehicle endpoint or the map.
 
 ## Suggested skills
 
-- **Not `grilling`** — Increment 7 has already had its grilling (2026-08-09) and
-  the spec records what it settled. The skill comes back out for Increment 8.
+- **Not `grilling`** for the rest of Increment 7 — it has had its grilling
+  (2026-08-09) and the spec records what it settled. The skill comes back out
+  for Increment 8, and Truman expects it.
 - **`superpowers:systematic-debugging`** — whenever the app's *appearance* or a
   native-layer bug comes up. It is what stopped a fix being aimed at a cause the
   backlog merely asserted.

@@ -168,12 +168,13 @@ describe('the detents', () => {
   });
 
   it('leaves about half the map showing at the middle detent', () => {
-    // The fraction `region.ts` and every camera call are handed. Raised from
-    // 0.45 to 0.5 on 2026-08-09 — Truman, on a device: "a bit low" — so what is
-    // left above it moved the other way.
-    // Two places, not three: the detent is rounded to a whole point, so on an
-    // odd-height container the fraction comes back a shade off its own value.
-    expect(visibleAbove(DETENTS, MEDIUM_DETENT, INSET_SCENE)).toBeCloseTo(0.5, 2);
+    // Bounded, not pinned. This fraction is what `region.ts` and every camera
+    // call are handed, and it is tuned by eye on a device — a test rewritten
+    // for each nudge is testing the nudge, not the invariant.
+    const visible = visibleAbove(DETENTS, MEDIUM_DETENT, INSET_SCENE);
+
+    expect(visible).toBeGreaterThan(0.4);
+    expect(visible).toBeLessThan(0.6);
   });
 });
 

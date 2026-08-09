@@ -71,12 +71,6 @@ export function StopCard({
         It is exactly `PEEK_BAND` tall, matching the *Nearby Stops* heading the
         list mode shows, so the resting sheet does not change height when a stop
         is selected.
-
-        The stop's name lived here for one round, while the peek was this band
-        and nothing else and a bare "‹ Nearby ★" said nothing about which stop
-        was open. The peek now shows a row below the band, so `BoardHeader`
-        carries the name again at its own size — which is where it reads best,
-        and keeps this host identical to `/stop/[code]`.
       */}
       <View testID="stop-card-band" style={[styles.bar, { borderBottomColor: palette.border }]}>
         <Pressable

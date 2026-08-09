@@ -17,11 +17,6 @@ strictly worse; the blank `feed_start_date` entry read as a latent bug and is
 inert. Reproduce before fixing — and when the stated cause turns out to be
 wrong, correct the entry rather than only the code.
 
-Increment 6 emptied the **Correctness** section — all six of its entries are
-fixed, so the heading is gone rather than left standing over nothing. That is
-not a claim that nothing is broken; it means nothing *known* is, and the
-sections below are still full.
-
 ## The live API
 
 - **The `*.thebus.org` certificate expires 2026-10-25.** If it lapses
@@ -129,131 +124,49 @@ but that'll come later. Functionality first."
   distance and route-number chips; `/stop/[code]` shows neither. He prefers the
   card's. Adding chips to `ArrivalsScreen` costs it a `routesForStops` query it
   does not currently make.
-- **The map crash is diagnosed, and both previously recorded causes were
-  wrong.** Kept rather than deleted because a race that stopped reproducing is
-  not a race proven gone.
+- **Never mount, unmount or reorder a child inside a `react-native-maps`
+  component.** This is the rule the whole section exists for, and it is worth
+  more than the three bugs that produced it.
 
-  **The evidence.** `Expo Go-2026-08-08-011041.ips`, off Truman's phone: an
-  uncaught Objective-C exception from `-[__NSArrayM insertObject:atIndex:]`,
-  raised on the main thread inside React Native's Fabric mounting transaction
-  (`TelemetryController::pullTransaction`), terminating on SIGABRT. **Neither
-  JavaScript nor MapKit** — the RN view-*mounting* layer, inserting a child
-  component view at an index its backing array does not have. SDK 54 runs the
-  New Architecture, so every map child goes through this path.
+  `AIRMap.m`'s `insertReactSubview:` intercepts markers, hands them to MapKit as
+  annotations, and deliberately never calls super — so the map's real subview
+  list and React's model of it are different things by construction. Changing
+  the tree across that seam produced, in order: a **SIGABRT**
+  (`Expo Go-2026-08-08-011041.ips` — an out-of-range
+  `-[__NSArrayM insertObject:atIndex:]` inside Fabric's mounting transaction,
+  neither JavaScript nor MapKit); **markers jumping to the screen's top-left**,
+  a view left alive with no position, when a label mounted inside a marker; and
+  **labels swallowing taps** aimed at neighbouring pins, because
+  `AIRMapMarker.reactSetFrame:` sizes the annotation view from the React layout.
 
-  **The reproduction that got us there** (2026-08-08, far better than the
-  original): selecting stops quickly crashes reliably, and the faster he taps
-  the fewer taps it takes. Marker icons also blank out when selecting one stop
-  while another is selected.
+  All three are fixed by never changing the tree: `zIndex` is gone from both
+  marker components, labels are always mounted and hidden with `opacity`, and
+  they are `position: 'absolute'` so they sit outside the marker's frame.
+  Truman could no longer reproduce the crash "no matter how aggressively I abuse
+  the map" — short of proof, and recorded as such, which is why this entry
+  stays.
 
-  **What is established.** `AIRMap.m`'s `insertReactSubview:` intercepts
-  markers, hands them to MapKit as annotations, and *deliberately never calls
-  super* — there is a `#pragma` silencing the missing-super warning. So the
-  map's real subview list and React's model of it are different things by
-  construction, and an out-of-range insert is what you would expect the seam to
-  produce. Read from source.
+  **If it returns, do not read native source.** Get another `.ips` off the
+  phone, then look for whatever started mounting children again.
 
-  **What is not.** *Why `zIndex` in particular* triggered it. An earlier version
-  of this entry — and of the comments in `StopMarker` — asserted that `zIndex`
-  is implemented by reordering sibling views. `AIRMapMarkerManager.m` exports it
-  as a plain native prop that becomes `layer.zPosition`, which is an assignment
-  and not a reorder. Whether React Native's own ordering also reacted to it is
-  unread: those sources are prebuild output this project never generates.
-  **Correlation, a plausible route through a seam that is real, and no proof.**
-  Corrected here rather than left standing, because a confident wrong mechanism
-  in a comment is exactly what this file exists to stop.
+- **Tapping a pin counts toward Apple Maps' double-tap-to-zoom**, and there is
+  no supported way off. `zoomTapEnabled` is *iOS: Google Maps only* per
+  `react-native-maps`' own type definitions, and the zooming recogniser is
+  `MKMapView`'s internal one, which the library never reaches — its own
+  double-tap recogniser only fires `onDoublePress`.
 
-  **`zIndex` is gone from both marker components** and Truman could no longer
-  reproduce the crash, "no matter how aggressively I abuse the map". Mechanism,
-  three matching symptoms, and a failure to reproduce — short of proof, and
-  recorded as such.
-
-  **What this retires.** The two candidates this entry used to name —
-  `pendingMarker.current?.showCallout()`, and unmounting the marker from inside
-  its own callout's press handler — were both readings of native behaviour and
-  **neither is what the log says**. They are struck. Note that the older
-  tap-hold reproduction is plausibly the *same* bug: mounting `PendingMarker`
-  and its `Callout` is a child mount/unmount on the same path, and both the
-  callout and that marker's constant `zIndex` are now gone. Plausibly, not
-  established — nobody has a log of the tap-hold crash.
-
-  **If it returns**, the answer is not to read native source. It is another
-  `.ips` off the phone, and then the mounting instructions: anything that makes
-  React insert, remove or reorder a child view inside a `react-native-maps`
-  component is a suspect, and marker *children* are the whole design here.
-
-- **The same bug, in a second non-fatal form: markers jumping to the screen's
-  top-left corner.** *Observed* `IMG_4524`, 2026-08-08 — two tiles and their
-  names piled at the origin over the status bar, one minute after `IMG_4523`
-  had the same stops in the right places, while repeatedly tapping pins to
-  change the selection.
-
-  The two displaced markers were the two whose labels had just become visible.
-  `StopMarker` was rendering its label conditionally, so a change in the label
-  set added or removed a child *inside* a marker — the same mount instruction
-  against the same component view as the crash, and the same disagreement
-  between React's bookkeeping and a hierarchy MapKit owns. Where the array
-  insert threw, this one leaves the view alive with no position, and a view
-  with no position is at the origin.
-
-  **Fixed by never changing the tree**: the label is always mounted and hidden
-  with `opacity`. Three crash-family symptoms now trace to one rule — *do not
-  mount, unmount or reorder children inside a `react-native-maps` component* —
-  which is worth more than any of the three fixes.
-
-  **That cost arrived, and is fixed.** *Observed* 2026-08-08: "sometimes they
-  can be on top of other icons and I think they're eating the press on those
-  icons." `AIRMapMarker.reactSetFrame:` sets the annotation view's `bounds` from
-  the React layout size and MapKit hit-tests by frame, so a label counted in the
-  layout is a label that swallows taps aimed at its neighbours. The label is now
-  `position: 'absolute'` and outside the layout box, leaving the marker's frame
-  the size of its tile. Source-read, not guessed — but the drawing of a subview
-  outside its parent's bounds is native behaviour and wants a look on a device.
-
-- **Tapping a pin counts toward Apple Maps' double-tap-to-zoom.** *Observed*
-  2026-08-08: switching selection by tapping pins in quick succession zooms the
-  map. **There is no supported way to turn this off on Apple Maps** —
-  `react-native-maps` exposes `zoomTapEnabled`, and its own type definitions say
-  *iOS: Google Maps only*. Verified in
-  `node_modules/react-native-maps/lib/MapView.d.ts`, not inferred.
-
-  **The zooming recogniser is MapKit's own and is not exposed.** Confirmed by
-  reading `AIRMapManager.m`: `react-native-maps` attaches its *own* single- and
-  double-tap recognisers to the map, but the double-tap one only fires
-  `onDoublePress` — it does not zoom — and both are created with
-  `cancelsTouchesInView = NO` so that marker selection keeps working. The zoom
-  therefore comes from `MKMapView`'s internal recogniser, which nothing in this
-  library reaches.
-
-  **Truman chose the blunt instrument, 2026-08-08, knowing the cost.** The map
-  is told not to zoom for `ZOOM_LOCKOUT_MS` (320 ms, slightly longer than the
-  system's double-tap window) after a pin tap, restarted on each tap so a run of
-  taps stays still throughout. It is a plain prop on the map and not a change to
-  any child, which is what makes it safe against the mounting bug above.
-
-  **The cost, recorded because it is real:** a deliberate pinch begun within
-  320 ms of tapping a pin does nothing. A proper fix is native and would leave
-  the Expo Go loop, which is a larger decision than this one.
+  So the map is told not to zoom for `ZOOM_LOCKOUT_MS` after a pin tap. **The
+  cost is real and Truman accepted it knowingly:** a deliberate pinch begun
+  within that window does nothing. A proper fix is native and would leave the
+  Expo Go loop.
 
 ## Tests
 
-- **The cold-cache failure is fixed, and its recorded cause was wrong.**
-  Measured 2026-08-06 across five `--clearCache` runs: the same **three** tests
-  failed **every** time, not occasionally, and none of them failed in a
-  `waitFor` at the 1 s default. They exceeded **Jest's own 5 s per-test
-  timeout**. Cold they take 6.7 s, 7.9 s and 8.3 s — `AppShell › asks for a key
-  …`, `KeyGate › shows onboarding …`, `ArrivalsScreen › shows the stop it is
-  about` — while all 404 others finish inside 1.03 s.
-
-  `testTimeout: 20000` in `package.json` fixes it: three cold runs, zero
-  failures. Raising RNTL's `asyncUtilTimeout` was tried first and is **not** in
-  the fix — it was aimed at the wrong lever, and setting it to 5 s made things
-  strictly worse by turning a fast assertion failure into a whole-test timeout
-  at the very limit that was already being hit.
-
-  The cost is that a genuinely hung test now takes 20 s to admit it instead of
-  5 s. The fake-timer wedge described in `CLAUDE.md` — the one that hangs the
-  run with no output — is slower to surface as a result.
+- **`testTimeout: 20000` in `package.json` is load-bearing.** Three tests
+  legitimately take 6–8 s on a cold cache and blew Jest's 5 s default. Raising
+  RNTL's `asyncUtilTimeout` instead was tried and made things strictly worse —
+  it is the wrong lever. The cost: a genuinely hung test now takes 20 s to
+  admit it, which makes the fake-timer wedge in `CLAUDE.md` slower to surface.
 - **The debounce test is real-timer dependent**, two-sidedly: too slow and it
   sees 2+ calls, too fast and a sibling test fails.
 - `App.test.tsx` reads mocked props through `jest.requireMock` with `any` all
@@ -295,25 +208,17 @@ but that'll come later. Functionality first."
 
 ## Decided, and not to be reopened
 
-**The scroll-indicator inset.** Resolved on device 2026-08-02 — the scrollbar
-matches the content top and bottom. **The cause was never established, and
-nobody should pretend otherwise**; the list moved hosts and lost a padding memo
-in the same change. Two separate claims made about it were reasoned from source,
-never observed, and both turned out to be wrong. **This has now misled four
-investigations, and Truman has said explicitly to keep ignoring it.** If it ever
-returns, the next step is measurement — log `contentInset` from the `onScroll`
-payload against the list's `onLayout` frame — and not more reading.
+**The scroll-indicator inset.** Resolved on device 2026-08-02; the cause was
+never established and nobody should pretend otherwise. **It has misled four
+investigations and Truman has said explicitly to keep ignoring it.** If it
+returns, measure — log `contentInset` from the `onScroll` payload against the
+list's `onLayout` frame — rather than read.
 
 **`mapPadding` is not the centring mechanism on Apple Maps.** `AIRMap.m:645`
 assigns it to `layoutMargins`; the Google branch sets `padding`, which does move
 the camera. `region.ts` centres by arithmetic instead, which cannot be wrong
 about MapKit because it never asks. **This is a reading of native source, not an
 observation** — the same move that produced the two wrong claims above.
-
-**The 45% detent is not being raised.** One and a half arrival rows is the
-intended shape: the next bus is the whole experience, and half a row beneath it
-says "there is more" without saying so. The plan predicted five or six rows, so
-a future session finding one and a half might otherwise "fix" it.
 
 **Arrivals do lack a bus number, and that is correct.** `parse.ts` maps the
 `"???"` sentinel to null, and it co-occurs exactly with `estimated !== "1"` —

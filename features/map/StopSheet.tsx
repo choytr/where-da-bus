@@ -48,16 +48,8 @@ const HANDLE_HEIGHT = 24;
 /** Clear air between the raised sheet and the notch. */
 const TOP_GAP = 16;
 
-/**
- * The middle detent, as a fraction of the container.
- *
- * Was `0.45` from Increment 3 until 2026-08-09, when Truman called it "a bit
- * low" on a device. `docs/backlog.md` argued against raising it — one and a
- * half arrival rows was the intended shape, the next bus being the whole
- * experience — and he overruled that with the phone in his hand, which is the
- * evidence that wins here. Named so tuning it stays a one-line change.
- */
-const MEDIUM_FRACTION = 0.50;
+/** Tuned by eye on a device. Named so the next nudge is a one-line change. */
+const MEDIUM_FRACTION = 0.475;
 
 const NEARBY_HEADING = 'Nearby Stops';
 
@@ -65,28 +57,18 @@ const NEARBY_HEADING = 'Nearby Stops';
  * The three detents, in **points**, against the height of the sheet's own
  * container.
  *
- * **`containerHeight` is measured, never assumed.** Increment 7 first computed
- * these against the window and got both ends wrong on a device: the peek showed
- * a screenful of content it was supposed to hide, and the tallest detent ran up
- * under the status bar. Both are the same mistake — the sheet's container is
- * whatever view it is mounted in, and React Navigation's tab scene is not the
- * window. `MapScreen` measures it with `onLayout` and passes it here, so this
- * is right whether or not the tab bar overlays the scene.
+ * **`containerHeight` is measured by `MapScreen`, never derived from the
+ * window.** React Navigation's tab scene may or may not be inset above the tab
+ * bar, and computing against the window when it *is* inset breaks both ends at
+ * once — the peek shows a tab bar's worth of content it meant to hide, and the
+ * tallest detent lands under the status bar. `tabBarOverlap` comes from the
+ * same measurement, so nothing here has to be right about the navigator.
  *
- * `tabBarOverlap` is how much of that container the tab bar covers, which is
- * zero when the scene is already inset above it. Derived from the same
- * measurement rather than from a belief about React Navigation.
- *
- * **The peek is the handle, one band and one row** — `PEEK_BAND` naming the
- * mode, `PEEK_ROW` showing the nearest stop under it. Four device rounds
- * settled that: `'14%'` left about a dozen points of content, ~211 pt sized to
- * the card's header spent too much map, the handle alone was "horrendous", and
- * a band alone said what the sheet was without showing anything.
- *
- * The tallest detent is 90% of the container **or** as tall as it can be while
- * still clearing the safe area, whichever is shorter. The cap is what makes the
- * notch unreachable by construction rather than by a fraction that happens to
- * work out on one phone.
+ * The peek is the handle, one band and one row: `PEEK_BAND` names the mode and
+ * `PEEK_ROW` shows something under it. The tallest detent is 90% of the
+ * container **or** as tall as it can be while clearing the safe area, whichever
+ * is shorter — the cap is what makes the notch unreachable by construction
+ * rather than by a fraction that happens to work out on one phone.
  */
 export function detentsFor(
   containerHeight: number,
@@ -217,15 +199,11 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
    * The detent the sheet has settled on, tracked here as well as reported, so
    * the legend below can be left off at the peek.
    *
-   * At the peek the content area is exactly the tab bar's height — there is no
-   * room for a legend, and a fixed-height block in a flex column does not
-   * shrink: it takes its space and the list collapses to nothing. That is the
-   * broken list. It is also the older bug in disguise, the one
-   * `lib/Attribution.tsx` records: a resting sheet whose entire visible content
-   * is legal text.
-   *
-   * A sheet showing only its handle presents no Data and so owes no legend, so
-   * the honest fix is not to render one there.
+   * **A fixed-height block in a flex column does not shrink.** Rendering the
+   * legend at a peek too short to hold it takes the space from the list, which
+   * collapses to nothing. It would also be the resting sheet whose visible
+   * content is mostly legal text — see `lib/Attribution.tsx`. A peek presents
+   * no Data, so it owes no legend either way.
    */
   const [settled, setSettled] = useState(PEEK_DETENT);
   const handleDetentChange = useCallback(

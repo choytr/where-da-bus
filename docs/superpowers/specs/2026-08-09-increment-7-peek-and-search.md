@@ -27,129 +27,77 @@ own device rounds rather than riding along on a search increment.
 **A fleet-wide vehicle layer stays deferred**, unchanged: `vehicle/` with no
 parameters returns ~1,184 vehicles as 333 KB of XML.
 
-~~**Headings in the sheet are dropped**, having been Truman's own opening
-proposal.~~ **Reinstated on the third device round** — see below. A peek short
-enough not to waste map is also too short to say what it is without one.
-
 ---
 
 ## The peek
 
-### The measurement this starts from
+Rebuilt across four device rounds. **What shipped is the settled answer; the
+intermediate heights are in the commit history and are not worth re-deriving.**
 
-The collapsed sheet is `'14%'` in `DETENTS`. On Truman's device that is ~119 pt,
-of which the tab bar takes ~83 (49 pt of bar over a 34 pt inset) and the grab
-handle ~20 — **leaving on the order of 16 pt for content**. That one number is
-behind three separately-reported complaints: the peek showing only legal text,
-"it peeks but doesn't show any meaningful information", and "the stop code's
-spacing to the bottom bar is really tight and awkward".
+### The one thing that must not be re-assumed
 
-**~~The tab bar does not clip the sheet; it is drawn over it.~~** *Wrong, and
-corrected 2026-08-09 by measurement.* This was inferred rather than measured,
-and building on it broke both ends of the sheet: the peek showed a screenful of
-stops it was meant to hide, and the tallest detent ran up under the status bar.
+The sheet's container is **whatever view it is mounted in**, and React
+Navigation's tab scene is inset above the tab bar — 83 pt shorter than the
+window on Truman's phone. An earlier draft of this spec asserted the opposite
+(*"the tab bar does not clip the sheet; it is drawn over it"*), and building on
+it broke both ends at once: the peek showed a tab bar's worth of stops it meant
+to hide, and a snap point of 90% × *window* landed 7 pt from the top of an
+813 pt container, under the status bar. Two symptoms, one wrong inference.
 
-The sheet's container is **React Navigation's tab scene, which is inset above
-the bar** — 83 pt shorter than the window on Truman's phone. A snap point of
-90% × *window* inside that container lands 7 pt from the top; a peek of
-`tabBar + handle` shows the whole `tabBar` worth of content above the bar. Two
-symptoms, one cause.
-
-`MapScreen` now measures its own root with `onLayout` and derives everything
-from that, including how much of it the bar covers (`tabBarOverlapOf`). That is
-correct under either arrangement, which is the point: it never has to be right
-about React Navigation. **This is the fifth time on this project that reasoning
-about native behaviour instead of measuring it produced a confident wrong
+`MapScreen` measures its own root with `onLayout` and derives everything from
+that, including how much of it the bar covers (`tabBarOverlapOf`), so nothing
+has to be right about the navigator. **The fifth time on this project that
+reasoning about native behaviour instead of measuring produced a confident wrong
 answer.**
 
 ### What the peek shows
 
-**Nothing. The grab handle, clear of the tab bar, and that is all.**
+**The grab handle, one band, and one row** — `PEEK_BAND` naming the mode,
+`PEEK_ROW` showing something under it. Both modes fill the band to exactly the
+same height, or the resting sheet changes height the moment a stop is selected
+and reads as a twitch. The list shows *Nearby Stops* over its nearest stop; the
+card shows **‹ Nearby · ★** over `BoardHeader`.
 
-*Revised 2026-08-09, on the device round after Tasks 1–3.* The peek was built
-as specced below and Truman's verdict on ~211 pt was that it took too much map
-for what it bought. His call: *"We can't get anything right, so can we just hide
-the sheet's content by lowering it and only show the top draggable bit? I will
-fine-tune what I want to show there in the future."*
-
-A peek that shows *part* of something has to be right about which part, and
-neither candidate was. A peek that shows nothing is honest about being a grab
-handle, and the map gets the height back. **What belongs in a resting sheet is
-deferred, deliberately, to a later increment with a device in hand.**
-
-The superseded reasoning, kept because it is what the measurement supported
-before the device disagreed with it: one full `StopRow` for the nearby list, but
-sized off the *card* — `StopCard`'s top is a bar (‹ Back, ★) over `BoardHeader`
-(name 20 pt, `Stop 596`, `Updated 30 s ago`), ~104 pt against the ~92 pt a
-one-row peek would give — so that the selected-stop mode was not left cramped.
-That arithmetic put it near 210 pt. It was right about the arithmetic and wrong
-about the screen, which is exactly what a device round is for.
-
-**Sheet content never renders under the tab bar.** This is the actual fix for
-the crowding, and it holds at every detent, not just the peek. With the peek cut
-back, the clearance is carried by the legend pinned at the sheet's bottom edge
-rather than by each scroll host's padding — see below.
+The tallest detent is 90% of the container **or** as tall as it can be while
+clearing the safe area, whichever is shorter — the cap makes the notch
+unreachable by construction. The middle detent is tuned by eye
+(`MEDIUM_FRACTION`); `docs/backlog.md` used to argue against raising it and
+Truman overruled that on a device.
 
 ### The legend is pinned in the sheet too
 
-*Added 2026-08-09, same round.* The sheet was the one surface where the required
-legend scrolled away with the content, and Truman noticed. Every other surface
-renders it as a sibling of its scroll view.
+The sheet was the app's one surface where the required legend scrolled away with
+the content. It is now pinned as a sibling of whichever mode is showing, like
+every other surface — **except at the peek**, which presents no Data and so owes
+no legend. That exception is not a dodge: a fixed-height block in a flex column
+does not shrink, so rendering it at a peek too short to hold it takes the space
+from the list and collapses it to nothing.
 
-`lib/Attribution.tsx` recorded a real objection to pinning it here: the strip
-would sit at the sheet's own bottom edge, which at the collapsed detent was
-precisely the sliver the legend had just been evicted from. **That objection
-dies with the tall peek.** A sheet showing only its handle presents no Data, so
-it owes no legend, and the strip is simply behind the tab bar there. At every
-detent that does show stops or arrivals the legend is pinned and visible, which
-is the more prominent placement rather than the less.
-
-It costs ~35 pt of the 45% detent, which the scroll-footer version did not.
+`@gorhom/bottom-sheet`'s own `footerComponent` was tried and rejected: it clamps
+the footer into view with `Math.max(0, …)` so it can never leave the sheet,
+which at a short peek pins the legend directly under the handle.
 
 ### Headings, reinstated
 
-*Revised 2026-08-09, third device round.* Truman proposed "Nearby Stops" and
-"Selected Stop" at the top of the grilling and withdrew them during it; this
-spec recorded them as dropped. He asked for the heading back after seeing the
-handle-only peek: **"having just the top tab thing visible is horrendous."**
-
-So the peek is the handle, **one band and one row** — `PEEK_BAND` naming the
-mode, `PEEK_ROW` showing something under it. Both modes fill exactly the band,
-otherwise the resting sheet changes height the moment a stop is selected, which
-reads as a twitch. The list fills it with *Nearby Stops* and shows its nearest
-stop below; the card fills it with **‹ Nearby · ★** and shows `BoardHeader` —
-name, code, age — below.
-
-The row was added on the fourth round: a band alone said what the sheet was
-without showing anything. It also retired a one-round experiment where the
-card's band carried the stop's name, which existed only because a band-only peek
-left *‹ Nearby ★* saying nothing about which stop was open. With a row beneath
-it the name is back in `BoardHeader` at its own size, and this host is identical
-to `/stop/[code]` again.
-
-The withdrawal's reasoning was sound and simply did not survive contact: it
-assumed a peek tall enough to show a `StopRow` or the card's header, where a
-heading would be naming what the content already said. At one band there is no
-such content, and the band is all the rider has to go on.
+They were Truman's opening proposal, withdrawn during the grilling, and asked
+for again once he saw a peek without one: *"having just the top tab thing
+visible is horrendous."* His call both times. The withdrawal assumed a peek tall
+enough to show a `StopRow` or the card's header, where a heading would name what
+the content already said; at one band there is no such content.
 
 **`PEEK_BAND` lives in `features/map/peek.ts`, alone.** `StopSheet` renders
 `StopCard`, so a constant exported from one and imported by the other is a
 cycle — and its victim would be a `StyleSheet.create` evaluated at module scope
 with `undefined` for a height.
 
-The real question underneath — *why these stops?* — was considered for the
-search bar instead and rejected there too; see below.
+The question underneath a heading — *why these stops?* — was considered for the
+search bar and rejected there; see below.
 
 ### `BoardHeader`'s type is not shrunk
 
 Truman's instinct was to make the stop name smaller. Aimed at the right place,
 wrong file: `BoardHeader` is shared with `/stop/[code]`, which has a whole
 screen and no crowding to solve. The peek pays for itself in height instead.
-
-### The 45% detent is untouched
-
-`docs/backlog.md` records why: one and a half arrival rows is the intended
-shape. This increment does not raise it.
 
 ## Selecting a stop moves the map
 
@@ -169,9 +117,8 @@ cannot drift apart in *what* they select; the row path passes a flag for the
 camera.
 
 **The sheet still only rises from below medium.** Increment 6 found on a device
-that snapping unconditionally to 45% while reading the list at full height
-yanked the row out from under the thumb that had just touched it. Truman's
-"the sheet moves to 45%" is what happens from the peek, which is that case.
+that snapping unconditionally while reading the list at full height yanked the
+row out from under the thumb that had just touched it.
 
 ---
 
@@ -293,9 +240,9 @@ Truman briefly parked address search entirely over this, then reinstated it with
 
 ## Stated assumptions
 
-- ~~The ~210 pt peek~~ **settled on the device round: the peek is the handle
-  alone.** The bar's placement against ⌖ and *Search this area*, and chip
-  styling, remain **provisional** and go to Truman with screenshots.
+- The sheet is settled and device-confirmed. **The map search bar's placement
+  against ⌖ and *Search this area*, and chip styling, are still provisional**
+  and go to Truman with screenshots.
 - Everything about how this *looks* is inference until he confirms it on a
   device. There is no simulator here.
 
@@ -304,15 +251,16 @@ Truman briefly parked address search entirely over this, then reinstated it with
 Not design decisions, and not Truman's to make — see the memory note of
 2026-08-09.
 
-- **All three detents become points.** `detentsFor(windowHeight, tabBarHeight)`
-  is the one place the peek's arithmetic lives, and `visibleAbove(detents,
-  index)` becomes `1 − detents[index] / windowHeight`: no string parsing, still
-  pure, still unit-testable. Encoding the peek back into a percentage string was
-  rejected as a measurement stored in the wrong unit.
+- **The detents are points, not percentage strings.** `detentsFor` is the one
+  place their arithmetic lives, and it takes a *measured* container height — see
+  the peek section for what assuming the window instead cost.
 - **The tab bar height comes from `useBottomTabBarHeight()`**, read in
-  `app/(tabs)/index.tsx` and passed down like `client`. It is a React context
-  that **throws** outside a navigator, so calling it in `MapScreen` would break
-  the screen's own tests; and it returns the real height including the inset,
-  which retires the 49 + 34 guess about UIKit.
-- **One query engine, two hosts.** The hosts differ in which filters they offer
-  and what a result does, not in how they search.
+  `app/(tabs)/index.tsx` and passed down like `client`, because it is a React
+  context that **throws** outside a navigator. `@react-navigation/bottom-tabs`
+  is a direct dependency for it, declared at expo-router's own range.
+- **One query engine, two hosts.** `useSearch`. The hosts differ in which
+  filters they offer and what a result does, not in how they search.
+- **The numeric short-circuit in the Stops tab is gone.** 431 of the feed's
+  3,830 stop names contain a digit, so routing a numeric query to the exact code
+  lookup alone made them unfindable by the number in their name. Code first,
+  then names.

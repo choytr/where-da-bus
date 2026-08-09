@@ -154,18 +154,15 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
 
   /**
-   * The height of this screen's own root view — which is the map's height, and
-   * the sheet's container.
+   * The height of this screen's own root view — the map's height, and the
+   * sheet's container.
    *
    * **Measured, not derived from the window.** React Navigation's tab scene may
-   * or may not be inset above the tab bar, and Increment 7 got both ends of the
-   * sheet wrong by assuming it was not: a peek meant to show only the grab
-   * handle showed a screenful of stops, and the tallest detent ran up under the
-   * status bar. One `onLayout` answers it exactly, on every device and every
-   * navigator version, which no amount of reading the library could.
-   *
-   * `windowHeight` until the first layout, which is the closest thing to an
-   * answer available before one.
+   * or may not be inset above the tab bar, and assuming wrong breaks the
+   * sheet at both ends at once — see `detentsFor`. One `onLayout` answers it
+   * exactly on every device and every navigator version, which no amount of
+   * reading the library can. `windowHeight` until the first layout, being the
+   * closest thing to an answer available before one.
    */
   const [measured, setMeasured] = useState<number | null>(null);
   const onScreenLayout = useCallback((event: LayoutChangeEvent) => {
@@ -387,10 +384,9 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * **`pan` is the one thing the two callers disagree about.** A row names a
    * stop the rider cannot see — the map behind the sheet is showing whatever it
    * was showing — so the map goes to it. A pin *is* the thing on the map, and
-   * travelling to something already under the thumb reads as the map lurching
-   * for no reason. Truman's call, made against the argument that a pin tapped
-   * low on screen ends up behind the risen sheet; that cost is real and is to
-   * be looked for on the device round rather than pre-empted here.
+   * travelling to something already under the thumb reads as a lurch for no
+   * reason. Truman's call, made against the argument that a pin tapped low on
+   * screen ends up behind the risen sheet.
    *
    * One function either way, so the two paths cannot drift apart in *what*
    * they select.

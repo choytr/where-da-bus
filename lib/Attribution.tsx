@@ -20,25 +20,13 @@ import { ATTRIBUTION } from './legal';
  * instead, as the app's one fixed statement of provenance.
  *
  * On the screens that *do* present the Data it closes the content rather than
- * leading it. That was first done by putting it at the foot of each list,
- * which traded away real prominence: `StopsScreen` had argued for the head on
- * the grounds that "under twenty-five rows is not prominent", and that reading
- * is fair.
+ * leading it, and it is **outside the scroll, pinned under it** — so the legend
+ * is on screen from the first frame and stays there. A scroll footer was tried
+ * first and traded away real prominence; a header put legal text above the
+ * content. This is neither.
  *
- * **Truman's answer was better than either, and is what ships**: outside the
- * list entirely, pinned under it. Every surface renders this as a sibling of
- * its scroll view, so the legend is on screen from the first frame and stays
- * there — more prominent than the header it replaced, without putting legal
- * text above the content.
- *
- * **The map's sheet was the exception until Increment 7, and no longer is.**
- * The objection was that a pinned strip sits at the sheet's own bottom edge,
- * which at the collapsed detent was precisely the sliver the legend had just
- * been evicted from. That stopped being true when the peek was cut back to the
- * grab handle alone: the sheet at rest now presents no Data at all, so it owes
- * no legend, and the strip is simply behind the tab bar there. At every detent
- * that *does* show stops or arrivals the legend is pinned and visible — which
- * is the more prominent placement, not the less.
+ * The map's sheet does not render one at its collapsed detent, where it shows
+ * no Data and therefore owes no legend. See `StopSheet`.
  */
 export function Attribution() {
   const { palette } = useTheme();
