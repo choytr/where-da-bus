@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useStopQueries, type RouteDirection } from '../../data/gtfs/db';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
-import { Attribution } from '../../lib/Attribution';
+import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
 import { useTheme } from '../../lib/theme';
 
 /**
@@ -83,8 +83,11 @@ export function RouteScreen({ routeId }: { routeId: string }) {
   return (
     <View style={[styles.fill, { backgroundColor: palette.background }]}>
       <SectionList
-        style={{ backgroundColor: palette.background }}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        testID="route-stops"
+        // Load-bearing; see `StopCard`. A long route is exactly the list that
+        // needs to scroll and exactly the one that would not.
+        style={[styles.fill, { backgroundColor: palette.background }]}
+        contentContainerStyle={{ paddingBottom: LEGEND_GAP }}
         sections={sections}
         keyExtractor={(stop, index) => `${stop.stop_id}-${index}`}
         stickySectionHeadersEnabled={false}
@@ -133,8 +136,11 @@ export function RouteScreen({ routeId }: { routeId: string }) {
         }
       />
 
-      {/* Outside the list, so it shows without a scroll. See lib/Attribution.tsx. */}
-      <Attribution />
+      {/* Outside the list, so it shows without a scroll. See lib/Attribution.tsx.
+          The bottom inset clears the curve of the display; see `ArrivalsScreen`. */}
+      <View style={{ paddingBottom: insets.bottom }}>
+        <Attribution />
+      </View>
     </View>
   );
 }

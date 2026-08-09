@@ -14,7 +14,7 @@ import type { Stop } from '../../data/gtfs/types';
 import type { TheBusClient } from '../../data/thebus';
 import { ArrivalRow } from './ArrivalRow';
 import { BoardHeader } from './BoardHeader';
-import { Attribution } from '../../lib/Attribution';
+import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
 import { NOTICES, describe, useArrivalBoard } from './board';
 import { useTheme } from '../../lib/theme';
 
@@ -91,8 +91,12 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
   return (
     <View style={[styles.fill, { backgroundColor: palette.background }]}>
       <SectionList
-        style={{ backgroundColor: palette.background }}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        testID="arrivals-list"
+        // `fill` is load-bearing, not cosmetic: without it this list sizes to
+        // its content instead of to the screen, its frame ends up equal to its
+        // content, and the board stops scrolling. See `StopCard`.
+        style={[styles.fill, { backgroundColor: palette.background }]}
+        contentContainerStyle={{ paddingBottom: LEGEND_GAP }}
         sections={sections}
         keyExtractor={(arrival) => arrival.id}
         stickySectionHeadersEnabled={false}
@@ -130,8 +134,16 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
         Outside the list. It shows whether or not anyone scrolls, and whether or
         not there are arrivals — "no buses coming" is itself the provider's
         answer, so the legend is owed either way.
+
+        The bottom inset is not decoration. This screen is pushed over the tabs,
+        so nothing below it insets anything, and on a device the legend sat in
+        the curve of the display with the text touching it — reported
+        2026-08-09. `SafeAreaView` is not used here because the list above must
+        keep running to the edge.
       */}
-      <Attribution />
+      <View style={{ paddingBottom: insets.bottom }}>
+        <Attribution />
+      </View>
     </View>
   );
 }

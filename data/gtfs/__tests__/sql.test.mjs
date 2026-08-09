@@ -9,11 +9,13 @@ import {
   ROUTE_STOPS,
   SEARCH_BY_NAME,
   SEARCH_BY_CODE,
+  SEARCH_ROUTES,
   NEARBY_IN_BOX,
   boundingBox,
   routesForStopsSql,
   stopsByIdsSql,
   toFtsQuery,
+  toLikeQuery,
   FLOOR,
   FLOOR_COUNTS,
   meetsFloor,
@@ -225,6 +227,126 @@ describe('toFtsQuery', () => {
     const query = toFtsQuery('kalihi');
     assert.ok(query);
     assert.equal(typeof query.match, 'string');
+  });
+});
+
+describe('route search', () => {
+  let db;
+
+  before(() => {
+    if (!existsSync(DB)) {
+      throw new Error('assets/db/gtfs.db missing — run: npm run build:gtfs');
+    }
+    db = new DatabaseSync(DB, { readOnly: true });
+  });
+
+  /** What `searchRoutes` binds, so these run the query the app runs. */
+  const search = (input, limit = 30) => {
+    const like = toLikeQuery(input);
+    if (like === null) return [];
+    return db.prepare(SEARCH_ROUTES).all(like.anywhere, like.anywhere, like.exact, like.prefix, limit);
+  };
+
+  test('finds a route by its number', () => {
+    // Structural: any route whose number is what a rider would type.
+    const route = db
+      .prepare("SELECT short_name FROM routes WHERE short_name <> '' LIMIT 1")
+      .get();
+    assert.ok(route, 'expected at least one route with a number');
+
+    const found = search(route.short_name);
+    assert.ok(
+      found.some((r) => r.short_name === route.short_name),
+      `searching ${route.short_name} did not return it`,
+    );
+  });
+
+  test('finds a route by its name', () => {
+    const route = db
+      .prepare("SELECT route_id, long_name FROM routes WHERE long_name LIKE '%_ _%' LIMIT 1")
+      .get();
+    assert.ok(route, 'expected a route whose name has more than one word');
+    const word = route.long_name.match(/[A-Za-z]{4,}/)[0];
+
+    const found = search(word);
+    assert.ok(found.length > 0, `searching ${word} returned nothing`);
+    for (const r of found) {
+      const haystack = `${r.short_name} ${r.long_name}`.toLowerCase();
+      assert.ok(haystack.includes(word.toLowerCase()), `${r.long_name} does not contain ${word}`);
+    }
+  });
+
+  test('prefers an exact number match over a substring', () => {
+    // Oahu has route 40 (Honolulu-Makaha) and routes 401, 402, 403. Typing
+    // "40" must lead with 40 — the substring matches are a courtesy, not the
+    // answer. Found structurally so this keeps meaning something if the feed
+    // renumbers.
+    const rows = db.prepare("SELECT short_name FROM routes WHERE short_name <> ''").all();
+    const names = rows.map((r) => r.short_name);
+    const exact = names.find((name) => names.some((other) => other !== name && other.startsWith(name)));
+    assert.ok(exact, 'expected a route number that is a prefix of another');
+
+    const found = search(exact);
+    assert.equal(found[0].short_name, exact);
+  });
+
+  test('does not match a route by its route_id', () => {
+    // The ids are not the numbers on the buses. In the current feed
+    // `route_id: '40'` is route **C**, the CountryExpress to Makaha, and
+    // `route_id: '13'` is route 14 — so matching on the id would answer "40"
+    // with a route to the far side of the island.
+    const liar = db
+      .prepare(`
+        SELECT route_id, short_name, long_name FROM routes
+        WHERE instr(lower(short_name), lower(route_id)) = 0
+          AND instr(lower(long_name), lower(route_id)) = 0
+        LIMIT 1
+      `)
+      .get();
+    assert.ok(liar, 'expected a route whose id appears in neither of its names');
+
+    const found = search(liar.route_id);
+    assert.ok(
+      !found.some((r) => r.route_id === liar.route_id),
+      `searching ${liar.route_id} returned the route whose id that is (${liar.short_name})`,
+    );
+  });
+
+  test('an empty query returns nothing', () => {
+    assert.deepEqual(search(''), []);
+    assert.deepEqual(search('   '), []);
+  });
+
+  test('a wildcard in the query is not a wildcard', () => {
+    // Unescaped, `%` would match every route in the feed — which reads as a
+    // search that ignored what was typed.
+    const all = db.prepare('SELECT count(*) AS c FROM routes').get().c;
+    assert.ok(search('%').length < all);
+    assert.ok(search('_').length < all);
+  });
+});
+
+describe('toLikeQuery', () => {
+  test('returns null when there is nothing to search for', () => {
+    assert.equal(toLikeQuery(''), null);
+    assert.equal(toLikeQuery('   '), null);
+  });
+
+  test('escapes the wildcards a rider might type', () => {
+    assert.deepEqual(toLikeQuery('100%'), {
+      anywhere: '%100\\%%',
+      prefix: '100\\%%',
+      // Compared with `=`, where a percent sign is a percent sign.
+      exact: '100%',
+    });
+  });
+
+  test('trims, because a trailing space is not part of a route name', () => {
+    assert.deepEqual(toLikeQuery('  A LINE '), {
+      anywhere: '%A LINE%',
+      prefix: 'A LINE%',
+      exact: 'A LINE',
+    });
   });
 });
 

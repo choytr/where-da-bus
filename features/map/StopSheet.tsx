@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useMemo } from 'react';
+import { forwardRef, useCallback, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -8,8 +8,9 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet';
 import { StopRow } from '../stops/StopRow';
 import { StopCard } from './StopCard';
+import { PEEK_BAND, PEEK_ROW } from './peek';
 import { useTheme } from '../../lib/theme';
-import { Attribution } from '../../lib/Attribution';
+import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
 import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
 import type { TheBusClient } from '../../data/thebus';
 import type { AnchoredStatus } from './useAnchoredStops';
@@ -33,10 +34,73 @@ import type { AnchoredStatus } from './useAnchoredStops';
  */
 
 /** Peek, medium, full. Medium is where a selected stop's arrivals fit. */
-export const DETENTS = ['14%', '45%', '90%'] as const;
 export const PEEK_DETENT = 0;
 export const MEDIUM_DETENT = 1;
 export const FULL_DETENT = 2;
+
+/**
+ * The sheet's own grab handle: `@gorhom/bottom-sheet`'s default handle is 10 pt
+ * of padding either side of a 4 pt indicator. Read off its stylesheet rather
+ * than guessed.
+ */
+const HANDLE_HEIGHT = 24;
+
+/** Clear air between the raised sheet and the notch. */
+const TOP_GAP = 16;
+
+/** Tuned by eye on a device. Named so the next nudge is a one-line change. */
+const MEDIUM_FRACTION = 0.4985;
+
+const NEARBY_HEADING = 'Nearby Stops';
+
+/**
+ * The three detents, in **points**, against the height of the sheet's own
+ * container.
+ *
+ * **`containerHeight` is measured by `MapScreen`, never derived from the
+ * window.** React Navigation's tab scene may or may not be inset above the tab
+ * bar, and computing against the window when it *is* inset breaks both ends at
+ * once — the peek shows a tab bar's worth of content it meant to hide, and the
+ * tallest detent lands under the status bar. `tabBarOverlap` comes from the
+ * same measurement, so nothing here has to be right about the navigator.
+ *
+ * The peek is the handle, one band and one row: `PEEK_BAND` names the mode and
+ * `PEEK_ROW` shows something under it. The tallest detent is 90% of the
+ * container **or** as tall as it can be while clearing the safe area, whichever
+ * is shorter — the cap is what makes the notch unreachable by construction
+ * rather than by a fraction that happens to work out on one phone.
+ */
+export function detentsFor(
+  containerHeight: number,
+  tabBarOverlap: number,
+  topInset: number,
+): readonly [number, number, number] {
+  const medium = Math.round(containerHeight * MEDIUM_FRACTION);
+  const clearsNotch = containerHeight - topInset - TOP_GAP;
+  return [
+    HANDLE_HEIGHT + PEEK_BAND + PEEK_ROW + tabBarOverlap,
+    medium,
+    // Never below medium, however small the container or however deep the
+    // notch — an ordering violation would make the sheet unsnappable.
+    Math.round(Math.max(Math.min(containerHeight * 0.9, clearsNotch), medium + 1)),
+  ];
+}
+
+/**
+ * How much of `containerHeight` the tab bar is drawn over.
+ *
+ * Zero when React Navigation has already inset the scene above the bar, and the
+ * bar's full height when the scene runs underneath it. Both happen, depending
+ * on version and options, and the difference is the whole of the bug above — so
+ * it is subtracted out of a measurement instead of being decided in advance.
+ */
+export function tabBarOverlapOf(
+  containerHeight: number,
+  windowHeight: number,
+  tabBarHeight: number,
+): number {
+  return Math.max(0, Math.min(tabBarHeight, containerHeight - (windowHeight - tabBarHeight)));
+}
 
 /**
  * How much of the screen's height is *not* under the sheet at a given detent.
@@ -45,9 +109,13 @@ export const FULL_DETENT = 2;
  * camera framing and the sheet's height must not be able to disagree about how
  * much of the map a rider can see.
  */
-export function visibleAbove(detent: number): number {
-  const height = DETENTS[detent] ?? DETENTS[PEEK_DETENT];
-  return 1 - Number.parseFloat(height) / 100;
+export function visibleAbove(
+  detents: readonly number[],
+  index: number,
+  windowHeight: number,
+): number {
+  const height = detents[index] ?? detents[PEEK_DETENT] ?? 0;
+  return 1 - height / windowHeight;
 }
 
 const EMPTY_HERE = 'No stops within walking distance of here.';
@@ -79,6 +147,20 @@ export type StopSheetProps = {
    * visible enough to be worth touching.
    */
   onDetentChange: (index: number) => void;
+  /**
+   * The three snap heights, in points, from `detentsFor`. Passed in rather
+   * than computed here because the peek's height depends on the tab bar, and
+   * `useBottomTabBarHeight()` throws outside a navigator — which the sheet's
+   * own tests are.
+   */
+  detents: readonly number[];
+  /**
+   * How much of the sheet's bottom edge the tab bar is drawn over, from
+   * `tabBarOverlapOf` — zero when the scene is already inset above the bar.
+   * Only the pinned legend needs it; everything above the legend is clear of
+   * the bar by construction.
+   */
+  tabBarOverlap: number;
 };
 
 export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSheet(
@@ -94,11 +176,43 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     onOpenRoute,
     onDetentChange,
     client,
+    detents,
+    tabBarOverlap,
   },
   ref,
 ) {
   const { palette } = useTheme();
-  const detents = useMemo(() => [...DETENTS], []);
+  // Copied because `snapPoints` is declared mutable, and the detents are shared
+  // with the camera framing — which must not be able to write to them.
+  const snapPoints = useMemo(() => [...detents], [detents]);
+
+  /**
+   * The tab bar is cleared by the pinned legend below the list, not by the list
+   * itself, so this is only breathing room under the last row.
+   */
+  const listContent = useMemo(() => ({ paddingBottom: CONTENT_INSET }), []);
+
+  /** Lifts the pinned legend off whatever the tab bar covers, if anything. */
+  const footer = useMemo(() => ({ paddingBottom: tabBarOverlap }), [tabBarOverlap]);
+
+  /**
+   * The detent the sheet has settled on, tracked here as well as reported, so
+   * the legend below can be left off at the peek.
+   *
+   * **A fixed-height block in a flex column does not shrink.** Rendering the
+   * legend at a peek too short to hold it takes the space from the list, which
+   * collapses to nothing. It would also be the resting sheet whose visible
+   * content is mostly legal text — see `lib/Attribution.tsx`. A peek presents
+   * no Data, so it owes no legend either way.
+   */
+  const [settled, setSettled] = useState(PEEK_DETENT);
+  const handleDetentChange = useCallback(
+    (index: number) => {
+      setSettled(index);
+      onDetentChange(index);
+    },
+    [onDetentChange],
+  );
 
   const animationConfigs = useBottomSheetSpringConfigs({
     damping: 90,
@@ -147,66 +261,121 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
       ref={ref}
       index={0}
       enableDynamicSizing={false}
-      snapPoints={detents}
+      snapPoints={snapPoints}
       enablePanDownToClose={false}
       backgroundStyle={{ backgroundColor: palette.background }}
       handleIndicatorStyle={{ backgroundColor: palette.muted }}
       animationConfigs={animationConfigs}
       backdropComponent={renderBackdrop}
-      onChange={onDetentChange}
+      onChange={handleDetentChange}
     >
-      {selectedStop === null ? (
-        <BottomSheetFlatList
-          data={stops}
-          keyExtractor={(stop) => stop.stop_id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.content}
-          // At the foot, not the head. It led this list until 2026-08-08, and
-          // at the collapsed detent the legend plus a clipped stop name was
-          // the entire visible sheet — the peek showed legal text and nothing
-          // a rider opened the app for. `lib/Attribution.tsx` carries the
-          // reading of the terms that permits the move, and what it costs.
-          ListFooterComponent={<Attribution />}
-          ListEmptyComponent={
-            // Three states kept apart, as §4 requires: still looking, looked and
-            // found nothing here, and could not look at all.
-            <View style={styles.empty}>
-              {status === 'loading' ? (
-                <Text style={[styles.emptyText, { color: palette.muted }]}>{LOADING}</Text>
-              ) : null}
-              {status === 'empty' ? (
-                <Text style={[styles.emptyText, { color: palette.muted }]}>{EMPTY_HERE}</Text>
-              ) : null}
-              {status === 'failed' ? (
-                <Text style={[styles.emptyText, { color: palette.warning }]}>{FAILED}</Text>
-              ) : null}
+      {/*
+        A column, so the legend can be pinned under whichever mode is showing
+        rather than living at the foot of each one's scroll. Both modes are
+        `flex: 1` above it.
+      */}
+      <View style={styles.fill}>
+        {selectedStop === null ? (
+          <>
+            {/*
+              Outside the scroll, so it is still there at the peek and does not
+              slide away under a thumb. Exactly `PEEK_BAND` tall, which is what
+              keeps the resting sheet the same height in both modes.
+            */}
+            <View testID="nearby-band" style={[styles.band, { borderBottomColor: palette.border }]}>
+              <Text
+                accessibilityRole="header"
+                style={[styles.heading, { color: palette.text }]}
+              >
+                {NEARBY_HEADING}
+              </Text>
             </View>
-          }
-        />
-      ) : (
-        /*
-          Mounted only while a stop is selected, which is what keeps exactly one
-          arrivals poll running: unmounting tears down useArrivals' fetch and its
-          60-second timer with it, so changing selection cannot leave the
-          previous stop polling in the background.
-        */
-        <StopCard
-          stop={selectedStop}
-          meters={selectedStop.meters}
-          routes={routesByStop.get(selectedStop.stop_id) ?? []}
-          isFavorite={favoriteIds.includes(selectedStop.stop_id)}
-          onBack={onBack}
-          onToggleFavorite={onToggleFavorite}
-          onPressRoute={onOpenRoute}
-          client={client}
-        />
-      )}
+
+            <BottomSheetFlatList
+              testID="nearby-stops"
+              // Explicit, because it is now a sibling of the legend rather than the
+              // sheet's only child: without it the list sizes to its content and
+              // pushes the legend out of the sheet entirely.
+              style={styles.fill}
+              data={stops}
+              keyExtractor={(stop) => stop.stop_id}
+              renderItem={renderItem}
+              contentContainerStyle={listContent}
+              ListEmptyComponent={
+                // Three states kept apart, as §4 requires: still looking, looked and
+                // found nothing here, and could not look at all.
+                <View style={styles.empty}>
+                  {status === 'loading' ? (
+                    <Text style={[styles.emptyText, { color: palette.muted }]}>{LOADING}</Text>
+                  ) : null}
+                  {status === 'empty' ? (
+                    <Text style={[styles.emptyText, { color: palette.muted }]}>{EMPTY_HERE}</Text>
+                  ) : null}
+                  {status === 'failed' ? (
+                    <Text style={[styles.emptyText, { color: palette.warning }]}>{FAILED}</Text>
+                  ) : null}
+                </View>
+              }
+            />
+          </>
+        ) : (
+          /*
+            Mounted only while a stop is selected, which is what keeps exactly one
+            arrivals poll running: unmounting tears down useArrivals' fetch and its
+            60-second timer with it, so changing selection cannot leave the
+            previous stop polling in the background.
+          */
+          <StopCard
+            stop={selectedStop}
+            meters={selectedStop.meters}
+            routes={routesByStop.get(selectedStop.stop_id) ?? []}
+            isFavorite={favoriteIds.includes(selectedStop.stop_id)}
+            onBack={onBack}
+            onToggleFavorite={onToggleFavorite}
+            onPressRoute={onOpenRoute}
+            client={client}
+          />
+        )}
+
+        {/*
+          Pinned under the content, not at the foot of its scroll — the same
+          placement the stop list, the arrival board and route detail already
+          use, so the legend is on screen from the first frame at every detent
+          that shows any Data. `lib/Attribution.tsx` carries the reading of the
+          terms behind that, and why the sheet stopped being the exception.
+
+          Not at the peek: see `settled` above.
+        */}
+        {settled === PEEK_DETENT ? null : (
+          <View testID="sheet-attribution" style={[styles.legend, footer]}>
+            <Attribution />
+          </View>
+        )}
+      </View>
     </BottomSheet>
   );
 });
 
+/** Breathing room under the last row. The tab bar is the legend's to clear. */
+const CONTENT_INSET = LEGEND_GAP;
+
 const styles = StyleSheet.create({
-  content: { paddingBottom: 32 },
+  fill: { flex: 1 },
+  /**
+   * The band the peek shows. Fixed height and no shrink, because the whole
+   * point is that it is exactly as tall as the card's own band — see
+   * `PEEK_BAND` and `StopCard`.
+   */
+  band: {
+    height: PEEK_BAND,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    flexShrink: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  heading: { fontSize: 17, fontWeight: '700' },
+  /** Never squeezed by the list above it, and never squeezing it either. */
+  legend: { flexShrink: 0 },
   empty: { paddingHorizontal: 16, paddingTop: 8 },
   emptyText: { fontSize: 14, lineHeight: 20 },
 });

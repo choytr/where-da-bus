@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { cleanup, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { NOTICES, RouteScreen } from '../RouteScreen';
@@ -65,6 +66,14 @@ describe('RouteScreen', () => {
     await show();
     screen.getByText('Route 1');
     screen.getByText('KALIHI - WAIKIKI');
+  });
+
+  /** See `StopCard`'s equivalent. A long route is exactly the list that needs
+   *  to scroll and exactly the one that would not. */
+  it('gives the stop list room to scroll in', async () => {
+    await show();
+
+    expect(StyleSheet.flatten(screen.getByTestId('route-stops').props.style).flex).toBe(1);
   });
 
   it('carries the required attribution', async () => {

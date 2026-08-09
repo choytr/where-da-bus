@@ -20,22 +20,29 @@ import { ATTRIBUTION } from './legal';
  * instead, as the app's one fixed statement of provenance.
  *
  * On the screens that *do* present the Data it closes the content rather than
- * leading it. That was first done by putting it at the foot of each list,
- * which traded away real prominence: `StopsScreen` had argued for the head on
- * the grounds that "under twenty-five rows is not prominent", and that reading
- * is fair.
+ * leading it, and it is **outside the scroll, pinned under it** — so the legend
+ * is on screen from the first frame and stays there. A scroll footer was tried
+ * first and traded away real prominence; a header put legal text above the
+ * content. This is neither.
  *
- * **Truman's answer was better than either, and is what ships**: outside the
- * list entirely, pinned under it. The stops list, the arrival board and route
- * detail each render this as a sibling of their scroll view, so the legend is
- * on screen from the first frame and stays there — more prominent than the
- * header it replaced, without putting legal text above the content.
- *
- * The two sheet surfaces are the exception and stay scroll-footers. A pinned
- * strip inside the bottom sheet would sit at the sheet's own bottom edge,
- * which at the collapsed detent is precisely the sliver the legend was
- * evicted from.
+ * The map's sheet does not render one at its collapsed detent, where it shows
+ * no Data and therefore owes no legend. See `StopSheet`.
  */
+/**
+ * How much air the content *above* a pinned legend wants under its last row.
+ *
+ * One number, here, for the same reason the wording and the size are here: four
+ * screens each picking their own is four chances to drift. It is deliberately
+ * small — the block below already opens with 16 pt of its own padding, and the
+ * two are additive.
+ *
+ * It replaced `insets.bottom + 24` on the screens that pin the legend at the
+ * foot of the display. Once the legend takes the safe-area inset itself, a list
+ * that also reserves it is reserving it twice, and the result was a band of
+ * dead space between the last row and the legend — reported 2026-08-09.
+ */
+export const LEGEND_GAP = 8;
+
 export function Attribution() {
   const { palette } = useTheme();
 

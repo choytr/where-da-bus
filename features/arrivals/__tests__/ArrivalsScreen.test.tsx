@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { act, cleanup, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { ArrivalsScreen, NOTICES } from '../ArrivalsScreen';
@@ -115,6 +116,14 @@ describe('ArrivalsScreen', () => {
     await show(clientOf(boardOf(arrival())));
     screen.getByText('KING ST + BISHOP ST');
     screen.getByText('Stop 596');
+  });
+
+  /** See `StopCard`'s equivalent for the mechanism. A proxy for the bug — Jest
+   *  makes no layout pass and so cannot scroll anything. */
+  it('gives the board room to scroll in', async () => {
+    await show(clientOf(boardOf(arrival())));
+
+    expect(StyleSheet.flatten(screen.getByTestId('arrivals-list').props.style).flex).toBe(1);
   });
 
   it('carries the required attribution, which the terms call for wherever the data appears', async () => {

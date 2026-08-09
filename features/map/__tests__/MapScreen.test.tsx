@@ -1,12 +1,15 @@
-import { StyleSheet } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
-import { MapScreen } from '../MapScreen';
-import { MEDIUM_DETENT } from '../StopSheet';
+import { MapScreen, COMPASS_LAYOUT_OFFSET } from '../MapScreen';
+import { MEDIUM_DETENT, PEEK_DETENT, detentsFor, tabBarOverlapOf, visibleAbove } from '../StopSheet';
+import { centredOn } from '../region';
+import { SEARCH_PLACEHOLDER } from '../SearchBar';
+import type { Place } from '../address';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
 import { NOTICES } from '../../arrivals/board';
-import type { RouteSummary, StopWithDistance } from '../../../data/gtfs/types';
+import type { RouteSummary, Stop, StopWithDistance } from '../../../data/gtfs/types';
 import type { ArrivalsResult } from '../../../data/thebus/types';
 import type { TheBusClient } from '../../../data/thebus';
 import type { LocationState } from '../../stops/useLocation';
@@ -43,6 +46,10 @@ jest.mock('react-native-maps', () => {
         {/* The zoom lockout after a pin tap is a prop on the map and nothing
             else, so the double reports it the way it reports a camera move. */}
         <Text>{`zoomEnabled: ${props.zoomEnabled !== false}`}</Text>
+        {/* `mapPadding` becomes `layoutMargins` on Apple Maps, which is what
+            positions the compass. Reported so a test can read what the screen
+            asked for; where MapKit then draws is a device question. */}
+        <Text>{`mapPadding top: ${props.mapPadding?.top}`}</Text>
         <Pressable
           accessibilityLabel="map surface"
           onPress={() =>
@@ -193,16 +200,52 @@ const mockRoutesForStops = jest.fn(
   async (): Promise<Map<string, RouteSummary[]>> => new Map(),
 );
 
+/**
+ * One object, held still. The real `useStopQueries` returns `useCallback`-stable
+ * functions, and `useSearch` keys its debounce effect on those identities — so
+ * a factory minting a fresh `jest.fn` per render would restart the debounce on
+ * every render and no search would ever resolve.
+ */
+const mockQueries = {
+  nearby: mockNearby,
+  routesForStops: mockRoutesForStops,
+  searchByName: jest.fn(async (_query: string): Promise<Stop[]> => []),
+  searchByCode: jest.fn(async (_code: string): Promise<Stop | null> => null),
+  searchRoutes: jest.fn(async (_query: string): Promise<RouteSummary[]> => []),
+  stopsByIds: jest.fn(async (): Promise<Stop[]> => []),
+  feedEndDate: jest.fn(async (): Promise<string | null> => null),
+};
+
 jest.mock('../../../data/gtfs/db', () => ({
-  useStopQueries: () => ({
-    nearby: mockNearby,
-    routesForStops: mockRoutesForStops,
-    searchByName: jest.fn(async () => []),
-    searchByCode: jest.fn(async () => null),
-    stopsByIds: jest.fn(async () => []),
-    feedEndDate: jest.fn(async () => null),
-  }),
+  useStopQueries: () => mockQueries,
   NEARBY_RADIUS_METERS: 1500,
+}));
+
+/**
+ * The router, so "a stop result does not leave the map" can be asserted as the
+ * absence of a navigation rather than as the presence of a card. A route result
+ * is the one thing here that *does* navigate.
+ */
+const mockPush = jest.fn();
+
+jest.mock('expo-router', () => ({
+  router: { push: (href: string) => mockPush(href) },
+}));
+
+/**
+ * The geocoder, doubled at the module boundary rather than injected: the
+ * overlay is the one place that knows about `expo-location`, which is what
+ * keeps `features/map/address.ts` testable without it. `useLocation` is doubled
+ * separately, so nothing here touches the real module either way.
+ */
+const mockGeocode = jest.fn(
+  async (_address: string): Promise<{ latitude: number; longitude: number }[]> => [],
+);
+const mockReverseGeocode = jest.fn(async (): Promise<Place[]> => []);
+
+jest.mock('expo-location', () => ({
+  geocodeAsync: (address: string) => mockGeocode(address),
+  reverseGeocodeAsync: () => mockReverseGeocode(),
 }));
 
 const mockRequest = jest.fn(async (): Promise<Coords | null> => null);
@@ -296,11 +339,53 @@ const METRICS: Metrics = {
   insets: { top: 59, left: 0, right: 0, bottom: 34 },
 };
 
+/**
+ * What `useBottomTabBarHeight()` reports on the device the metrics above
+ * describe: 49 pt of bar over a 34 pt inset. The screen takes it as a prop
+ * rather than reading it, because that hook throws outside a navigator and this
+ * suite deliberately does not stand one up.
+ */
+const TAB_BAR_HEIGHT = 83;
+
+/**
+ * The camera the "zoom in close" button reports, so a test can say what
+ * framing against a given detent would produce from it.
+ */
+const CLOSE_CAMERA = {
+  latitude: 21.3069,
+  longitude: -157.8583,
+  latitudeDelta: 0.004,
+  longitudeDelta: 0.004,
+};
+
+/**
+ * Where the camera lands if stop 5 is centred in the map left visible above
+ * `detent`.
+ *
+ * Built from the screen's own helpers rather than from a literal, so tuning
+ * `MEDIUM_FRACTION` on a device does not break a test about which detent was
+ * chosen. `onLayout` never fires under Jest, so the screen falls back to the
+ * window and the tab bar counts as overlapping it — the same two inputs here.
+ */
+function framedAgainst(detent: number) {
+  const windowHeight = Dimensions.get('window').height;
+  const detents = detentsFor(
+    windowHeight,
+    tabBarOverlapOf(windowHeight, windowHeight, TAB_BAR_HEIGHT),
+    METRICS.insets.top,
+  );
+  return centredOn(
+    CLOSE_CAMERA,
+    { lat: 21.305, lon: -157.85 },
+    visibleAbove(detents, detent, windowHeight),
+  );
+}
+
 function show() {
   return render(
     <SafeAreaProvider initialMetrics={METRICS}>
       <TestTheme>
-        <MapScreen client={client} />
+        <MapScreen client={client} tabBarHeight={TAB_BAR_HEIGHT} />
       </TestTheme>
     </SafeAreaProvider>,
   );
@@ -315,6 +400,15 @@ describe('MapScreen', () => {
     mockRequest.mockResolvedValue(null);
     mockNearby.mockResolvedValue([]);
     mockRoutesForStops.mockResolvedValue(new Map());
+    // `clearAllMocks` clears call records, not implementations, so the defaults
+    // have to be re-established rather than merely declared above.
+    mockQueries.searchByName.mockResolvedValue([]);
+    mockQueries.searchByCode.mockResolvedValue(null);
+    mockQueries.searchRoutes.mockResolvedValue([]);
+    mockQueries.stopsByIds.mockResolvedValue([]);
+    mockQueries.feedEndDate.mockResolvedValue(null);
+    mockGeocode.mockResolvedValue([]);
+    mockReverseGeocode.mockResolvedValue([]);
     mockLocation.status = 'idle';
     mockLocation.coords = null;
     mockArrivalsResult = {
@@ -430,6 +524,11 @@ describe('MapScreen', () => {
 
   it('carries the required attribution in the sheet', async () => {
     await show();
+    // Off the peek, where the sheet is showing something to attribute. At rest
+    // it is a grab handle over the tab bar and presents no Data at all — see
+    // `StopSheet` and `lib/Attribution.tsx`.
+    await fireEvent.press(screen.getByLabelText('settle the sheet at 1'));
+
     screen.getByText(ATTRIBUTION);
   });
 
@@ -504,8 +603,13 @@ describe('MapScreen', () => {
     });
     // The middle of what the rider can *see*, which at the peek detent is a
     // little north of the window's own 21.45 — the sheet covers the bottom.
+    //
+    // A little north of it: the peek is the grab handle, one band, one row, and
+    // whatever the tab bar covers — 243 pt here, against the 750 × 1334 window
+    // React Native reports under Jest. `onLayout` never fires off-device, so
+    // the screen falls back to the window and the bar counts as overlapping it.
     expect(mockNearby).toHaveBeenLastCalledWith({
-      lat: expect.closeTo(21.4521, 4),
+      lat: expect.closeTo(21.4527, 4),
       lon: -157.8583,
     });
     // Re-anchored to the screen centre, so the offer is answered and retires.
@@ -582,9 +686,29 @@ describe('MapScreen', () => {
     expect(mockOpenSettings).not.toHaveBeenCalled();
   });
 
-  it('prompts for location while it is showing the fallback', async () => {
+  it('says nothing about location before it has asked', async () => {
+    // The launch flash, reported 2026-08-09 with a screen recording taken to
+    // read it by: "Showing downtown Honolulu. Tap ⌖ to use your location."
+    // appeared on every single launch and vanished immediately.
+    //
+    // It could not have done anything else. `onMapReady` calls
+    // `requestLocation()` from `idle`, so `idle` lasts exactly from the map's
+    // first frame until the request goes out — a window nobody can read, let
+    // alone act on. The banner now waits for an answer.
     await show();
-    screen.getByText(/Tap ⌖ to use your location/);
+
+    expect(screen.queryByText(/Tap ⌖/)).toBeNull();
+    expect(screen.queryByText(/Showing downtown Honolulu/)).toBeNull();
+  });
+
+  it('still explains a location error, which is a state a rider sits in', async () => {
+    // The other half of the change above: suppressing the premature banner must
+    // not suppress the two that are worth reading.
+    mockLocation.status = 'error';
+
+    await show();
+
+    screen.getByText(/Could not get your location/);
   });
 
   it('does not prompt once the location is known', async () => {
@@ -608,7 +732,12 @@ describe('MapScreen', () => {
     });
   });
 
-  it('does not move the camera when a stop is selected', async () => {
+  it('does not move the camera when a pin is tapped', async () => {
+    // A pin *is* the thing on the map, already under the thumb, so travelling
+    // to it reads as the map lurching for no reason. Truman's call on
+    // 2026-08-09, made against the argument that a pin tapped low on screen
+    // ends up behind the risen sheet — a cost to look for on a device rather
+    // than to pre-empt with logic. A row tap is the opposite case; see below.
     mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
     await show();
     await waitFor(() => {
@@ -788,6 +917,50 @@ describe('MapScreen', () => {
       expect(labelOpacity('KAPALULU PL')).toBe(0);
     });
 
+    it('centres the map on a stop chosen from the list', async () => {
+      // A row names a stop the rider cannot see: the map behind the sheet is
+      // showing whatever it was showing before. So the map goes to it — which
+      // is the only thing that makes the list and the map one view rather than
+      // two.
+      await show();
+      await waitFor(() => {
+        screen.getByLabelText('pin 5');
+      });
+
+      await fireEvent.press(screen.getByLabelText('Arrivals at LAGOON DR'));
+
+      await waitFor(() => {
+        expect(mockCameraMoves).toHaveLength(1);
+      });
+      expect(mockCameraMoves[0]).toMatchObject({ longitude: -157.85 });
+    });
+
+    it('centres against the medium detent, not the one the sheet is leaving', async () => {
+      // Selection *raises* the sheet, so framing against the peek it is leaving
+      // would put the stop under where the sheet is about to be.
+      //
+      // **Derived, not hard-coded.** This used to assert a literal latitude,
+      // which made `MEDIUM_FRACTION` — Truman's tuning knob, changed by eye on
+      // a device — break a test about something else entirely. What is under
+      // test is *which detent the screen framed against*, so the two candidates
+      // are computed from the same helpers the screen uses and the assertion is
+      // that it picked one of them. The helpers have their own unit tests.
+      await show();
+      await waitFor(() => {
+        screen.getByLabelText('pin 5');
+      });
+      // A known camera, so there is something for the framing to be about.
+      await fireEvent.press(screen.getByLabelText('zoom in close'));
+
+      await fireEvent.press(screen.getByLabelText('Arrivals at LAGOON DR'));
+
+      await waitFor(() => {
+        expect(mockCameraMoves).toHaveLength(1);
+      });
+      expect(mockCameraMoves[0]).toMatchObject(framedAgainst(MEDIUM_DETENT));
+      expect(mockCameraMoves[0]).not.toMatchObject(framedAgainst(PEEK_DETENT));
+    });
+
     it('raises the sheet to medium when a stop is selected from peek', async () => {
       await show();
       await waitFor(() => {
@@ -844,6 +1017,373 @@ describe('MapScreen', () => {
         screen.getByText(NOTICES.unreachable);
       });
       expect(screen.queryByText(NOTICES.empty)).toBeNull();
+    });
+  });
+
+  /**
+   * The map's own search: a bar that is always there, and a fullscreen search
+   * over the map rather than beside it.
+   *
+   * Real timers throughout, like the rest of this suite — `useSearch` debounces
+   * by 175 ms and `waitFor` covers that comfortably. Turning fake timers on for
+   * these alone is the trap in `CLAUDE.md` that wedges the *next* suite.
+   */
+  describe('search', () => {
+    const openSearch = () => fireEvent.press(screen.getByLabelText(SEARCH_PLACEHOLDER));
+
+    /** Not one of the nearby stops: the point is that searching reaches stops
+     *  the map is not currently showing. */
+    const FOUND: Stop = {
+      stop_id: '4242',
+      stop_code: '4242',
+      stop_name: 'ALA MOANA CENTER',
+      lat: 21.2911,
+      lon: -157.8434,
+    };
+
+    const findStop = async (query: string) => {
+      await openSearch();
+      await fireEvent.press(screen.getByLabelText('Search by stops'));
+      await fireEvent.changeText(screen.getByLabelText('Find a stop by number or name'), query);
+      await waitFor(() => screen.getByLabelText('ALA MOANA CENTER, stop 4242'));
+      await fireEvent.press(screen.getByLabelText('ALA MOANA CENTER, stop 4242'));
+    };
+
+    it('opens the search from the bar', async () => {
+      await show();
+      // Nothing to type into until the bar is pressed — the bar is a button
+      // wearing a field's clothes, because a real field over a map fights the
+      // sheet's gestures through the keyboard.
+      expect(screen.queryByLabelText('Find an address')).toBeNull();
+
+      await openSearch();
+
+      // And it opens on Address, which is the only filter the Stops tab lacks.
+      screen.getByLabelText('Find an address');
+      screen.getByLabelText('Search by address');
+      screen.getByLabelText('Search by stops');
+      screen.getByLabelText('Search by routes');
+    });
+
+    it('a stop result anchors the map and selects it', async () => {
+      mockQueries.searchByName.mockResolvedValue([FOUND]);
+      await show();
+      await waitFor(() => {
+        expect(mockNearby).toHaveBeenCalledTimes(1);
+      });
+
+      await findStop('ala moana');
+
+      // The anchor moved to the stop, so the pins and the list are about it.
+      await waitFor(() => {
+        expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.2911, lon: -157.8434 });
+      });
+      // The card is open on it, without a second tap.
+      await waitFor(() => {
+        screen.getByLabelText('Back to nearby stops');
+      });
+      // And the camera went there. Framed, not panned: this is the map being
+      // opened on somewhere, like ⌖, so the window is rebuilt from the query
+      // radius rather than keeping whatever spans were on screen.
+      expect(mockCameraMoves).toHaveLength(1);
+      expect(mockCameraMoves[0]).toMatchObject({ longitude: -157.8434 });
+    });
+
+    it('a stop result does not leave the map', async () => {
+      // The whole reason the map has a search of its own. The Stops tab already
+      // pushes `/stop/[code]`; if this did too there would be nothing here the
+      // other host could not do.
+      mockQueries.searchByName.mockResolvedValue([FOUND]);
+      await show();
+
+      await findStop('ala moana');
+
+      await waitFor(() => {
+        screen.getByLabelText('Back to nearby stops');
+      });
+      expect(mockPush).not.toHaveBeenCalled();
+      // The search closed behind it, and the map is what is on screen.
+      expect(screen.queryByLabelText('Find a stop by number or name')).toBeNull();
+      screen.getByLabelText('map surface');
+    });
+
+    it('closing the search leaves the camera where it was', async () => {
+      await show();
+      await waitFor(() => {
+        expect(mockNearby).toHaveBeenCalledTimes(1);
+      });
+
+      await openSearch();
+      await fireEvent.press(screen.getByLabelText('Close search'));
+
+      expect(screen.queryByLabelText('Find an address')).toBeNull();
+      screen.getByLabelText(SEARCH_PLACEHOLDER);
+      // Opening and abandoning a search is not a thing that happened to the map.
+      expect(mockCameraMoves).toEqual([]);
+      expect(mockNearby).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens the route screen by route_id, from a row showing neither', async () => {
+      // `route_id: '25'` is route 32. The row shows the number on the bus and
+      // the tap navigates by the id, and those must not be the same string.
+      mockQueries.searchRoutes.mockResolvedValue([
+        { route_id: '25', short_name: '32', long_name: 'Mapunapuna-Airport' },
+      ]);
+      await show();
+
+      await openSearch();
+      await fireEvent.press(screen.getByLabelText('Search by routes'));
+      await fireEvent.changeText(screen.getByLabelText('Find a route by number or name'), '32');
+      await waitFor(() => screen.getByLabelText('Route 32'));
+
+      await fireEvent.press(screen.getByLabelText('Route 32'));
+
+      expect(mockPush).toHaveBeenCalledWith('/route/25');
+      // Closed behind the push, so it is not underneath the route screen on the
+      // way back.
+      expect(screen.queryByLabelText('Find a route by number or name')).toBeNull();
+    });
+
+    /**
+     * Address mode, which is the only thing this host has that the Stops tab
+     * cannot do at all — and the only filter that waits for a submit.
+     *
+     * The steering towards the island lives in `data/geocode/oahu.ts` and its
+     * two-attempt behaviour is tested there; `features/map/address.ts` owns the
+     * labelling. What is asserted here is what the *map* does about it, which
+     * is nothing at all until a rider says Go.
+     */
+    describe('by address', () => {
+      /** UH Manoa. */
+      const CAMPUS = { latitude: 21.2969, longitude: -157.8171 };
+      /** State College, Pennsylvania — what `"university"` really returned on
+       *  a device, as one confident result. */
+      const PENNSYLVANIA = { latitude: 40.7934, longitude: -77.86 };
+
+      const CAMPUS_PLACE: Place = {
+        streetNumber: '2500',
+        street: 'Campus Rd',
+        name: null,
+        city: 'Honolulu',
+      };
+
+      const submitAddress = async (text: string) => {
+        await openSearch();
+        const field = screen.getByLabelText('Find an address');
+        await fireEvent.changeText(field, text);
+        await fireEvent(field, 'submitEditing');
+      };
+
+      it('confirms before moving the map', async () => {
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        mockReverseGeocode.mockResolvedValue([CAMPUS_PLACE]);
+        await show();
+        await waitFor(() => {
+          expect(mockNearby).toHaveBeenCalledTimes(1);
+        });
+
+        await submitAddress('2500 campus rd');
+
+        await waitFor(() => {
+          screen.getByText('Did you mean 2500 Campus Rd, Honolulu?');
+        });
+        // Asked, and nothing done yet. A bounding box makes a five-thousand
+        // kilometre miss unlikely, not impossible, and the cost of being wrong
+        // is a rider's whole view of the map.
+        expect(mockCameraMoves).toEqual([]);
+        expect(mockNearby).toHaveBeenCalledTimes(1);
+      });
+
+      it('anchors the map once confirmed', async () => {
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        mockReverseGeocode.mockResolvedValue([CAMPUS_PLACE]);
+        await show();
+        await submitAddress('2500 campus rd');
+        await waitFor(() => {
+          screen.getByText('Did you mean 2500 Campus Rd, Honolulu?');
+        });
+
+        await fireEvent.press(screen.getByLabelText('Go to 2500 Campus Rd, Honolulu'));
+
+        await waitFor(() => {
+          expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.2969, lon: -157.8171 });
+        });
+        // Framed rather than panned: an address is the map being opened
+        // somewhere else, not a hop across a street the rider is looking at.
+        expect(mockCameraMoves).toHaveLength(1);
+        expect(mockCameraMoves[0]).toMatchObject({ longitude: -157.8171 });
+        // And the rider is back on the map, with no stop selected — an address
+        // is a place, not a stop.
+        expect(screen.queryByLabelText('Find an address')).toBeNull();
+        expect(screen.queryByLabelText('Back to nearby stops')).toBeNull();
+      });
+
+      it('cancelling leaves the map alone', async () => {
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        mockReverseGeocode.mockResolvedValue([CAMPUS_PLACE]);
+        await show();
+        await waitFor(() => {
+          expect(mockNearby).toHaveBeenCalledTimes(1);
+        });
+        await submitAddress('2500 campus rd');
+        await waitFor(() => {
+          screen.getByText('Did you mean 2500 Campus Rd, Honolulu?');
+        });
+
+        await fireEvent.press(screen.getByLabelText('Not that address'));
+
+        expect(screen.queryByText(/Did you mean/)).toBeNull();
+        expect(mockCameraMoves).toEqual([]);
+        expect(mockNearby).toHaveBeenCalledTimes(1);
+        // Back to the field with the text intact: "not that place" is not
+        // "forget what I typed".
+        expect(screen.getByLabelText('Find an address').props.value).toBe('2500 campus rd');
+      });
+
+      it('an address off the island says so', async () => {
+        mockGeocode.mockResolvedValue([PENNSYLVANIA]);
+        await show();
+
+        await submitAddress('university');
+
+        await waitFor(() => {
+          screen.getByText('That address is real, but it is not on Oahu.');
+        });
+        // Not a shrug. The rider typed something that exists, and being told
+        // "no such address" would send them looking for a typo.
+        expect(screen.queryByText('No address matched that.')).toBeNull();
+        expect(mockCameraMoves).toEqual([]);
+      });
+
+      it('a failed lookup is not "no such address"', async () => {
+        mockGeocode.mockRejectedValue(new Error('offline'));
+        await show();
+
+        await submitAddress('2500 campus rd');
+
+        await waitFor(() => {
+          screen.getByText('Could not look up that address.');
+        });
+        expect(screen.queryByText('No address matched that.')).toBeNull();
+        expect(screen.queryByText(/not on Oahu/)).toBeNull();
+      });
+
+      it('searches straight away when the nudge sends a rider here', async () => {
+        // The nudge is not a chip. A chip is a rider changing their mind; the
+        // nudge is a rider answering "No stops match — search as an address"
+        // with yes, and landing them on a filled field that has done nothing
+        // makes them ask twice. Truman, 2026-08-09.
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        mockReverseGeocode.mockResolvedValue([CAMPUS_PLACE]);
+        await show();
+
+        await openSearch();
+        await fireEvent.press(screen.getByLabelText('Search by stops'));
+        await fireEvent.changeText(
+          screen.getByLabelText('Find a stop by number or name'),
+          '2500 campus rd',
+        );
+        await waitFor(() => {
+          screen.getByLabelText('No stops match — search as an address');
+        });
+
+        await fireEvent.press(screen.getByLabelText('No stops match — search as an address'));
+
+        // No second submit: the confirmation arrives off the nudge's own tap.
+        await waitFor(() => {
+          screen.getByText('Did you mean 2500 Campus Rd, Honolulu?');
+        });
+      });
+
+      it('does not geocode merely because the Address chip was tapped', async () => {
+        // The other side of it. Tapping a chip is a mode change, and firing a
+        // network lookup off the back of one is the app deciding it knew what
+        // the rider meant.
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        await show();
+
+        await openSearch();
+        await fireEvent.press(screen.getByLabelText('Search by stops'));
+        await fireEvent.changeText(
+          screen.getByLabelText('Find a stop by number or name'),
+          '2500 campus rd',
+        );
+        await fireEvent.press(screen.getByLabelText('Search by address'));
+
+        expect(mockGeocode).not.toHaveBeenCalled();
+        expect(screen.queryByText(/Did you mean/)).toBeNull();
+      });
+
+      it('confirms with the typed text when the reverse lookup fails', async () => {
+        // The geocode landed on the island; only its name is missing. Refusing
+        // to move here would fail a search that had actually succeeded.
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        mockReverseGeocode.mockRejectedValue(new Error('offline'));
+        await show();
+
+        await submitAddress('2500 campus rd');
+
+        await waitFor(() => {
+          screen.getByText('Did you mean 2500 campus rd?');
+        });
+        await fireEvent.press(screen.getByLabelText('Go to 2500 campus rd'));
+
+        await waitFor(() => {
+          expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.2969, lon: -157.8171 });
+        });
+      });
+    });
+
+    it('puts the compass under ⌖, spaced as ⌖ is under the bar', async () => {
+      // The bar is drawn across the map's top-right corner, which is where
+      // MapKit puts the compass, and on a device it hid it — reported
+      // 2026-08-09 with a screenshot of the compass peeking out from behind the
+      // bar. `mapPadding` becomes `layoutMargins` on Apple Maps, which is what
+      // moves the compass, so the top margin has to clear the bar *and* the ⌖
+      // button under it, or the compass lands on the button instead.
+      //
+      // **A proxy.** Jest cannot see MapKit place anything; what is asserted is
+      // that the screen asks for enough room. Confirm the compass itself on a
+      // device.
+      //
+      // The assertion is Truman's own sentence — "directly under the location
+      // button and spaced with the same spacing between the location button and
+      // the address bar" — as arithmetic on the three positions, rather than a
+      // literal that any tuning would break. The only measured number involved
+      // is `COMPASS_LAYOUT_OFFSET`, which corrects for MapKit's own inset and
+      // is the one thing here that could not be derived.
+      await show();
+
+      const bar = StyleSheet.flatten(screen.getByLabelText(SEARCH_PLACEHOLDER).props.style);
+      const recentre = StyleSheet.flatten(
+        screen.getByLabelText('Centre on my location').props.style,
+      );
+      const reported = screen.getByText(/^mapPadding top:/).props.children;
+      // `[^-\d]`, not `\D`: stripping the minus sign turns a compass shoved up
+      // behind the search bar into a large positive number that sails past
+      // every assertion below. Caught by setting the drop negative on purpose.
+      const top = Number(String(reported).replace(/[^-\d]/g, ''));
+      const compassTop = top + COMPASS_LAYOUT_OFFSET.top;
+
+      const barToButton = recentre.top - (bar.top + bar.height);
+      const buttonToCompass = compassTop - (recentre.top + recentre.height);
+
+      expect(buttonToCompass).toBe(barToButton);
+      // And below it, not merely evenly spaced from it — a negative gap would
+      // satisfy the equality above on both sides.
+      expect(buttonToCompass).toBeGreaterThan(0);
+    });
+
+    it('carries the required attribution over the search results', async () => {
+      // Unambiguous at the resting peek: the sheet omits the legend there,
+      // showing no Data, so the only thing that can put it on screen is the
+      // search — which presents stop and route names and therefore owes it.
+      await show();
+      expect(screen.queryByText(ATTRIBUTION)).toBeNull();
+
+      await openSearch();
+
+      screen.getByText(ATTRIBUTION);
     });
   });
 

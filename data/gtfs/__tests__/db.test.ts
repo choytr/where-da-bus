@@ -142,6 +142,52 @@ describe('useStopQueries.searchByName', () => {
   });
 });
 
+describe('useStopQueries.searchRoutes', () => {
+  it('returns an empty list for empty input without querying the database', async () => {
+    const db = makeDb();
+
+    const { result } = await renderHook(() => useStopQueries());
+    const rows = await result.current.searchRoutes('  ');
+
+    expect(rows).toEqual([]);
+    expect(db.getAllAsync).not.toHaveBeenCalled();
+  });
+
+  it('binds the escaped patterns, not the raw query', async () => {
+    const db = makeDb();
+    db.getAllAsync.mockResolvedValue([]);
+
+    const { result } = await renderHook(() => useStopQueries());
+    await result.current.searchRoutes('100%');
+
+    // Substring twice for the two LIKEs, then the unescaped text for the `=`
+    // in the ORDER BY, then the prefix, then the limit.
+    expect(db.getAllAsync).toHaveBeenCalledWith(
+      expect.any(String),
+      '%100\\%%',
+      '%100\\%%',
+      '100%',
+      '100\\%%',
+      30,
+    );
+  });
+
+  it('filters out a row that is not a route', async () => {
+    const db = makeDb();
+    db.getAllAsync.mockResolvedValue([
+      { route_id: '26', short_name: '40', long_name: 'Honolulu-Makaha' },
+      // A schema drift: `long_name` gone. The guard is what stands in for the
+      // `as RouteSummary` this project does not write.
+      { route_id: '81', short_name: '401' },
+    ]);
+
+    const { result } = await renderHook(() => useStopQueries());
+    const rows = await result.current.searchRoutes('40');
+
+    expect(rows.map((route) => route.route_id)).toEqual(['26']);
+  });
+});
+
 describe('useStopQueries.searchByCode', () => {
   it('trims the code before binding it', async () => {
     const db = makeDb();
