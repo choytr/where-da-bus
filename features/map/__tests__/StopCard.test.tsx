@@ -74,6 +74,7 @@ const show = (client: TheBusClient, over: Partial<Parameters<typeof StopCard>[0]
         onToggleFavorite={jest.fn()}
         onPressRoute={jest.fn()}
         client={client}
+        tabBarHeight={83}
         {...over}
       />
     </TestTheme>,

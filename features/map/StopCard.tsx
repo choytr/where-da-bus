@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomSheetSectionList } from '@gorhom/bottom-sheet';
 import { ArrivalRow } from '../arrivals/ArrivalRow';
@@ -39,6 +40,11 @@ export type StopCardProps = {
   onPressRoute: (route: RouteSummary) => void;
   /** Handed down from MapScreen, which reads it from `useTheBus()`. */
   client: TheBusClient;
+  /**
+   * The tab bar is drawn *over* the sheet rather than clipping it, so the last
+   * arrival of a board would otherwise render underneath it. See `StopSheet`.
+   */
+  tabBarHeight: number;
 };
 
 export function StopCard({
@@ -50,8 +56,13 @@ export function StopCard({
   onToggleFavorite,
   onPressRoute,
   client,
+  tabBarHeight,
 }: StopCardProps) {
   const { palette } = useTheme();
+  const listContent = useMemo(
+    () => ({ paddingBottom: CONTENT_INSET + tabBarHeight }),
+    [tabBarHeight],
+  );
   const code = stop.stop_code || stop.stop_id;
   const { sections, board, failure, loading, fetchedAt, refresh, now, tick } = useArrivalBoard(
     code,
@@ -91,10 +102,11 @@ export function StopCard({
       </View>
 
       <BottomSheetSectionList
+        testID="stop-card-arrivals"
         sections={sections}
         keyExtractor={(arrival) => arrival.id}
         stickySectionHeadersEnabled={false}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={listContent}
         ListHeaderComponent={
           <View>
             <BoardHeader
@@ -191,6 +203,9 @@ export function StopCard({
   );
 }
 
+/** Breathing room under the last arrival, before the tab bar's own share. */
+const CONTENT_INSET = 32;
+
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   bar: {
@@ -203,7 +218,6 @@ const styles = StyleSheet.create({
   },
   back: { fontSize: 16, fontWeight: '600' },
   star: { fontSize: 22 },
-  content: { paddingBottom: 32 },
   meta: { paddingHorizontal: 16, gap: 8 },
   metaText: { fontSize: 13, fontVariant: ['tabular-nums'] },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

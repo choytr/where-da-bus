@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import {
   StopSheet,
@@ -66,6 +67,7 @@ const show = (selectedStop: StopWithDistance | null, onBack = jest.fn()) =>
         onDetentChange={jest.fn()}
         client={client}
         detents={detentsFor(WINDOW_HEIGHT, TAB_BAR)}
+        tabBarHeight={TAB_BAR}
       />
     </TestTheme>,
   );
@@ -125,6 +127,33 @@ describe('StopSheet', () => {
     screen.getByLabelText('Back to nearby stops');
     screen.getByText('Stop 5');
     expect(screen.queryByText('KAPALULU PL')).toBeNull();
+  });
+
+  /**
+   * The tab bar is drawn **over** the sheet rather than clipping it, so
+   * without this the last row of either host renders underneath it — which is
+   * what "the stop code's spacing to the bottom bar is really tight and
+   * awkward" was. It holds at every detent, not only at the peek.
+   *
+   * Asserted on the style because the failure is a layout one, and Jest runs no
+   * layout: there is nothing behavioural to observe off-device.
+   */
+  it('pads the nearby list clear of the tab bar', async () => {
+    await show(null);
+
+    const padding = StyleSheet.flatten(
+      screen.getByTestId('nearby-stops').props.contentContainerStyle,
+    ).paddingBottom;
+    expect(padding).toBeGreaterThanOrEqual(TAB_BAR);
+  });
+
+  it("pads the card's arrivals clear of the tab bar", async () => {
+    await show(STOPS[0]);
+
+    const padding = StyleSheet.flatten(
+      screen.getByTestId('stop-card-arrivals').props.contentContainerStyle,
+    ).paddingBottom;
+    expect(padding).toBeGreaterThanOrEqual(TAB_BAR);
   });
 
   it('returns to the list from the card', async () => {

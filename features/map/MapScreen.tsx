@@ -656,6 +656,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         onDetentChange={setDetent}
         client={client}
         detents={detents}
+        tabBarHeight={tabBarHeight}
       />
     </View>
   );

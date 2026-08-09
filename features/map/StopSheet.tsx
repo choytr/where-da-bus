@@ -135,6 +135,15 @@ export type StopSheetProps = {
    * own tests are.
    */
   detents: readonly number[];
+  /**
+   * How much of the sheet's bottom the tab bar covers.
+   *
+   * The bar does not clip the sheet — it is **drawn over** it, and the content
+   * underneath goes on rendering with nothing reserving space. That is why the
+   * stop code's descenders appeared to touch the bar, and it is true at every
+   * detent rather than only at the peek.
+   */
+  tabBarHeight: number;
 };
 
 export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSheet(
@@ -151,6 +160,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     onDetentChange,
     client,
     detents,
+    tabBarHeight,
   },
   ref,
 ) {
@@ -158,6 +168,11 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
   // Copied because `snapPoints` is declared mutable, and the detents are shared
   // with the camera framing — which must not be able to write to them.
   const snapPoints = useMemo(() => [...detents], [detents]);
+
+  const listContent = useMemo(
+    () => ({ paddingBottom: CONTENT_INSET + tabBarHeight }),
+    [tabBarHeight],
+  );
 
   const animationConfigs = useBottomSheetSpringConfigs({
     damping: 90,
@@ -216,10 +231,11 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     >
       {selectedStop === null ? (
         <BottomSheetFlatList
+          testID="nearby-stops"
           data={stops}
           keyExtractor={(stop) => stop.stop_id}
           renderItem={renderItem}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={listContent}
           // At the foot, not the head. It led this list until 2026-08-08, and
           // at the collapsed detent the legend plus a clipped stop name was
           // the entire visible sheet — the peek showed legal text and nothing
@@ -258,14 +274,17 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
           onToggleFavorite={onToggleFavorite}
           onPressRoute={onOpenRoute}
           client={client}
+          tabBarHeight={tabBarHeight}
         />
       )}
     </BottomSheet>
   );
 });
 
+/** Breathing room under the last row, before the tab bar's own share is added. */
+const CONTENT_INSET = 32;
+
 const styles = StyleSheet.create({
-  content: { paddingBottom: 32 },
   empty: { paddingHorizontal: 16, paddingTop: 8 },
   emptyText: { fontSize: 14, lineHeight: 20 },
 });
