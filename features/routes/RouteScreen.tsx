@@ -83,7 +83,10 @@ export function RouteScreen({ routeId }: { routeId: string }) {
   return (
     <View style={[styles.fill, { backgroundColor: palette.background }]}>
       <SectionList
-        style={{ backgroundColor: palette.background }}
+        testID="route-stops"
+        // Load-bearing; see `StopCard`. A long route is exactly the list that
+        // needs to scroll and exactly the one that would not.
+        style={[styles.fill, { backgroundColor: palette.background }]}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         sections={sections}
         keyExtractor={(stop, index) => `${stop.stop_id}-${index}`}

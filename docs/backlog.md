@@ -114,6 +114,22 @@ wrong, correct the entry rather than only the code.
 
 ### Map, from the device rounds
 
+- **The "no location permission" banner flashes on launch before the fix
+  arrives.** Observed by Truman in Expo Go, 2026-08-09, and triaged by him as
+  minor: "the location stuff works. It's not ideal, but it works."
+
+  `MapScreen` renders the banner whenever `source === 'fallback'` and
+  `locationStatus !== 'loading'`. On a cold launch `locationStatus` starts at
+  `'idle'`, and the anchor is the downtown fallback — both true for the window
+  between the map drawing and `onMapReady` moving the status to `'loading'`, so
+  the banner is briefly correct and then wrong.
+
+  The obvious fix is to suppress it while the status is still `'idle'`, but
+  `'idle'` is also the resting state of a launch where the rider never gets a
+  prompt at all, and suppressing it there would remove the only thing telling
+  them ⌖ exists. **Whatever is done here needs a device round to confirm**, and
+  the flash costs nothing today.
+
 Both cosmetic, and Truman was explicit about the order: "UI design needs work,
 but that'll come later. Functionality first."
 

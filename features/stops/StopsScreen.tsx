@@ -428,6 +428,9 @@ export function StopsScreen() {
       {onRoutes ? (
         <FlatList
           data={routeResults}
+          // Load-bearing; see `StopCard`. Both lists here are siblings of the
+          // pinned legend and so must be told to fill what is left.
+          style={styles.list}
           keyExtractor={(route) => route.route_id}
           automaticallyAdjustKeyboardInsets
           keyboardDismissMode={KEYBOARD_DISMISS_MODE}
@@ -437,6 +440,7 @@ export function StopsScreen() {
       ) : (
         <FlatList
           data={visible}
+          style={styles.list}
           keyExtractor={(stop) => stop.stop_id}
           // Lifts the list clear of the keyboard as it opens, so the row being
           // typed towards is not the one under the keyboard.
@@ -483,6 +487,7 @@ function Busy({ label, color }: { label: string; color: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  list: { flex: 1 },
   search: {
     margin: 16,
     paddingHorizontal: 14,

@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react-native';
 import { StopCard } from '../StopCard';
 import { NOTICES } from '../../arrivals/board';
@@ -99,6 +100,28 @@ describe('StopCard', () => {
     // pinned once by `StopSheet`, under whichever mode is showing, and asserted
     // there. See `lib/Attribution.tsx`.
     expect(screen.queryByText(/provided by permission of/)).toBeNull();
+  });
+
+  /**
+   * Reported on a device 2026-08-09: the board announced itself as scrollable
+   * and then would not move an inch.
+   *
+   * A scroll view that is a flex child of a sized column and carries no
+   * `flex: 1` sizes itself to its content rather than to the room it has, so
+   * its frame ends up equal to its content and there is nothing left to
+   * scroll. `StopSheet`'s nearby list had exactly this on 2026-08-08 and was
+   * the only list fixed.
+   *
+   * Jest cannot scroll anything — that is a layout pass this renderer never
+   * makes — so what is guarded here is the property whose absence caused it.
+   * **This is a proxy for the bug, not a reproduction of it.**
+   */
+  it('gives the board room to scroll in', async () => {
+    await show(clientOf(boardOf(arrival())));
+
+    expect(
+      StyleSheet.flatten(screen.getByTestId('stop-card-arrivals').props.style).flex,
+    ).toBe(1);
   });
 
   it('renders arrivals grouped by direction', async () => {

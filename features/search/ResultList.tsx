@@ -85,7 +85,11 @@ export function ResultList({
       ) : null}
 
       <FlatList
+        testID="search-results"
         data={results}
+        // Load-bearing; see `StopCard`. In the map's overlay this list sits
+        // above the pinned legend, which is the structure that breaks it.
+        style={styles.fill}
         keyExtractor={keyOf}
         // Without this the first tap on a row while the keyboard is up is
         // swallowed by the dismissal, and the rider has to tap twice.

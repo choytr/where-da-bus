@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { ResultList, type ResultListProps } from '../ResultList';
 import { TestTheme } from '../../../lib/testing/theme';
@@ -35,6 +36,14 @@ const show = (over: Partial<ResultListProps> = {}) =>
   );
 
 describe('ResultList', () => {
+  /** See `StopCard`'s equivalent. In the map's overlay this list sits above the
+   *  pinned legend, which is the structure that breaks it. */
+  it('gives the results room to scroll in', async () => {
+    await show();
+
+    expect(StyleSheet.flatten(screen.getByTestId('search-results').props.style).flex).toBe(1);
+  });
+
   it('shows a nudge when the selected filter found nothing and another would have', async () => {
     await show({ otherMatches: { stops: 0, routes: 2 } });
 

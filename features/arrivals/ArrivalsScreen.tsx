@@ -91,7 +91,11 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
   return (
     <View style={[styles.fill, { backgroundColor: palette.background }]}>
       <SectionList
-        style={{ backgroundColor: palette.background }}
+        testID="arrivals-list"
+        // `fill` is load-bearing, not cosmetic: without it this list sizes to
+        // its content instead of to the screen, its frame ends up equal to its
+        // content, and the board stops scrolling. See `StopCard`.
+        style={[styles.fill, { backgroundColor: palette.background }]}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         sections={sections}
         keyExtractor={(arrival) => arrival.id}

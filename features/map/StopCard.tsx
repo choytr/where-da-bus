@@ -96,6 +96,19 @@ export function StopCard({
 
       <BottomSheetSectionList
         testID="stop-card-arrivals"
+        /*
+          **Without this the board does not scroll at all.** A scroll view that
+          is a flex child of a sized column and carries no `flex: 1` sizes
+          itself to its *content* rather than to the room it has been given.
+          Its frame then equals its content, so there is nothing to scroll —
+          while every scroll affordance still reports as present, which is
+          exactly what a rider sees: a list that admits it is scrollable and
+          then refuses to move.
+
+          This is the same defect `StopSheet`'s nearby list had on 2026-08-08,
+          fixed there and nowhere else. Reported on a device 2026-08-09.
+        */
+        style={styles.fill}
         sections={sections}
         keyExtractor={(arrival) => arrival.id}
         stickySectionHeadersEnabled={false}
