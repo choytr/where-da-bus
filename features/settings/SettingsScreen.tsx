@@ -435,7 +435,21 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   content: { padding: 16, paddingBottom: 32, gap: 8 },
-  attribution: { fontSize: 11, lineHeight: 15 },
+  /**
+   * Inset to match `body` above it, which it sits under inside the same group.
+   * It had the type size and no padding at all, so it ran flush into the
+   * group's rounded border while the disclaimer above kept a 14 pt margin — the
+   * two lines looked like they belonged to different cards.
+   *
+   * No `paddingTop`: `body`'s own bottom padding is the gap between them, and
+   * adding a second would double it.
+   */
+  attribution: {
+    fontSize: 11,
+    lineHeight: 15,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+  },
   title: { fontSize: 28, fontWeight: '700', marginTop: 4, marginBottom: 8 },
   sectionHeader: {
     fontSize: 12,

@@ -848,8 +848,8 @@ describe('MapScreen', () => {
       });
       expect(mockCameraMoves[0]).toMatchObject({
         // Stop 5 sits at 21.305. Against the medium detent that is pushed
-        // 0.0009° south; against the peek it would only be 0.0003°.
-        latitude: expect.closeTo(21.3041, 4),
+        // 0.0010° south; against the peek it would only be 0.0005°.
+        latitude: expect.closeTo(21.304, 4),
         longitude: -157.85,
         // Travelled, not reframed: the rider's zoom is untouched.
         latitudeDelta: 0.004,

@@ -48,6 +48,17 @@ const HANDLE_HEIGHT = 24;
 /** Clear air between the raised sheet and the notch. */
 const TOP_GAP = 16;
 
+/**
+ * The middle detent, as a fraction of the container.
+ *
+ * Was `0.45` from Increment 3 until 2026-08-09, when Truman called it "a bit
+ * low" on a device. `docs/backlog.md` argued against raising it — one and a
+ * half arrival rows was the intended shape, the next bus being the whole
+ * experience — and he overruled that with the phone in his hand, which is the
+ * evidence that wins here. Named so tuning it stays a one-line change.
+ */
+const MEDIUM_FRACTION = 0.50;
+
 const NEARBY_HEADING = 'Nearby Stops';
 
 /**
@@ -82,7 +93,7 @@ export function detentsFor(
   tabBarOverlap: number,
   topInset: number,
 ): readonly [number, number, number] {
-  const medium = Math.round(containerHeight * 0.45);
+  const medium = Math.round(containerHeight * MEDIUM_FRACTION);
   const clearsNotch = containerHeight - topInset - TOP_GAP;
   return [
     HANDLE_HEIGHT + PEEK_BAND + PEEK_ROW + tabBarOverlap,

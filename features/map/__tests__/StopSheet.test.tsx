@@ -167,10 +167,13 @@ describe('the detents', () => {
     expect(cramped[FULL_DETENT]).toBeGreaterThan(cramped[MEDIUM_DETENT]);
   });
 
-  it('derives the same fraction from points that the percentages used to give', () => {
-    // Medium is still "about half" of the container, which is what keeps
-    // `region.ts` and every camera call taking the fraction they always did.
-    expect(visibleAbove(DETENTS, MEDIUM_DETENT, INSET_SCENE)).toBeCloseTo(0.55, 3);
+  it('leaves about half the map showing at the middle detent', () => {
+    // The fraction `region.ts` and every camera call are handed. Raised from
+    // 0.45 to 0.5 on 2026-08-09 — Truman, on a device: "a bit low" — so what is
+    // left above it moved the other way.
+    // Two places, not three: the detent is rounded to a whole point, so on an
+    // odd-height container the fraction comes back a shade off its own value.
+    expect(visibleAbove(DETENTS, MEDIUM_DETENT, INSET_SCENE)).toBeCloseTo(0.5, 2);
   });
 });
 
