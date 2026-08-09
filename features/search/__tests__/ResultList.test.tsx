@@ -36,6 +36,37 @@ const show = (over: Partial<ResultListProps> = {}) =>
   );
 
 describe('ResultList', () => {
+  /**
+   * Address had a hint because it alone waits for a submit and would otherwise
+   * sit blank. On a device that meant switching to Stops or Routes dropped you
+   * onto a screen saying nothing at all, which reads as a search that came back
+   * empty — Truman, 2026-08-09. All three say what they are for now.
+   */
+  it('says what an empty field is for, whichever filter is selected', async () => {
+    await show({ query: '', filter: 'address', state: { state: 'off' } });
+    screen.getByText('Type an address, then search.');
+
+    await show({ query: '', filter: 'stops', state: { state: 'off' } });
+    screen.getByText('Search for a stop by number or name.');
+
+    await show({ query: '', filter: 'routes', state: { state: 'off' } });
+    screen.getByText('Search for a route by number or name.');
+  });
+
+  it('drops the hint once there is something to say instead', async () => {
+    // Without Address on offer there is no nudge to suppress the plain notice,
+    // so this is the hint giving way to the result and nothing else.
+    await show({
+      query: 'lagoon',
+      filter: 'stops',
+      filters: ['stops', 'routes'],
+      state: { state: 'done', results: [] },
+    });
+
+    expect(screen.queryByText('Search for a stop by number or name.')).toBeNull();
+    screen.getByText('No stops match that.');
+  });
+
   /** See `StopCard`'s equivalent. In the map's overlay this list sits above the
    *  pinned legend, which is the structure that breaks it. */
   it('gives the results room to scroll in', async () => {

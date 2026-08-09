@@ -22,8 +22,23 @@ const RUNNING = 'Searching…';
 const FAILED = 'Could not search the stop list on this device.';
 const emptyFor = (filter: SearchFilter): string =>
   filter === 'routes' ? 'No routes match that.' : 'No stops match that.';
-/** Address shows nothing until a submit, so it says what it is waiting for. */
-const ADDRESS_HINT = 'Type an address, then search.';
+
+/**
+ * What an empty field is for, per filter.
+ *
+ * All three, not just Address. Address had one because it alone waits for a
+ * submit and would otherwise sit blank — but on a device the result was that
+ * switching to Stops or Routes dropped you onto a screen with no idea what it
+ * wanted, which reads as a search that returned nothing. Truman, 2026-08-09.
+ *
+ * Address's wording carries the extra half-sentence because it is the only one
+ * where typing is not enough.
+ */
+const HINTS: Record<SearchFilter, string> = {
+  address: 'Type an address, then search.',
+  stops: 'Search for a stop by number or name.',
+  routes: 'Search for a route by number or name.',
+};
 
 export type ResultListProps = {
   /** As typed, for the nudge — an empty field is not a failed search. */
@@ -80,9 +95,9 @@ export function ResultList({
         <Text style={[styles.notice, { color: palette.muted }]}>{emptyFor(filter)}</Text>
       ) : null}
 
-      {filter === 'address' && !searched ? (
-        <Text style={[styles.notice, { color: palette.muted }]}>{ADDRESS_HINT}</Text>
-      ) : null}
+      {searched ? null : (
+        <Text style={[styles.notice, { color: palette.muted }]}>{HINTS[filter]}</Text>
+      )}
 
       <FlatList
         testID="search-results"

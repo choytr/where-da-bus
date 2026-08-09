@@ -71,14 +71,23 @@ const RECENTRE_LABEL = 'Centre on my location';
 const SETTINGS_LABEL = 'Turn on location in Settings';
 
 /**
- * One line per way of having no location, and none of them a dead end.
+ * One line per way of having *asked* and not got a location, and neither of
+ * them a dead end.
  *
  * Denial is the one that matters. iOS shows its dialog once per install, so
  * after a refusal `requestForegroundPermissionsAsync` returns `denied` without
  * asking anything, and a button that silently did nothing forever is how ⌖
  * used to behave. It now opens Settings, and this says so.
+ *
+ * **There is deliberately no line for `idle` any more.** There used to be —
+ * *"Showing downtown Honolulu. Tap ⌖ to use your location."* — and on a device
+ * it was a flash on every single launch, reported 2026-08-09 with a screen
+ * recording to read it by. It could be nothing else: `onMapReady` calls
+ * `requestLocation()` from `idle`, so `idle` lasts exactly from the map's first
+ * frame to the request going out. Every state a rider can actually sit in is
+ * `denied` or `error`, and both of those say what to do about it. The window
+ * the prompt lived in was never one anyone could read, let alone act on.
  */
-const LOCATION_PROMPT = 'Showing downtown Honolulu. Tap ⌖ to use your location.';
 const LOCATION_DENIED = 'Location is off for this app. Tap ⌖ to turn it on in Settings.';
 const LOCATION_ERROR = 'Could not get your location. Tap ⌖ to try again.';
 const SEARCH_AREA_LABEL = 'Search this area';
@@ -109,6 +118,8 @@ const DRIFT_FRACTION = 0.25;
  * rare case still does not collide.
  */
 const CONTROL_INSET = 12;
+/** ⌖'s diameter, and the pill's height beside it. */
+const CONTROL_SIZE = 44;
 /** Cleared only when the banner is actually up. Its height plus its gap. */
 const BANNER_ALLOWANCE = 52;
 
@@ -255,13 +266,38 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const offering = offeredFor === anchor;
 
   /**
+   * The map's chrome, stacked downward from the safe area: the search bar
+   * first, then the location banner if there is one, then ⌖ and *Search this
+   * area* side by side.
+   *
+   * The bar is the newest thing at the top and everything else moves down by
+   * exactly its allowance — which reopened Increment 6's deferral of persistent
+   * chrome at the map's edges. Truman reopened it knowingly on 2026-08-09.
+   */
+  const bannerShowing = locationStatus === 'denied' || locationStatus === 'error';
+  const barTop = insets.top + CONTROL_INSET;
+  const bannerTop = barTop + SEARCH_BAR_ALLOWANCE;
+  const controlsTop = bannerTop + (bannerShowing ? BANNER_ALLOWANCE : 0);
+
+  /**
    * **Not** the centring mechanism — `regionAround` does that, and says why.
    * On Apple Maps this prop becomes the view's `layoutMargins`, which is what
-   * positions the compass and Apple's own legal label. Setting it keeps that
-   * label out from under the sheet, and nothing else.
+   * positions the compass and Apple's own legal label. Setting it moves those
+   * two, and nothing else.
+   *
+   * **The top is what keeps the compass reachable.** The search bar is drawn
+   * over the map's top-right corner, which is where MapKit puts the compass,
+   * and on a device it hid it — reported 2026-08-09 with a screenshot showing
+   * the compass peeking out from behind the bar. So the top margin clears the
+   * bar *and* ⌖ below it, which drops the compass into open map underneath the
+   * pair rather than into a collision with the button.
+   *
+   * That the compass follows `layoutMargins` at all is this repo's own recorded
+   * reading, not something measured here — **confirm it on a device** rather
+   * than trusting this comment.
    */
   /**
-   * Fixed at the peek line, and it does not move.
+   * The bottom is fixed at the peek line, and it does not move.
    *
    * This has now been all three things. Derived from the settled detent, it sat
    * still through a drag and jumped when the sheet landed. Driven from the
@@ -281,8 +317,13 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * in the state the map is nearly always in, for no cost.
    */
   const mapPadding = useMemo(
-    () => ({ top: 0, left: 0, right: 0, bottom: detents[PEEK_DETENT] }),
-    [detents],
+    () => ({
+      top: controlsTop + CONTROL_SIZE + CONTROL_INSET,
+      left: 0,
+      right: 0,
+      bottom: detents[PEEK_DETENT],
+    }),
+    [controlsTop, detents],
   );
 
   /**
@@ -657,28 +698,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     [stops, camera, region, windowWidth, mapHeight, detent, detents, selectedStop],
   );
 
-  const banner =
-    locationStatus === 'denied'
-      ? LOCATION_DENIED
-      : locationStatus === 'error'
-        ? LOCATION_ERROR
-        : LOCATION_PROMPT;
-
-  /**
-   * The map's chrome, stacked downward from the safe area: the search bar
-   * first, then the location banner if there is one, then ⌖ and *Search this
-   * area* side by side.
-   *
-   * The bar is the new thing at the top and everything else moves down by
-   * exactly its allowance — which reopens Increment 6's deferral of persistent
-   * chrome at the map's edges. Truman reopened it knowingly on 2026-08-09,
-   * having been shown the conflict. **The placement is provisional** and goes
-   * to him with screenshots.
-   */
-  const bannerShowing = source === 'fallback' && locationStatus !== 'loading';
-  const barTop = insets.top + CONTROL_INSET;
-  const bannerTop = barTop + SEARCH_BAR_ALLOWANCE;
-  const controlsTop = bannerTop + (bannerShowing ? BANNER_ALLOWANCE : 0);
+  const banner = locationStatus === 'denied' ? LOCATION_DENIED : LOCATION_ERROR;
 
   return (
     // No SafeAreaView around the map. A map is one of the few things that

@@ -134,8 +134,16 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
         Outside the list. It shows whether or not anyone scrolls, and whether or
         not there are arrivals — "no buses coming" is itself the provider's
         answer, so the legend is owed either way.
+
+        The bottom inset is not decoration. This screen is pushed over the tabs,
+        so nothing below it insets anything, and on a device the legend sat in
+        the curve of the display with the text touching it — reported
+        2026-08-09. `SafeAreaView` is not used here because the list above must
+        keep running to the edge.
       */}
-      <Attribution />
+      <View style={{ paddingBottom: insets.bottom }}>
+        <Attribution />
+      </View>
     </View>
   );
 }

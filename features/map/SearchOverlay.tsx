@@ -126,15 +126,14 @@ export function SearchOverlay({
   }, [query, filter]);
 
   /**
-   * The submit, which is the whole of Address mode's trigger. There is no
-   * autocomplete and there is not going to be one: `geocodeAsync` returns
-   * nothing printable, so a suggestion list would cost two round trips per
-   * keystroke to render one row, and `CLGeocoder` throttles per app — a fast
-   * typist would break this path for the rest of the session. Re-verified
-   * against the installed types on 2026-08-09.
+   * Run the lookup, whatever asked for it. There is no autocomplete and there
+   * is not going to be one: `geocodeAsync` returns nothing printable, so a
+   * suggestion list would cost two round trips per keystroke to render one row,
+   * and `CLGeocoder` throttles per app — a fast typist would break this path
+   * for the rest of the session. Re-verified against the installed types on
+   * 2026-08-09.
    */
-  const submitAddress = useCallback(async () => {
-    if (filter !== 'address') return;
+  const runLookup = useCallback(async () => {
     if (query.trim() === '') return;
 
     const mine = (attempt.current += 1);
@@ -145,7 +144,46 @@ export function SearchOverlay({
       Location.reverseGeocodeAsync,
     );
     if (attempt.current === mine) setLookup(result);
-  }, [filter, query]);
+  }, [query]);
+
+  /** The return key, which is Address mode's own trigger. */
+  const submitAddress = useCallback(() => {
+    if (filter !== 'address') return;
+    void runLookup();
+  }, [filter, runLookup]);
+
+  /**
+   * Switching filter *from the nudge*, which is not the same act as tapping a
+   * chip.
+   *
+   * A chip is a rider changing their mind about what they are looking for. The
+   * nudge is a rider answering a question the app asked — *"No stops match —
+   * search as an address"* — and answering yes. Landing them on a filled field
+   * that has done nothing makes them press the return key to repeat a request
+   * they have already made. Truman, 2026-08-09.
+   *
+   * The chips deliberately keep the plain `setFilter`: tapping *Address* with
+   * text in the field is a mode change, and firing a geocode off the back of it
+   * would be the app deciding it knew better.
+   */
+  const [autoSubmit, setAutoSubmit] = useState(false);
+  const switchFromNudge = useCallback((next: SearchFilter) => {
+    setFilter(next);
+    if (next === 'address') setAutoSubmit(true);
+  }, []);
+
+  /**
+   * Declared *after* the reset effect above, which is what makes this work: on
+   * the render where the filter changes, both run, and the reset's
+   * `attempt.current += 1` lands first. Running the lookup before it would hand
+   * this result an attempt number the reset then invalidates, and the answer
+   * would be dropped on the floor.
+   */
+  useEffect(() => {
+    if (!autoSubmit || filter !== 'address') return;
+    setAutoSubmit(false);
+    void runLookup();
+  }, [autoSubmit, filter, runLookup]);
 
   /** Back to the field, text intact. The rider said "not that place", not
    *  "forget what I typed". */
@@ -205,7 +243,7 @@ export function SearchOverlay({
         otherMatches={otherMatches}
         onSelectStop={onSelectStop}
         onSelectRoute={onSelectRoute}
-        onSwitchFilter={setFilter}
+        onSwitchFilter={switchFromNudge}
         header={
           <AddressAnswer
             lookup={lookup}

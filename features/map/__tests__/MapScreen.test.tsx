@@ -1,8 +1,9 @@
-import { StyleSheet } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { MapScreen } from '../MapScreen';
-import { MEDIUM_DETENT } from '../StopSheet';
+import { MEDIUM_DETENT, PEEK_DETENT, detentsFor, tabBarOverlapOf, visibleAbove } from '../StopSheet';
+import { centredOn } from '../region';
 import { SEARCH_PLACEHOLDER } from '../SearchBar';
 import type { Place } from '../address';
 import { TestTheme } from '../../../lib/testing/theme';
@@ -45,6 +46,10 @@ jest.mock('react-native-maps', () => {
         {/* The zoom lockout after a pin tap is a prop on the map and nothing
             else, so the double reports it the way it reports a camera move. */}
         <Text>{`zoomEnabled: ${props.zoomEnabled !== false}`}</Text>
+        {/* `mapPadding` becomes `layoutMargins` on Apple Maps, which is what
+            positions the compass. Reported so a test can read what the screen
+            asked for; where MapKit then draws is a device question. */}
+        <Text>{`mapPadding top: ${props.mapPadding?.top}`}</Text>
         <Pressable
           accessibilityLabel="map surface"
           onPress={() =>
@@ -341,6 +346,40 @@ const METRICS: Metrics = {
  * suite deliberately does not stand one up.
  */
 const TAB_BAR_HEIGHT = 83;
+
+/**
+ * The camera the "zoom in close" button reports, so a test can say what
+ * framing against a given detent would produce from it.
+ */
+const CLOSE_CAMERA = {
+  latitude: 21.3069,
+  longitude: -157.8583,
+  latitudeDelta: 0.004,
+  longitudeDelta: 0.004,
+};
+
+/**
+ * Where the camera lands if stop 5 is centred in the map left visible above
+ * `detent`.
+ *
+ * Built from the screen's own helpers rather than from a literal, so tuning
+ * `MEDIUM_FRACTION` on a device does not break a test about which detent was
+ * chosen. `onLayout` never fires under Jest, so the screen falls back to the
+ * window and the tab bar counts as overlapping it — the same two inputs here.
+ */
+function framedAgainst(detent: number) {
+  const windowHeight = Dimensions.get('window').height;
+  const detents = detentsFor(
+    windowHeight,
+    tabBarOverlapOf(windowHeight, windowHeight, TAB_BAR_HEIGHT),
+    METRICS.insets.top,
+  );
+  return centredOn(
+    CLOSE_CAMERA,
+    { lat: 21.305, lon: -157.85 },
+    visibleAbove(detents, detent, windowHeight),
+  );
+}
 
 function show() {
   return render(
@@ -647,9 +686,29 @@ describe('MapScreen', () => {
     expect(mockOpenSettings).not.toHaveBeenCalled();
   });
 
-  it('prompts for location while it is showing the fallback', async () => {
+  it('says nothing about location before it has asked', async () => {
+    // The launch flash, reported 2026-08-09 with a screen recording taken to
+    // read it by: "Showing downtown Honolulu. Tap ⌖ to use your location."
+    // appeared on every single launch and vanished immediately.
+    //
+    // It could not have done anything else. `onMapReady` calls
+    // `requestLocation()` from `idle`, so `idle` lasts exactly from the map's
+    // first frame until the request goes out — a window nobody can read, let
+    // alone act on. The banner now waits for an answer.
     await show();
-    screen.getByText(/Tap ⌖ to use your location/);
+
+    expect(screen.queryByText(/Tap ⌖/)).toBeNull();
+    expect(screen.queryByText(/Showing downtown Honolulu/)).toBeNull();
+  });
+
+  it('still explains a location error, which is a state a rider sits in', async () => {
+    // The other half of the change above: suppressing the premature banner must
+    // not suppress the two that are worth reading.
+    mockLocation.status = 'error';
+
+    await show();
+
+    screen.getByText(/Could not get your location/);
   });
 
   it('does not prompt once the location is known', async () => {
@@ -878,14 +937,19 @@ describe('MapScreen', () => {
 
     it('centres against the medium detent, not the one the sheet is leaving', async () => {
       // Selection *raises* the sheet, so framing against the peek it is leaving
-      // would put the stop under where the sheet is about to be. Distinguished
-      // by the southward shift `centredOn` applies: a quarter of the window at
-      // medium, a sixth of it at the peek.
+      // would put the stop under where the sheet is about to be.
+      //
+      // **Derived, not hard-coded.** This used to assert a literal latitude,
+      // which made `MEDIUM_FRACTION` — Truman's tuning knob, changed by eye on
+      // a device — break a test about something else entirely. What is under
+      // test is *which detent the screen framed against*, so the two candidates
+      // are computed from the same helpers the screen uses and the assertion is
+      // that it picked one of them. The helpers have their own unit tests.
       await show();
       await waitFor(() => {
         screen.getByLabelText('pin 5');
       });
-      // A known camera, so the arithmetic below has something to be about.
+      // A known camera, so there is something for the framing to be about.
       await fireEvent.press(screen.getByLabelText('zoom in close'));
 
       await fireEvent.press(screen.getByLabelText('Arrivals at LAGOON DR'));
@@ -893,14 +957,8 @@ describe('MapScreen', () => {
       await waitFor(() => {
         expect(mockCameraMoves).toHaveLength(1);
       });
-      expect(mockCameraMoves[0]).toMatchObject({
-        // Stop 5 sits at 21.305. Against the medium detent that is pushed
-        // 0.0010° south; against the peek it would only be 0.0005°.
-        latitude: expect.closeTo(21.304, 4),
-        longitude: -157.85,
-        // Travelled, not reframed: the rider's zoom is untouched.
-        latitudeDelta: 0.004,
-      });
+      expect(mockCameraMoves[0]).toMatchObject(framedAgainst(MEDIUM_DETENT));
+      expect(mockCameraMoves[0]).not.toMatchObject(framedAgainst(PEEK_DETENT));
     });
 
     it('raises the sheet to medium when a stop is selected from peek', async () => {
@@ -1210,6 +1268,52 @@ describe('MapScreen', () => {
         expect(screen.queryByText(/not on Oahu/)).toBeNull();
       });
 
+      it('searches straight away when the nudge sends a rider here', async () => {
+        // The nudge is not a chip. A chip is a rider changing their mind; the
+        // nudge is a rider answering "No stops match — search as an address"
+        // with yes, and landing them on a filled field that has done nothing
+        // makes them ask twice. Truman, 2026-08-09.
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        mockReverseGeocode.mockResolvedValue([CAMPUS_PLACE]);
+        await show();
+
+        await openSearch();
+        await fireEvent.press(screen.getByLabelText('Search by stops'));
+        await fireEvent.changeText(
+          screen.getByLabelText('Find a stop by number or name'),
+          '2500 campus rd',
+        );
+        await waitFor(() => {
+          screen.getByLabelText('No stops match — search as an address');
+        });
+
+        await fireEvent.press(screen.getByLabelText('No stops match — search as an address'));
+
+        // No second submit: the confirmation arrives off the nudge's own tap.
+        await waitFor(() => {
+          screen.getByText('Did you mean 2500 Campus Rd, Honolulu?');
+        });
+      });
+
+      it('does not geocode merely because the Address chip was tapped', async () => {
+        // The other side of it. Tapping a chip is a mode change, and firing a
+        // network lookup off the back of one is the app deciding it knew what
+        // the rider meant.
+        mockGeocode.mockResolvedValue([CAMPUS]);
+        await show();
+
+        await openSearch();
+        await fireEvent.press(screen.getByLabelText('Search by stops'));
+        await fireEvent.changeText(
+          screen.getByLabelText('Find a stop by number or name'),
+          '2500 campus rd',
+        );
+        await fireEvent.press(screen.getByLabelText('Search by address'));
+
+        expect(mockGeocode).not.toHaveBeenCalled();
+        expect(screen.queryByText(/Did you mean/)).toBeNull();
+      });
+
       it('confirms with the typed text when the reverse lookup fails', async () => {
         // The geocode landed on the island; only its name is missing. Refusing
         // to move here would fail a search that had actually succeeded.
@@ -1228,6 +1332,24 @@ describe('MapScreen', () => {
           expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.2969, lon: -157.8171 });
         });
       });
+    });
+
+    it('leaves the compass room below the bar and ⌖', async () => {
+      // The bar is drawn across the map's top-right corner, which is where
+      // MapKit puts the compass, and on a device it hid it — reported
+      // 2026-08-09 with a screenshot of the compass peeking out from behind the
+      // bar. `mapPadding` becomes `layoutMargins` on Apple Maps, which is what
+      // moves the compass, so the top margin has to clear the bar *and* the ⌖
+      // button under it, or the compass lands on the button instead.
+      //
+      // **A proxy.** Jest cannot see MapKit place anything; what is asserted is
+      // that the screen asks for enough room. Confirm the compass itself on a
+      // device.
+      await show();
+
+      const padding = screen.getByText(/^mapPadding top:/).props.children;
+      // insets.top 59 + 12, the bar's 44 + 12, then ⌖'s 44 + 12.
+      expect(padding).toBe('mapPadding top: 183');
     });
 
     it('carries the required attribution over the search results', async () => {

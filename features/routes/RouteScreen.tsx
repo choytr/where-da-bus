@@ -136,8 +136,11 @@ export function RouteScreen({ routeId }: { routeId: string }) {
         }
       />
 
-      {/* Outside the list, so it shows without a scroll. See lib/Attribution.tsx. */}
-      <Attribution />
+      {/* Outside the list, so it shows without a scroll. See lib/Attribution.tsx.
+          The bottom inset clears the curve of the display; see `ArrivalsScreen`. */}
+      <View style={{ paddingBottom: insets.bottom }}>
+        <Attribution />
+      </View>
     </View>
   );
 }

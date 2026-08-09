@@ -49,7 +49,7 @@ const HANDLE_HEIGHT = 24;
 const TOP_GAP = 16;
 
 /** Tuned by eye on a device. Named so the next nudge is a one-line change. */
-const MEDIUM_FRACTION = 0.475;
+const MEDIUM_FRACTION = 0.505;
 
 const NEARBY_HEADING = 'Nearby Stops';
 
