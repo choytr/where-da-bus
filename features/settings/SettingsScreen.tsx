@@ -18,9 +18,6 @@ import { loadCurrentDatabase, loadLastChecked } from '../../data/storage/databas
 import { ATTRIBUTION, DISCLAIMER } from '../../lib/legal';
 import { useTheBus } from '../../data/thebus';
 import { REGISTRATION_URL } from '../onboarding/KeyGate';
-// THROWAWAY — delete this import, the file, and the <GeocoderProbe /> below
-// before Increment 6 merges. See the banner in GeocoderProbe.tsx.
-import { GeocoderProbe } from './GeocoderProbe';
 
 /**
  * Appearance, what the bundled data says about its own age, and the small
@@ -417,9 +414,6 @@ export function SettingsScreen() {
         <ApiKeySection />
 
         <StopDataSection feedEnd={feedEnd} />
-
-        {/* THROWAWAY — remove before Increment 6 merges. */}
-        <GeocoderProbe />
 
         <Text style={[styles.sectionHeader, { color: palette.muted }]}>ABOUT</Text>
         <View style={group}>
