@@ -157,9 +157,17 @@ function ApiKeySection() {
               setReplacement(next);
               setFailed(false);
             }}
+            // Masked, on the same toggle that reveals the stored key above.
+            // One control for "show me the key material on this screen" is
+            // what makes the pair legible; two would beg the question of why
+            // the field a credential is typed *into* is the readable one.
+            secureTextEntry={!revealed}
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="off"
+            // iOS is especially keen to offer to save a `secureTextEntry`
+            // field as a password. This is a GUID pasted from an email.
+            textContentType="none"
             spellCheck={false}
             onSubmitEditing={() => void saveReplacement()}
             returnKeyType="done"
@@ -368,13 +376,6 @@ export function SettingsScreen() {
   return (
     <SafeAreaView style={[styles.fill, { backgroundColor: palette.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/*
-          The terms require the attribution wherever their data appears, and
-          this screen describes that data's provenance — so it sits at the top
-          here for the same reason it does on the three data screens.
-        */}
-        <Text style={[styles.attribution, { color: palette.muted }]}>{ATTRIBUTION}</Text>
-
         <Text style={[styles.title, { color: palette.text }]}>Settings</Text>
 
         <Text style={[styles.sectionHeader, { color: palette.muted }]}>APPEARANCE</Text>
@@ -417,6 +418,14 @@ export function SettingsScreen() {
         <Text style={[styles.sectionHeader, { color: palette.muted }]}>ABOUT</Text>
         <View style={group}>
           <Text style={[styles.body, { color: palette.text }]}>{DISCLAIMER}</Text>
+          {/*
+            This screen presents none of the provider's route or arrival data —
+            it is appearance, a key, and how old a local file is — so the terms'
+            legend is not owed here and no longer leads the screen. It stays in
+            About as the app's one fixed statement of provenance, findable
+            without a stop on screen. See `lib/Attribution.tsx`.
+          */}
+          <Text style={[styles.attribution, { color: palette.muted }]}>{ATTRIBUTION}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>

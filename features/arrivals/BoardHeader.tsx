@@ -1,20 +1,19 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../lib/theme';
-import { ATTRIBUTION } from '../../lib/legal';
 import type { ArrivalsFailure } from '../../data/thebus';
 import { NOTICES, describe } from './board';
 import { ageLabel } from './format';
 
 /**
- * What sits above one stop's arrivals: the attribution, which stop this is,
- * how old the times are, and — when a poll has failed over a board already on
- * screen — the banner that admits it.
+ * What sits above one stop's arrivals: which stop this is, how old the times
+ * are, and — when a poll has failed over a board already on screen — the
+ * banner that admits it.
  *
- * Shared by both hosts so the legal line cannot go missing from one of them,
- * and so the stale banner keeps saying the same thing in both places. It takes
- * the stop's *name* rather than resolving it, because the two hosts know it by
- * different routes: the standalone screen has only a code and has to look it
- * up, while the sheet was handed the whole stop when the pin was tapped.
+ * Shared by both hosts so the stale banner keeps saying the same thing in both
+ * places. It takes the stop's *name* rather than resolving it, because the two
+ * hosts know it by different routes: the standalone screen has only a code and
+ * has to look it up, while the sheet was handed the whole stop when the pin was
+ * tapped.
  */
 export type BoardHeaderProps = {
   /** Already resolved by the host. Empty and unknown-stop wording differ per host. */
@@ -34,10 +33,10 @@ export function BoardHeader({ stopName, stopCode, fetchedAt, failure, now }: Boa
 
   return (
     <View style={styles.header}>
-      {/* The provider's terms require prominent display wherever their route
-          and arrival data appears, so it leads the board in both hosts. */}
-      <Text style={[styles.attribution, { color: palette.muted }]}>{ATTRIBUTION}</Text>
-
+      {/* The attribution used to lead this header, in both hosts. It now
+          closes each host's list instead — see `lib/Attribution.tsx` for the
+          reading of the terms that allows it and the prominence it costs.
+          Both hosts render it; neither renders it here. */}
       <Text style={[styles.stopName, { color: palette.text }]}>{stopName}</Text>
       <Text style={[styles.stopCode, { color: palette.muted }]}>Stop {stopCode}</Text>
 
@@ -66,7 +65,6 @@ export function BoardHeader({ stopName, stopCode, fetchedAt, failure, now }: Boa
 
 const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
-  attribution: { fontSize: 11, lineHeight: 15, marginBottom: 10 },
   stopName: { fontSize: 20, fontWeight: '700' },
   stopCode: { fontSize: 13, marginTop: 2, fontVariant: ['tabular-nums'] },
   age: { fontSize: 12, marginTop: 6, fontVariant: ['tabular-nums'] },

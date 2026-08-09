@@ -11,8 +11,17 @@
  *
  * The attribution wording is **verbatim** from the Terms of Use page of
  * `docs/api/Web_Services_API.pdf`, including the missing full stop after
- * "Inc". Do not tidy it. The disclaimer's exact wording is still pending
- * verification against the real user agreement.
+ * "Inc". Do not tidy it.
+ *
+ * **The disclaimer is not required by anything.** That was an open question in
+ * this comment until 2026-08-08; it is now closed. The full Terms of Use runs
+ * four obligations — the legend, the Marks clause, "AS IS", and an indemnity —
+ * and contains no form of the words *affiliate* or *endorse*. The disclaimer
+ * is kept because it is true and because an unofficial app should say so, not
+ * because it was demanded. Its wording is ours.
+ *
+ * Where the attribution goes is `lib/Attribution.tsx`'s business, not this
+ * module's. This one holds the words.
  *
  * The terms permit the marks `OTS` and `HEA` only alongside an asterisked
  * trademark legend, so this project keeps those marks — and `TheBus` — out of

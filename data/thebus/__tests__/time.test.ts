@@ -66,6 +66,52 @@ describe('hawaiiDateTime', () => {
   it('reads am/pm case-insensitively', () => {
     expect(hawaiiDateTime('8/1/2026', '10:45 pm')?.toISOString()).toBe('2026-08-02T08:45:00.000Z');
   });
+
+  /**
+   * Hawaii is UTC−10, so **every** time from 2 PM onwards belongs to the next
+   * UTC day — and on the last day of a month, to the next UTC month. The
+   * rollover guard used to compare the resulting UTC month against the month it
+   * was handed, which is a comparison that cannot hold for those times, so it
+   * rejected all of them.
+   *
+   * It is the whole evening, not an edge: 2 PM to midnight on the last day of
+   * every month, twelve times a year. And it did not degrade to a thin board —
+   * `serverTime` runs through this same function, so `parseArrivals` returned
+   * `malformed` and the screen failed outright, looking exactly like the API
+   * being down.
+   */
+  it('resolves an evening arrival on the last day of a month', () => {
+    expect(hawaiiDateTime('8/31/2026', '2:00 PM')?.toISOString()).toBe('2026-09-01T00:00:00.000Z');
+    expect(hawaiiDateTime('8/31/2026', '10:00 PM')?.toISOString()).toBe('2026-09-01T08:00:00.000Z');
+    // The month before the shortest one, and a February that is not a leap year.
+    expect(hawaiiDateTime('1/31/2026', '11:59 PM')?.toISOString()).toBe('2026-02-01T09:59:00.000Z');
+    expect(hawaiiDateTime('2/28/2026', '10:00 PM')?.toISOString()).toBe('2026-03-01T08:00:00.000Z');
+  });
+
+  it('resolves an evening arrival on the last day of a year', () => {
+    expect(hawaiiDateTime('12/31/2026', '10:00 PM')?.toISOString()).toBe('2027-01-01T08:00:00.000Z');
+  });
+
+  it('resolves the evening of a leap day', () => {
+    expect(hawaiiDateTime('2/29/2028', '10:00 PM')?.toISOString()).toBe('2028-03-01T08:00:00.000Z');
+  });
+
+  /**
+   * The guard still has to earn its place. `Date.UTC` rolls an impossible date
+   * forward rather than rejecting it, so without a check `2/31` silently
+   * becomes `3/3` — a real instant, two days from where the rider was told.
+   */
+  it('still rejects a date the calendar does not have', () => {
+    expect(hawaiiDateTime('2/30/2026', '10:00 AM')).toBeNull();
+    expect(hawaiiDateTime('2/31/2026', '10:00 AM')).toBeNull();
+    // 2026 is not a leap year.
+    expect(hawaiiDateTime('2/29/2026', '10:00 AM')).toBeNull();
+    expect(hawaiiDateTime('4/31/2026', '10:00 AM')).toBeNull();
+    expect(hawaiiDateTime('13/1/2026', '10:00 AM')).toBeNull();
+    expect(hawaiiDateTime('1/32/2026', '10:00 AM')).toBeNull();
+    expect(hawaiiDateTime('0/15/2026', '10:00 AM')).toBeNull();
+    expect(hawaiiDateTime('1/0/2026', '10:00 AM')).toBeNull();
+  });
 });
 
 describe('hawaiiTimestamp', () => {
@@ -81,5 +127,20 @@ describe('hawaiiTimestamp', () => {
     expect(hawaiiTimestamp('')).toBeNull();
     expect(hawaiiTimestamp('8/1/2026')).toBeNull();
     expect(hawaiiTimestamp('nonsense')).toBeNull();
+  });
+
+  /**
+   * The half that turned a thin board into a broken screen. `parseArrivals`
+   * treats an unreadable `timestamp` as `malformed` and gives up on the whole
+   * response, so this failing took the entire arrival board down rather than
+   * dropping rows from it.
+   */
+  it('reads a server timestamp from the evening of a month end', () => {
+    expect(hawaiiTimestamp('8/31/2026 10:35:40 PM')?.toISOString()).toBe(
+      '2026-09-01T08:35:40.000Z',
+    );
+    expect(hawaiiTimestamp('12/31/2026 11:59:59 PM')?.toISOString()).toBe(
+      '2027-01-01T09:59:59.000Z',
+    );
   });
 });

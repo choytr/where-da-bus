@@ -8,30 +8,19 @@ Resolved entries are deleted rather than struck through; commit messages hold
 that history. If something here names a file that no longer exists, the entry is
 stale and should be re-checked rather than trusted.
 
-## Correctness
+**Trust the symptoms here; measure the causes.** An entry's description of what
+goes wrong has held up every time. Its explanation of *why* is often an
+inference someone made once, and two have now been wrong: the cold-cache
+failures were blamed on a 1 s `waitFor` default when they were Jest's 5 s
+per-test timeout, and reaching for the lever the entry named made things
+strictly worse; the blank `feed_start_date` entry read as a latent bug and is
+inert. Reproduce before fixing — and when the stated cause turns out to be
+wrong, correct the entry rather than only the code.
 
-**`DatabaseGate` misdiagnoses every render error.** `AppShell.tsx`'s error
-boundary sits above everything and reports any failure below it as "Stop data
-unavailable… Reinstalling the app is the usual fix." A crash anywhere in a
-screen therefore gives the user confidently wrong instructions. Needs a second,
-narrower boundary inside the provider.
-
-**Favorites have a read-modify-write race.** `toggleFavorite` does
-load → mutate → save, so two stars tapped inside one AsyncStorage round-trip
-silently lose one. No test covers interleaved `addFavorite`/`removeFavorite`.
-
-**The error notice never clears.** `StopsScreen`'s `problem` is a single sticky
-slot that is never reset. `FAVORITES_PROBLEM` comes from AsyncStorage and can
-fail transiently, pinning a notice for the whole session; a later
-`DATABASE_PROBLEM` silently overwrites it rather than queueing.
-
-**`route_stops` has holes.** Dropping the 17 `<n>_merge` duplicate stops removed
-26 `route_stops` rows, each the only entry for its `stop_code` in its
-`(route_id, direction_id)` pattern — so **18 of 236 directional patterns skip a
-stop the route genuinely serves**. `deriveRouteStops` picks one representative
-trip per direction and that trip visited the `_merge` id, while `stop_routes` —
-a union over all trips — also saw the plain id. The fix is to remap a dropped id
-onto its surviving twin rather than deleting the row.
+Increment 6 emptied the **Correctness** section — all six of its entries are
+fixed, so the heading is gone rather than left standing over nothing. That is
+not a claim that nothing is broken; it means nothing *known* is, and the
+sections below are still full.
 
 ## The live API
 
@@ -60,14 +49,14 @@ onto its surviving twin rather than deleting the row.
   `PALI HWY + 2627`, `PALI HWY + 2702`. Searching "radford" returns 6 stops
   instead of 8. Unavoidable while one row carries one name, and three of the
   five lost names are the lower-quality half of their pair.
-- **Orphaned rows are dropped silently** during the build with no count logged.
-  A future feed with an id-format change would lose rows invisibly.
+- **`meta` inserts use `?? null`, so a present-but-blank `feed_start_date`
+  stores `''` rather than null. Verified inert 2026-08-06**: `parseFeedDate('')`
+  fails its `^\d{8}$` test and returns null, so `feedValidity` reads `''`
+  exactly as it reads null — `unknown`. Recorded as checked so the next reader
+  does not have to look.
 
 ## Robustness
 
-- AsyncStorage `getItem`/`setItem` calls in `favorites.ts` are unwrapped, so a
-  native-module I/O rejection propagates uncaught. Corrupt content is handled;
-  hard I/O failure is not distinguished from it.
 - `useLocation`'s bare `catch {}` leaves `'error'` undiagnosable — a permission
   race, a GPS timeout and services-off are indistinguishable. Logging was
   proposed and **explicitly declined**; recorded rather than re-litigated.
@@ -75,28 +64,13 @@ onto its surviving twin rather than deleting the row.
   GTFS exempts these for `location_type` 3/4. Harmless on this feed; would
   hard-fail on a future one.
 - `build.mjs` skips `db.close()` if `emitDatabase` throws.
-- `meta` inserts use `?? null`, so a present-but-blank `feed_start_date` stores
-  `''` rather than null.
 - `routesForStopsSql(0)` would emit `IN ()`, which SQLite rejects. Unreachable
   today (guarded in `db.ts`); `stopsByIdsSql` shares the shape.
-- `AppShell`'s `Waiting` and `Unavailable` consume no insets. Safe only because
-  their content is vertically centred, and `Unavailable` is the screen every
-  render error currently lands on.
+- `AppShell`'s `Waiting`, `Unavailable` and `Unexpected` consume no insets. Safe
+  only because their content is vertically centred.
 
 ## Self-refreshing data (Increment 5)
 
-- **A pointer naming a file that is not there is not guarded.** `AppShell`
-  passes the stored generation name to `SQLiteProvider` without checking it
-  exists, and `openDatabaseAsync` *creates* what it cannot find — so the open
-  succeeds, `DatabaseGate` never fires, and every screen silently shows no
-  results. That is the worst failure shape in the app.
-
-  Deferred because sequencing the sweep before the refresh removed the only path
-  that reached it, and because the state otherwise needs AsyncStorage and the
-  SQLite directory to disagree, which live in the same container. The fix is
-  three lines: `databaseFiles.list()` in `useCurrentDatabaseName`, falling back
-  to `BUNDLED_DATABASE`. The cost is pulling `expo-file-system` into the shell's
-  module graph, which every suite rendering `AppShell` would then have to double.
 - **`publish.mjs package` reads `assets/db/gtfs.db` from the checkout**, which
   is also where the committed floor lives. A skipped build step would publish
   the floor as a fresh build — correctly hashed, clearing the floor check,
@@ -125,6 +99,19 @@ onto its surviving twin rather than deleting the row.
   URL-shaped (`/stop/596`), but nothing has opened one from outside the app.
 - **`useNow` re-renders the whole board every 10 seconds** to move the
   countdowns. Fine at 25 rows; worth memoising if it grows.
+- **`useArrivals` treats iOS's `inactive` exactly like `background`.** Its
+  `AppState` handler branches on `status === 'active'` and sends everything else
+  down the pause-and-abort path, so a Control Centre pull, the app-switcher
+  gesture, or a system dialog (including the location prompt) aborts the request
+  in flight and then refetches the moment it is dismissed. One extra request per
+  peek, against a quota shared by every install of the app.
+
+  **This is a reading of documented `AppState` semantics, not something
+  observed** — no one has counted requests on a device. It is also not obviously
+  wrong: coming back from a ten-second glance at Control Centre and seeing
+  ten-second-old times is the behaviour the immediate refetch exists for. Worth
+  measuring before changing, and worth changing only with a device to check it
+  on.
 - Route chips flicker for one frame when search clears, and stale entries
   persist when the id list is empty.
 - The favorite `Pressable` lacks `accessibilityState={{ selected: isFavorite }}`.
@@ -142,19 +129,131 @@ but that'll come later. Functionality first."
   distance and route-number chips; `/stop/[code]` shows neither. He prefers the
   card's. Adding chips to `ArrivalsScreen` costs it a `routesForStops` query it
   does not currently make.
-- **Occasional crash after interacting with a lot of things.** No reproduction
-  and no stack. Seen once in Expo Go and not reproduced on the `.ipa` — which is
-  weaker evidence than it sounds, since there is no reproduction to run either
-  way. Record what was being touched when it happens.
+- **The map crash is diagnosed, and both previously recorded causes were
+  wrong.** Kept rather than deleted because a race that stopped reproducing is
+  not a race proven gone.
+
+  **The evidence.** `Expo Go-2026-08-08-011041.ips`, off Truman's phone: an
+  uncaught Objective-C exception from `-[__NSArrayM insertObject:atIndex:]`,
+  raised on the main thread inside React Native's Fabric mounting transaction
+  (`TelemetryController::pullTransaction`), terminating on SIGABRT. **Neither
+  JavaScript nor MapKit** — the RN view-*mounting* layer, inserting a child
+  component view at an index its backing array does not have. SDK 54 runs the
+  New Architecture, so every map child goes through this path.
+
+  **The reproduction that got us there** (2026-08-08, far better than the
+  original): selecting stops quickly crashes reliably, and the faster he taps
+  the fewer taps it takes. Marker icons also blank out when selecting one stop
+  while another is selected.
+
+  **What is established.** `AIRMap.m`'s `insertReactSubview:` intercepts
+  markers, hands them to MapKit as annotations, and *deliberately never calls
+  super* — there is a `#pragma` silencing the missing-super warning. So the
+  map's real subview list and React's model of it are different things by
+  construction, and an out-of-range insert is what you would expect the seam to
+  produce. Read from source.
+
+  **What is not.** *Why `zIndex` in particular* triggered it. An earlier version
+  of this entry — and of the comments in `StopMarker` — asserted that `zIndex`
+  is implemented by reordering sibling views. `AIRMapMarkerManager.m` exports it
+  as a plain native prop that becomes `layer.zPosition`, which is an assignment
+  and not a reorder. Whether React Native's own ordering also reacted to it is
+  unread: those sources are prebuild output this project never generates.
+  **Correlation, a plausible route through a seam that is real, and no proof.**
+  Corrected here rather than left standing, because a confident wrong mechanism
+  in a comment is exactly what this file exists to stop.
+
+  **`zIndex` is gone from both marker components** and Truman could no longer
+  reproduce the crash, "no matter how aggressively I abuse the map". Mechanism,
+  three matching symptoms, and a failure to reproduce — short of proof, and
+  recorded as such.
+
+  **What this retires.** The two candidates this entry used to name —
+  `pendingMarker.current?.showCallout()`, and unmounting the marker from inside
+  its own callout's press handler — were both readings of native behaviour and
+  **neither is what the log says**. They are struck. Note that the older
+  tap-hold reproduction is plausibly the *same* bug: mounting `PendingMarker`
+  and its `Callout` is a child mount/unmount on the same path, and both the
+  callout and that marker's constant `zIndex` are now gone. Plausibly, not
+  established — nobody has a log of the tap-hold crash.
+
+  **If it returns**, the answer is not to read native source. It is another
+  `.ips` off the phone, and then the mounting instructions: anything that makes
+  React insert, remove or reorder a child view inside a `react-native-maps`
+  component is a suspect, and marker *children* are the whole design here.
+
+- **The same bug, in a second non-fatal form: markers jumping to the screen's
+  top-left corner.** *Observed* `IMG_4524`, 2026-08-08 — two tiles and their
+  names piled at the origin over the status bar, one minute after `IMG_4523`
+  had the same stops in the right places, while repeatedly tapping pins to
+  change the selection.
+
+  The two displaced markers were the two whose labels had just become visible.
+  `StopMarker` was rendering its label conditionally, so a change in the label
+  set added or removed a child *inside* a marker — the same mount instruction
+  against the same component view as the crash, and the same disagreement
+  between React's bookkeeping and a hierarchy MapKit owns. Where the array
+  insert threw, this one leaves the view alive with no position, and a view
+  with no position is at the origin.
+
+  **Fixed by never changing the tree**: the label is always mounted and hidden
+  with `opacity`. Three crash-family symptoms now trace to one rule — *do not
+  mount, unmount or reorder children inside a `react-native-maps` component* —
+  which is worth more than any of the three fixes.
+
+  **That cost arrived, and is fixed.** *Observed* 2026-08-08: "sometimes they
+  can be on top of other icons and I think they're eating the press on those
+  icons." `AIRMapMarker.reactSetFrame:` sets the annotation view's `bounds` from
+  the React layout size and MapKit hit-tests by frame, so a label counted in the
+  layout is a label that swallows taps aimed at its neighbours. The label is now
+  `position: 'absolute'` and outside the layout box, leaving the marker's frame
+  the size of its tile. Source-read, not guessed — but the drawing of a subview
+  outside its parent's bounds is native behaviour and wants a look on a device.
+
+- **Tapping a pin counts toward Apple Maps' double-tap-to-zoom.** *Observed*
+  2026-08-08: switching selection by tapping pins in quick succession zooms the
+  map. **There is no supported way to turn this off on Apple Maps** —
+  `react-native-maps` exposes `zoomTapEnabled`, and its own type definitions say
+  *iOS: Google Maps only*. Verified in
+  `node_modules/react-native-maps/lib/MapView.d.ts`, not inferred.
+
+  **The zooming recogniser is MapKit's own and is not exposed.** Confirmed by
+  reading `AIRMapManager.m`: `react-native-maps` attaches its *own* single- and
+  double-tap recognisers to the map, but the double-tap one only fires
+  `onDoublePress` — it does not zoom — and both are created with
+  `cancelsTouchesInView = NO` so that marker selection keeps working. The zoom
+  therefore comes from `MKMapView`'s internal recogniser, which nothing in this
+  library reaches.
+
+  **Truman chose the blunt instrument, 2026-08-08, knowing the cost.** The map
+  is told not to zoom for `ZOOM_LOCKOUT_MS` (320 ms, slightly longer than the
+  system's double-tap window) after a pin tap, restarted on each tap so a run of
+  taps stays still throughout. It is a plain prop on the map and not a change to
+  any child, which is what makes it safe against the mounting bug above.
+
+  **The cost, recorded because it is real:** a deliberate pinch begun within
+  320 ms of tapping a pin does nothing. A proper fix is native and would leave
+  the Expo Go loop, which is a larger decision than this one.
 
 ## Tests
 
-- **The suite flakes on a cold Jest cache — observed, not predicted.** Two
-  `waitFor` calls have timed out at the 1 s default while the transform cache
-  was still building (~4 s warm versus ~20 s cold). **This is a CI problem
-  specifically**, because the workflow runs `npm ci` then `npm test` — a cold
-  cache every time. Expect occasional red. The honest fix is that those
-  assertions should not be racing a timer at all.
+- **The cold-cache failure is fixed, and its recorded cause was wrong.**
+  Measured 2026-08-06 across five `--clearCache` runs: the same **three** tests
+  failed **every** time, not occasionally, and none of them failed in a
+  `waitFor` at the 1 s default. They exceeded **Jest's own 5 s per-test
+  timeout**. Cold they take 6.7 s, 7.9 s and 8.3 s — `AppShell › asks for a key
+  …`, `KeyGate › shows onboarding …`, `ArrivalsScreen › shows the stop it is
+  about` — while all 404 others finish inside 1.03 s.
+
+  `testTimeout: 20000` in `package.json` fixes it: three cold runs, zero
+  failures. Raising RNTL's `asyncUtilTimeout` was tried first and is **not** in
+  the fix — it was aimed at the wrong lever, and setting it to 5 s made things
+  strictly worse by turning a fast assertion failure into a whole-test timeout
+  at the very limit that was already being hit.
+
+  The cost is that a genuinely hung test now takes 20 s to admit it instead of
+  5 s. The fake-timer wedge described in `CLAUDE.md` — the one that hangs the
+  run with no output — is slower to surface as a result.
 - **The debounce test is real-timer dependent**, two-sidedly: too slow and it
   sees 2+ calls, too fast and a sibling test fails.
 - `App.test.tsx` reads mocked props through `jest.requireMock` with `any` all

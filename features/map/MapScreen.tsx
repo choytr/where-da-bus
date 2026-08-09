@@ -9,16 +9,14 @@ import {
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MapView, {
-  Callout,
-  Marker,
-  MarkerPressEvent,
-  type LongPressEvent,
-  type MapMarker,
-} from 'react-native-maps';
+import MapView, { type LongPressEvent, type MarkerPressEvent } from 'react-native-maps';
 import type BottomSheet from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
+import { schedule } from '../../lib/schedule';
 import { useAnchoredStops } from './useAnchoredStops';
+import { StopMarker } from './StopMarker';
+import { labelledStopIds } from './labels';
+import { PendingMarker } from './PendingMarker';
 import {
   centredOn,
   hasDriftedFrom,
@@ -73,7 +71,6 @@ const LOCATION_PROMPT = 'Showing downtown Honolulu. Tap ⌖ to use your location
 const LOCATION_DENIED = 'Location is off for this app. Tap ⌖ to turn it on in Settings.';
 const LOCATION_ERROR = 'Could not get your location. Tap ⌖ to try again.';
 const SEARCH_AREA_LABEL = 'Search this area';
-const SEARCH_HERE_LABEL = 'Search here';
 
 /**
  * How far the camera has to be carried from the anchor before *Search this
@@ -86,8 +83,44 @@ const SEARCH_HERE_LABEL = 'Search here';
  */
 const DRIFT_FRACTION = 0.25;
 
+/**
+ * How far below the safe area the two map controls sit.
+ *
+ * It was `+ 64`, which put them ~123 pt down a Dynamic Island phone and read as
+ * floating in the middle of the map — observed 2026-08-08. The 64 was reserving
+ * room for the location banner, which mounts only while there is no fix to
+ * show. Reserving it unconditionally paid for an absent view on every launch.
+ *
+ * The banner now pushes the controls down itself, so the common case is tight
+ * to the safe area and the rare case still does not collide.
+ */
+const CONTROL_INSET = 12;
+/** Cleared only when the banner is actually up. Its height plus its gap. */
+const BANNER_ALLOWANCE = 52;
+
 /** Long enough to read as travel rather than a cut, short enough not to wait. */
 const CAMERA_MS = 350;
+
+/**
+ * How long the map refuses to zoom after a pin is tapped.
+ *
+ * Tapping two pins in quick succession zoomed the map, because iOS counted the
+ * pair as a double tap. There is no way to ask for anything narrower:
+ * `react-native-maps` attaches its own tap recognisers but its double-tap one
+ * only fires `onDoublePress` and never zooms — the zoom is `MKMapView`'s own
+ * recogniser, which the library does not expose, and `zoomTapEnabled` is
+ * documented as Google Maps only on iOS. Both read from source.
+ *
+ * So the blunt instrument: turn zooming off for slightly longer than the
+ * system's double-tap window, then turn it back on. It is a plain prop on the
+ * map — not a change to any child — which is what makes it safe against the
+ * mounting bug in `StopMarker`.
+ *
+ * **The cost is real**: a deliberate pinch begun within this window of tapping
+ * a pin does nothing. Truman chose this over living with the zoom, knowing
+ * that, and over a native fix that would leave the Expo Go loop.
+ */
+const ZOOM_LOCKOUT_MS = 320;
 
 export type MapScreenProps = {
   /**
@@ -101,7 +134,7 @@ export type MapScreenProps = {
 export function MapScreen({ client }: MapScreenProps) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const {
     anchor,
     region,
@@ -117,7 +150,6 @@ export function MapScreen({ client }: MapScreenProps) {
 
   const map = useRef<MapView | null>(null);
   const sheet = useRef<BottomSheet | null>(null);
-  const pendingMarker = useRef<MapMarker | null>(null);
   const [selectedStop, setSelectedStop] = useState<StopWithDistance | null>(null);
   /** The detent the sheet last settled on. `index={0}` is where it starts. */
   const [detent, setDetent] = useState<number>(PEEK_DETENT);
@@ -134,6 +166,9 @@ export function MapScreen({ client }: MapScreenProps) {
   const [offeredFor, setOfferedFor] = useState<Coords | null>(null);
   /** A fix is in flight, so ⌖ says so rather than looking inert. */
   const [locating, setLocating] = useState(false);
+  /** False for `ZOOM_LOCKOUT_MS` after a pin tap. See that constant. */
+  const [zoomEnabled, setZoomEnabled] = useState(true);
+  const releaseZoom = useRef<(() => void) | null>(null);
   const [routesByStop, setRoutesByStop] = useState<Map<string, RouteSummary[]>>(new Map());
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
 
@@ -176,14 +211,34 @@ export function MapScreen({ client }: MapScreenProps) {
    * positions the compass and Apple's own legal label. Setting it keeps that
    * label out from under the sheet, and nothing else.
    */
+  /**
+   * Fixed at the peek line, and it does not move.
+   *
+   * This has now been all three things. Derived from the settled detent, it sat
+   * still through a drag and jumped when the sheet landed. Driven from the
+   * sheet's animated position, it *tracked* — and Truman's word for the result
+   * was "very jittery", which is what a native view prop being reassigned from
+   * a JavaScript state update sixty times a second looks like. It was never
+   * going to be smooth: `mapPadding` is an ordinary prop, not an animatable
+   * one, so every frame is a round trip.
+   *
+   * So it is a constant. Apple's legal label sits just above the collapsed
+   * sheet — visible in the resting state, covered while a rider has actively
+   * raised the sheet over it, and never in motion.
+   *
+   * Truman asked whether it could simply live in the bottom-left corner and be
+   * hidden by the sheet at every detent. Almost: MapKit's usage terms ask that
+   * the label not be obscured, and pinning it one detent up keeps it visible
+   * in the state the map is nearly always in, for no cost.
+   */
   const mapPadding = useMemo(
     () => ({
       top: 0,
       left: 0,
       right: 0,
-      bottom: Math.round(windowHeight * (1 - visibleAbove(detent))),
+      bottom: Math.round(windowHeight * (1 - visibleAbove(PEEK_DETENT))),
     }),
-    [windowHeight, detent],
+    [windowHeight],
   );
 
   /**
@@ -312,15 +367,6 @@ export function MapScreen({ client }: MapScreenProps) {
     setPending({ lat: latitude, lon: longitude });
   }, []);
 
-  /**
-   * iOS shows a callout only when it is asked to; without this the marker
-   * appears bearing an invisible offer, and the gesture reads as broken.
-   */
-  useEffect(() => {
-    if (pending === null) return;
-    pendingMarker.current?.showCallout();
-  }, [pending]);
-
   const searchFrom = useCallback(
     (coords: Coords) => {
       setPending(null);
@@ -359,16 +405,30 @@ export function MapScreen({ client }: MapScreenProps) {
     searchFrom(visibleCentre(camera, visibleAbove(detent)));
   }, [camera, detent, searchFrom]);
 
+  /**
+   * Restarted on every pin tap rather than left to run out, so tapping through
+   * four stops in a row keeps the map still throughout rather than letting the
+   * zoom back in between the third and the fourth.
+   */
+  const holdZoomOff = useCallback(() => {
+    releaseZoom.current?.();
+    setZoomEnabled(false);
+    releaseZoom.current = schedule(() => setZoomEnabled(true), ZOOM_LOCKOUT_MS);
+  }, []);
+
+  useEffect(() => () => releaseZoom.current?.(), []);
+
   const onPinPress = useCallback(
-    (event: MarkerPressEvent, stop: StopWithDistance) => {
+    (stop: StopWithDistance, event: MarkerPressEvent) => {
       // Without this the press also reaches `MapView`'s `onPress`, and the tap
       // that selected a stop dismisses it again in the same gesture.
       event.stopPropagation();
+      holdZoomOff();
       select(stop);
     },
     // `select` reads the settled detent, so a stale copy here would be a copy
     // that thinks the sheet is still at peek — and would lower it.
-    [select],
+    [select, holdZoomOff],
   );
 
   const openRoute = useCallback((route: RouteSummary) => {
@@ -431,12 +491,41 @@ export function MapScreen({ client }: MapScreenProps) {
     void requestLocation();
   }, [locationStatus, requestLocation]);
 
+  /**
+   * Which names go on the map, recomputed only when the camera settles.
+   *
+   * `camera` is set from `onRegionChangeComplete`, so this does not run during
+   * a pan — which matters more than it looks. A marker whose view changes has
+   * to be re-snapshotted by iOS, and re-snapshotting twenty of them per frame
+   * is how a map with custom markers becomes unusable.
+   */
+  const labelled = useMemo(
+    () =>
+      labelledStopIds(
+        stops,
+        camera ?? region,
+        {
+          width: windowWidth,
+          // The whole window: the map is full-screen and the camera's region
+          // spans all of it. `visibleHeight` is a separate question.
+          height: windowHeight,
+          visibleHeight: Math.round(windowHeight * visibleAbove(detent)),
+        },
+        selectedStop?.stop_id ?? null,
+      ),
+    [stops, camera, region, windowWidth, windowHeight, detent, selectedStop],
+  );
+
   const banner =
     locationStatus === 'denied'
       ? LOCATION_DENIED
       : locationStatus === 'error'
         ? LOCATION_ERROR
         : LOCATION_PROMPT;
+
+  /** Whether the banner is on screen, which is what the controls clear. */
+  const bannerShowing = source === 'fallback' && locationStatus !== 'loading';
+  const controlsTop = insets.top + CONTROL_INSET + (bannerShowing ? BANNER_ALLOWANCE : 0);
 
   return (
     // No SafeAreaView around the map. A map is one of the few things that
@@ -463,54 +552,29 @@ export function MapScreen({ client }: MapScreenProps) {
           onRegionChangeComplete={onCameraSettled}
           onMapReady={onMapReady}
           mapPadding={mapPadding}
+          zoomEnabled={zoomEnabled}
           showsUserLocation={locationStatus === 'granted'}
           showsMyLocationButton={false}
           toolbarEnabled={false}
         >
           {stops.map((stop) => (
-            <Marker
+            <StopMarker
               key={stop.stop_id}
-              identifier={stop.stop_id}
-              coordinate={{ latitude: stop.lat, longitude: stop.lon }}
-              title={stop.stop_name}
-              pinColor={selectedStop?.stop_id === stop.stop_id ? palette.live : undefined}
-              onPress={(event) => onPinPress(event, stop)}
+              stop={stop}
+              selected={selectedStop?.stop_id === stop.stop_id}
+              placement={labelled.get(stop.stop_id) ?? null}
+              onPress={onPinPress}
             />
           ))}
 
-          {pending === null ? null : (
-            <Marker
-              ref={pendingMarker}
-              identifier="pending-anchor"
-              coordinate={{ latitude: pending.lat, longitude: pending.lon }}
-              // Without this the press falls through to the map, which would
-              // dismiss the marker the rider is reaching for.
-              onPress={(event) => event.stopPropagation()}
-            >
-              {/*
-                `tooltip` drops MapKit's own bubble and draws ours. The native
-                one styles itself and its contents do not, so a themed label
-                inside it is a guess about a surface this project cannot see.
-              */}
-              <Callout tooltip onPress={() => searchHere(pending)}>
-                <View
-                  style={[
-                    styles.callout,
-                    { backgroundColor: palette.background, borderColor: palette.border },
-                  ]}
-                >
-                  <Text style={[styles.calloutText, { color: palette.text }]}>
-                    {SEARCH_HERE_LABEL}
-                  </Text>
-                </View>
-              </Callout>
-            </Marker>
-          )}
+          {pending === null ? null : <PendingMarker at={pending} onTake={searchHere} />}
         </MapView>
       </View>
 
-      {source === 'fallback' && locationStatus !== 'loading' ? (
-        <View style={[styles.prompt, { top: insets.top + 12, backgroundColor: palette.background }]}>
+      {bannerShowing ? (
+        <View
+          style={[styles.prompt, { top: insets.top + CONTROL_INSET, backgroundColor: palette.background }]}
+        >
           <Text style={[styles.promptText, { color: palette.text }]}>{banner}</Text>
         </View>
       ) : null}
@@ -525,7 +589,7 @@ export function MapScreen({ client }: MapScreenProps) {
         onPress={onRecentre}
         style={[
           styles.recentre,
-          { top: insets.top + 64, backgroundColor: palette.background, borderColor: palette.border },
+          { top: controlsTop, backgroundColor: palette.background, borderColor: palette.border },
         ]}
       >
         {locating ? (
@@ -548,7 +612,7 @@ export function MapScreen({ client }: MapScreenProps) {
           onPress={searchThisArea}
           style={[
             styles.searchArea,
-            { top: insets.top + 64, backgroundColor: palette.background, borderColor: palette.border },
+            { top: controlsTop, backgroundColor: palette.background, borderColor: palette.border },
           ]}
         >
           <Text style={[styles.searchAreaText, { color: palette.text }]}>{SEARCH_AREA_LABEL}</Text>
@@ -605,11 +669,4 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   searchAreaText: { fontSize: 14, fontWeight: '600' },
-  callout: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  calloutText: { fontSize: 14, fontWeight: '600' },
 });

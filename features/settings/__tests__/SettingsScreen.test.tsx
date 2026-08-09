@@ -307,6 +307,25 @@ describe('SettingsScreen', () => {
     expect(screen.queryByText(KEY)).toBeNull();
   });
 
+  it('masks the replacement field too', async () => {
+    // The stored key was masked from the first version of this screen and the
+    // field it is replaced through was not, so a key pasted in public went on
+    // screen in the clear directly beneath its own bullets. Observed on a
+    // device, 2026-08-08.
+    await show();
+
+    expect((await screen.findByLabelText('Replacement API key')).props.secureTextEntry).toBe(true);
+  });
+
+  it('reveals the replacement field on the same toggle as the stored key', async () => {
+    await show();
+
+    await waitFor(() => screen.getByLabelText('Show key'));
+    await fireEvent.press(screen.getByLabelText('Show key'));
+
+    expect(screen.getByLabelText('Replacement API key').props.secureTextEntry).toBe(false);
+  });
+
   it('replaces the key with a pasted one', async () => {
     await show();
 

@@ -105,6 +105,67 @@ describe('parseArrivals — an empty board is not an error', () => {
   });
 });
 
+/**
+ * The end of the month used to take the whole board down, and this is the
+ * assertion at the level a rider would feel it.
+ *
+ * Hawaii is UTC−10, so every time from 2 PM onwards belongs to the next UTC
+ * day — and on the last day of a month, the next UTC month. `hawaiiDateTime`
+ * validated its calendar *after* applying that offset and rejected the result
+ * as an impossible date. Because `timestamp` runs through the same function,
+ * the failure was not a thinner board: `serverTime` came back null and the
+ * response was called `malformed`, so the screen showed a failure that looked
+ * exactly like the API being down. Ten hours, twelve times a year.
+ */
+describe('parseArrivals — the last evening of a month', () => {
+  it('parses a board whose timestamp and arrivals fall on a month end', () => {
+    const result = parseArrivals({
+      stop: '596',
+      timestamp: '8/31/2026 10:35:40 PM',
+      arrivals: [
+        {
+          id: '1',
+          trip: '5333993',
+          route: '1',
+          headsign: 'KALIHI TRANSIT CENTER',
+          direction: 'Westbound',
+          date: '8/31/2026',
+          stopTime: '10:41 PM',
+          estimated: '1',
+          vehicle: '252',
+          latitude: '21.30397',
+          longitude: '-157.8496',
+          canceled: '0',
+        },
+        {
+          // And one that has crossed into the next month, which is the same
+          // response's normal case at that hour.
+          id: '2',
+          trip: '5333994',
+          route: '1',
+          headsign: 'KALIHI TRANSIT CENTER',
+          direction: 'Westbound',
+          date: '9/1/2026',
+          stopTime: '12:11 AM',
+          estimated: '2',
+          vehicle: '???',
+          latitude: '0',
+          longitude: '0',
+          canceled: '0',
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.board.serverTime.toISOString()).toBe('2026-09-01T08:35:40.000Z');
+    expect(result.board.arrivals.map((a) => a.arrivesAt.toISOString())).toEqual([
+      '2026-09-01T08:41:00.000Z',
+      '2026-09-01T10:11:00.000Z',
+    ]);
+  });
+});
+
 describe('parseArrivals — failures', () => {
   it('reports unauthorized for a rejected key', () => {
     // Its own kind rather than a generic `api` failure, because it is the one

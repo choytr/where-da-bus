@@ -58,6 +58,13 @@ export type Palette = {
   /** The stale-data banner on the arrival board. */
   bannerBg: string;
   bannerText: string;
+  /**
+   * A stop's marker on the map, and the glyph inside it. Its own hue rather
+   * than `live`, which means "this arrival has GPS behind it" — a pin is not
+   * making that claim about anything.
+   */
+  pin: string;
+  pinGlyph: string;
 };
 
 const LIGHT: Palette = {
@@ -73,6 +80,8 @@ const LIGHT: Palette = {
   warning: '#b3261e',
   bannerBg: '#fdf0e3',
   bannerText: '#8a4b08',
+  pin: '#0b6bcb',
+  pinGlyph: '#ffffff',
 };
 
 const DARK: Palette = {
@@ -88,6 +97,8 @@ const DARK: Palette = {
   warning: '#f2b8b5',
   bannerBg: '#3a2a14',
   bannerText: '#f0c48a',
+  pin: '#3b9dff',
+  pinGlyph: '#0b1f33',
 };
 
 export type Theme = {

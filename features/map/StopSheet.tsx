@@ -9,7 +9,7 @@ import BottomSheet, {
 import { StopRow } from '../stops/StopRow';
 import { StopCard } from './StopCard';
 import { useTheme } from '../../lib/theme';
-import { ATTRIBUTION } from '../../lib/legal';
+import { Attribution } from '../../lib/Attribution';
 import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
 import type { TheBusClient } from '../../data/thebus';
 import type { AnchoredStatus } from './useAnchoredStops';
@@ -161,16 +161,12 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
           keyExtractor={(stop) => stop.stop_id}
           renderItem={renderItem}
           contentContainerStyle={styles.content}
-          ListHeaderComponent={
-            <View style={styles.header}>
-              {/*
-                At the top, as the terms require wherever this data appears. The
-                map's tiles are Apple's, but every pin and every row below is the
-                provider's, so this is the first thing in the sheet.
-              */}
-              <Text style={[styles.legal, { color: palette.muted }]}>{ATTRIBUTION}</Text>
-            </View>
-          }
+          // At the foot, not the head. It led this list until 2026-08-08, and
+          // at the collapsed detent the legend plus a clipped stop name was
+          // the entire visible sheet — the peek showed legal text and nothing
+          // a rider opened the app for. `lib/Attribution.tsx` carries the
+          // reading of the terms that permits the move, and what it costs.
+          ListFooterComponent={<Attribution />}
           ListEmptyComponent={
             // Three states kept apart, as §4 requires: still looking, looked and
             // found nothing here, and could not look at all.
@@ -211,8 +207,6 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
 
 const styles = StyleSheet.create({
   content: { paddingBottom: 32 },
-  header: { paddingHorizontal: 16, paddingBottom: 10 },
-  legal: { fontSize: 11, lineHeight: 15 },
   empty: { paddingHorizontal: 16, paddingTop: 8 },
   emptyText: { fontSize: 14, lineHeight: 20 },
 });

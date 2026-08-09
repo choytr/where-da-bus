@@ -73,6 +73,9 @@ describe('emitDatabase', () => {
       stopRoutes: 2,
       routeStops: 2,
       duplicateStopsDropped: 0,
+      stopRoutesOrphaned: 0,
+      routeStopsOrphaned: 0,
+      stopRoutesDeduplicated: 0,
     });
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM stops').get().n, 2);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM routes').get().n, 2);
@@ -220,7 +223,13 @@ describe('emitDatabase', () => {
     db.close();
   });
 
-  test('takes the dropped duplicate rows in stop_routes and route_stops with it', () => {
+  /**
+   * This test used to assert that the dropped row's relationships were dropped
+   * with it — `counts.stopRoutes` staying at 2 — and that was the bug, written
+   * down and guarded. What is still true, and still worth holding, is that no
+   * row anywhere may reference an id that is no longer in `stops`.
+   */
+  test('moves the dropped duplicate’s stop_routes and route_stops onto the surviving id', () => {
     const db = new DatabaseSync(':memory:');
     const withDuplicate = [
       ...stops,
@@ -235,8 +244,13 @@ describe('emitDatabase', () => {
       feedEndDate: null,
     });
 
-    assert.equal(counts.stopRoutes, 2);
-    assert.equal(counts.routeStops, 2);
+    // Three, not two: the relationship the _merge row carried is real, and it
+    // now belongs to stop 5.
+    assert.equal(counts.stopRoutes, 3);
+    assert.equal(counts.routeStops, 3);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM stop_routes WHERE stop_id = ?').get('5').n, 2);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM route_stops WHERE stop_id = ?').get('5').n, 2);
+    // Nothing may point at an id that is not in `stops` any more.
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM stop_routes WHERE stop_id = ?').get('5_merge').n, 0);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM route_stops WHERE stop_id = ?').get('5_merge').n, 0);
     db.close();
@@ -320,6 +334,206 @@ describe('withoutMergedDuplicateStops', () => {
     const notASuffix = { stop_id: '5_merged_2', stop_code: '5', stop_name: 'LAGOON DR' };
     const { kept } = withoutMergedDuplicateStops([plain, notASuffix]);
     assert.deepEqual(kept, [plain, notASuffix]);
+  });
+
+  test('reports where each dropped row’s relationships should go instead', () => {
+    const { remap } = withoutMergedDuplicateStops([plain, merged]);
+    assert.deepEqual([...remap], [['5_merge', '5']]);
+  });
+
+  test('names no destination for rows it did not drop', () => {
+    const lone = { stop_id: '77_merge', stop_code: '77', stop_name: 'NIMITZ HWY' };
+    const { remap } = withoutMergedDuplicateStops([plain, lone]);
+    assert.equal(remap.size, 0);
+  });
+});
+
+/**
+ * The relationship half of the duplicate-stop filter, and the half that was
+ * missing.
+ *
+ * `deriveRouteStops` picks one representative trip per direction. When that
+ * trip happened to visit the `_merge` id, dropping the row took its
+ * `route_stops` entry with it — and because that entry was the only one for
+ * its `stop_code` in that pattern, the stop vanished from the route entirely.
+ * **18 of 236 directional patterns skipped a stop the route genuinely serves.**
+ *
+ * `stop_routes` mostly escaped it, being a union over every trip, so the same
+ * stop usually appeared under the plain id as well. That is exactly why the
+ * remap has to de-duplicate rather than insert blindly.
+ */
+describe('emitDatabase remaps a dropped stop’s relationships', () => {
+  const twinStops = [
+    { stop_id: '5', stop_code: '5', stop_name: 'LAGOON DR', stop_lat: '21.32', stop_lon: '-157.9' },
+    {
+      stop_id: '5_merge',
+      stop_code: '5',
+      stop_name: 'LAGOON DR',
+      stop_lat: '21.3201',
+      stop_lon: '-157.9001',
+    },
+    { stop_id: '6', stop_code: '6', stop_name: 'KAPALULU PL', stop_lat: '21.33', stop_lon: '-157.91' },
+  ];
+
+  const emit = (input) => {
+    const db = new DatabaseSync(':memory:');
+    const counts = emitDatabase(db, {
+      stops: twinStops,
+      routes,
+      feedStartDate: '20260701',
+      feedEndDate: '20260822',
+      ...input,
+    });
+    return { db, counts };
+  };
+
+  test('remaps a dropped _merge stop’s route_stops rows onto its surviving twin', () => {
+    const { db, counts } = emit({
+      stopRoutes: [{ stop_id: '5', route_id: '8' }],
+      // The representative trip visited the _merge id. Before the remap this
+      // row was dropped and route 8 simply did not serve stop 5.
+      routeStops: [
+        { route_id: '8', direction_id: '0', seq: 0, stop_id: '5_merge' },
+        { route_id: '8', direction_id: '0', seq: 1, stop_id: '6' },
+      ],
+    });
+
+    // Mapped to primitives: node:sqlite hands back null-prototype rows, which
+    // a strict deep-equal against an object literal rejects on the prototype
+    // alone. The same reason the schema tests above map to names.
+    assert.deepEqual(
+      db
+        .prepare('SELECT seq, stop_id FROM route_stops ORDER BY seq')
+        .all()
+        .map((row) => [row.seq, row.stop_id]),
+      [
+        [0, '5'],
+        [1, '6'],
+      ],
+    );
+    assert.equal(counts.routeStops, 2);
+    db.close();
+  });
+
+  test('remaps stop_routes and does not duplicate a pair the twin already had', () => {
+    const { db, counts } = emit({
+      // The union saw the stop under both ids. Remapping collides them onto
+      // (5, 8), which is the stop_routes primary key.
+      stopRoutes: [
+        { stop_id: '5', route_id: '8' },
+        { stop_id: '5_merge', route_id: '8' },
+        { stop_id: '5_merge', route_id: '20' },
+      ],
+      routeStops: [],
+    });
+
+    assert.deepEqual(
+      db
+        .prepare('SELECT stop_id, route_id FROM stop_routes ORDER BY route_id')
+        .all()
+        .map((row) => [row.stop_id, row.route_id]),
+      [
+        ['5', '20'],
+        ['5', '8'],
+      ],
+    );
+    assert.equal(counts.stopRoutes, 2);
+    db.close();
+  });
+
+  test('leaves rows alone when the _merge stop was kept', () => {
+    // A lone `_merge` row carrying a code no plain row has is not dropped, so
+    // nothing about its relationships may move either.
+    const db = new DatabaseSync(':memory:');
+    const lone = {
+      stop_id: '77_merge',
+      stop_code: '77',
+      stop_name: 'NIMITZ HWY',
+      stop_lat: '21.3',
+      stop_lon: '-157.86',
+    };
+    const counts = emitDatabase(db, {
+      stops: [twinStops[0], lone],
+      routes,
+      stopRoutes: [{ stop_id: '77_merge', route_id: '8' }],
+      routeStops: [{ route_id: '8', direction_id: '0', seq: 0, stop_id: '77_merge' }],
+      feedStartDate: '20260701',
+      feedEndDate: '20260822',
+    });
+
+    assert.deepEqual(
+      db.prepare('SELECT stop_id FROM stop_routes').all().map((row) => row.stop_id),
+      ['77_merge'],
+    );
+    assert.deepEqual(
+      db.prepare('SELECT stop_id FROM route_stops').all().map((row) => row.stop_id),
+      ['77_merge'],
+    );
+    assert.equal(counts.stopRoutes, 1);
+    db.close();
+  });
+
+  /**
+   * Dropping a relationship whose id is not in the feed is right, and doing it
+   * silently is not. Increment 6's `route_stops` bug was exactly this shape —
+   * rows vanishing during the build with every reported count still looking
+   * healthy — and it survived five increments because nothing ever said a
+   * number had gone down.
+   *
+   * The floor check in `publish.mjs` catches a *total* collapse. A partial one
+   * — a feed that changes id format for some rows, say — clears the floor and
+   * ships.
+   */
+  test('reports how many relationship rows referenced an id that is not in the feed', () => {
+    const { counts } = emit({
+      stopRoutes: [
+        { stop_id: '5', route_id: '8' },
+        { stop_id: 'ghost', route_id: '8' },
+        { stop_id: '6', route_id: 'no-such-route' },
+      ],
+      routeStops: [
+        { route_id: '8', direction_id: '0', seq: 0, stop_id: '5' },
+        { route_id: '8', direction_id: '0', seq: 1, stop_id: 'ghost' },
+      ],
+    });
+
+    assert.equal(counts.stopRoutesOrphaned, 2);
+    assert.equal(counts.routeStopsOrphaned, 1);
+    // And the good rows still went in.
+    assert.equal(counts.stopRoutes, 1);
+    assert.equal(counts.routeStops, 1);
+  });
+
+  /**
+   * The two have to be told apart or the log lies in the other direction. A
+   * remap collision is the fix working — the same relationship arriving under
+   * two ids — and counting it as a lost row would report data loss every build.
+   */
+  test('counts a remap collision as a de-duplication, not as a lost row', () => {
+    const { counts } = emit({
+      stopRoutes: [
+        { stop_id: '5', route_id: '8' },
+        { stop_id: '5_merge', route_id: '8' },
+      ],
+      routeStops: [],
+    });
+
+    assert.equal(counts.stopRoutesDeduplicated, 1);
+    assert.equal(counts.stopRoutesOrphaned, 0);
+    assert.equal(counts.stopRoutes, 1);
+  });
+
+  test('still drops a relationship pointing at a stop that is not in the feed', () => {
+    // The remap must not become a way for unknown ids to slip past the
+    // known-stop check that follows it.
+    const { db, counts } = emit({
+      stopRoutes: [{ stop_id: 'ghost', route_id: '8' }],
+      routeStops: [{ route_id: '8', direction_id: '0', seq: 0, stop_id: 'ghost' }],
+    });
+
+    assert.equal(counts.stopRoutes, 0);
+    assert.equal(counts.routeStops, 0);
+    db.close();
   });
 });
 

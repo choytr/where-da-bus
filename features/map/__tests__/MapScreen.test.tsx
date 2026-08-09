@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { MapScreen } from '../MapScreen';
@@ -39,6 +40,9 @@ jest.mock('react-native-maps', () => {
 
     return (
       <View>
+        {/* The zoom lockout after a pin tap is a prop on the map and nothing
+            else, so the double reports it the way it reports a camera move. */}
+        <Text>{`zoomEnabled: ${props.zoomEnabled !== false}`}</Text>
         <Pressable
           accessibilityLabel="map surface"
           onPress={() =>
@@ -109,15 +113,16 @@ jest.mock('react-native-maps', () => {
     );
   });
 
+  /**
+   * `title` is rendered under a label of its own rather than as bare text.
+   * A `Marker` with a `title` is a `Marker` MapKit will draw its own callout
+   * for and select by itself, which is the state disagreement `StopMarker`
+   * exists to end — so a test has to be able to see the prop distinctly from
+   * the name the marker now draws in its own view.
+   */
   const MockMarker = ({ title, onPress, identifier, children }: any) => (
     <Pressable accessibilityLabel={`pin ${identifier}`} onPress={() => onPress?.(press)}>
-      {title === undefined ? null : <Text>{title}</Text>}
-      {children}
-    </Pressable>
-  );
-
-  const MockCallout = ({ onPress, children }: any) => (
-    <Pressable accessibilityLabel="callout" onPress={onPress}>
+      {title === undefined ? null : <Text>{`native callout: ${title}`}</Text>}
       {children}
     </Pressable>
   );
@@ -126,7 +131,6 @@ jest.mock('react-native-maps', () => {
     __esModule: true,
     default: MockMapView,
     Marker: MockMarker,
-    Callout: MockCallout,
   };
 });
 
@@ -246,14 +250,46 @@ const client: TheBusClient = {
   }),
 };
 
-const stop = (id: string, name: string, meters: number): StopWithDistance => ({
+/**
+ * The opacity of the name drawn under a pin, or null if no marker carries that
+ * name at all.
+ *
+ * Presence is the wrong question now. `StopMarker` keeps its label mounted at
+ * all times and hides it with opacity, because adding and removing that child
+ * threw markers to the top-left corner of a real device — see the note in that
+ * file. So the sheet's row and the map's label are both always in the tree, and
+ * the one under the pin is the one whose style carries an opacity.
+ */
+const labelOpacity = (name: string): number | null => {
+  for (const node of screen.queryAllByText(name)) {
+    const style = StyleSheet.flatten(node.props.style);
+    if (style !== undefined && typeof style.opacity === 'number') return style.opacity;
+  }
+  return null;
+};
+
+/**
+ * `lon` is a parameter only because the label tests need a stop the close-zoom
+ * camera can actually see. Labels are culled to the visible rectangle on both
+ * axes, and the default longitude sits well off the right-hand edge at that
+ * zoom — which is correct behaviour, and which no other test cares about.
+ */
+const stop = (
+  id: string,
+  name: string,
+  meters: number,
+  lon = -157.85,
+): StopWithDistance => ({
   stop_id: id,
   stop_code: id,
   stop_name: name,
   lat: 21.3 + Number(id) / 1000,
-  lon: -157.85,
+  lon,
   meters,
 });
+
+/** Centred under the close-zoom camera, so its name is on screen to be read. */
+const IN_VIEW_LON = -157.8583;
 
 const METRICS: Metrics = {
   frame: { x: 0, y: 0, width: 393, height: 852 },
@@ -305,7 +341,94 @@ describe('MapScreen', () => {
     expect(screen.getAllByText('KAPALULU PL').length).toBeGreaterThan(0);
   });
 
-  it('carries the required attribution at the top of the sheet', async () => {
+  it('writes a stop name on the map once the camera is close enough', async () => {
+    // Truman, 2026-08-08, with screenshots of Apple Maps and Google Maps: both
+    // put the name beside the icon and neither hides it behind a bubble.
+    //
+    // Stop '7' rather than '5' because `stop` derives latitude from the id, and
+    // only '7' lands near the centre of the close-zoom camera. Anything much
+    // further south falls behind the sheet, where labels are deliberately not
+    // spent.
+    mockNearby.mockResolvedValue([stop('7', 'LAGOON DR', 120, IN_VIEW_LON)]);
+
+    await show();
+    await waitFor(() => screen.getByLabelText('pin 7'));
+    await fireEvent.press(screen.getByLabelText('zoom in close'));
+
+    await waitFor(() => expect(labelOpacity('LAGOON DR')).toBe(1));
+  });
+
+  it('writes no names at the zoom the map opens on', async () => {
+    // The default framing is the whole 1.5 km query radius, and that is the
+    // zoom at which every name at once became the heap in IMG_4479. Nothing
+    // but the selection is labelled until a rider comes closer.
+    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+
+    await show();
+
+    await waitFor(() => screen.getByLabelText('pin 5'));
+    // Mounted, and invisible. Unmounting it is what moved the pins.
+    expect(labelOpacity('LAGOON DR')).toBe(0);
+  });
+
+  it('stops the map zooming for a moment after a pin is tapped', async () => {
+    // Tapping two pins in quick succession was being counted as a double tap,
+    // and iOS zoomed. The zooming recogniser is MKMapView's own and is not
+    // exposed, so the map is simply told not to zoom for slightly longer than
+    // the system's double-tap window.
+    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+    await show();
+    await waitFor(() => screen.getByLabelText('pin 5'));
+
+    screen.getByText('zoomEnabled: true');
+    await fireEvent.press(screen.getByLabelText('pin 5'));
+
+    screen.getByText('zoomEnabled: false');
+  });
+
+  it('gives zooming back once the double-tap window has passed', async () => {
+    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+    await show();
+    await waitFor(() => screen.getByLabelText('pin 5'));
+    await fireEvent.press(screen.getByLabelText('pin 5'));
+
+    // A pinch a second later has to work, or the cure is worse than the zoom.
+    await waitFor(() => screen.getByText('zoomEnabled: true'));
+  });
+
+  it('keeps the label mounted when its visibility changes', async () => {
+    // The regression that put two markers in the top-left corner of a real
+    // device, IMG_4524. Adding or removing a child inside a react-native-maps
+    // marker is a mount instruction against a view whose subviews belong to
+    // MapKit, and the two come apart; hidden-with-opacity never mounts or
+    // unmounts anything. Counted rather than inspected, because what must not
+    // happen is the node going away.
+    mockNearby.mockResolvedValue([stop('7', 'LAGOON DR', 120, IN_VIEW_LON)]);
+
+    await show();
+    await waitFor(() => screen.getByLabelText('pin 7'));
+    const before = screen.getAllByText('LAGOON DR').length;
+
+    await fireEvent.press(screen.getByLabelText('zoom in close'));
+    await waitFor(() => expect(labelOpacity('LAGOON DR')).toBe(1));
+
+    expect(screen.getAllByText('LAGOON DR')).toHaveLength(before);
+  });
+
+  it('leaves MapKit no callout of its own to open', async () => {
+    // A `title` hands MapKit a callout *and* an annotation selection it manages
+    // itself, which nothing here can see or synchronise with `selectedStop`.
+    // On a device the two disagreed in both directions: a callout up over an
+    // unselected sheet, and a selected sheet with no pin marked at all.
+    mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+
+    await show();
+
+    await waitFor(() => screen.getByLabelText('pin 5'));
+    expect(screen.queryByText(/native callout/)).toBeNull();
+  });
+
+  it('carries the required attribution in the sheet', async () => {
     await show();
     screen.getByText(ATTRIBUTION);
   });
@@ -341,7 +464,7 @@ describe('MapScreen', () => {
     });
   });
 
-  it('does not query on a long press until the callout is pressed', async () => {
+  it('does not query on a long press until the offer is pressed', async () => {
     await show();
     await waitFor(() => {
       expect(mockNearby).toHaveBeenCalledTimes(1);
@@ -355,7 +478,7 @@ describe('MapScreen', () => {
     expect(mockNearby).toHaveBeenCalledTimes(1);
     expect(mockCameraMoves).toEqual([]);
 
-    await fireEvent.press(screen.getByLabelText('callout'));
+    await fireEvent.press(screen.getByLabelText('pin pending-anchor'));
 
     await waitFor(() => {
       expect(mockNearby).toHaveBeenCalledTimes(2);
@@ -523,7 +646,7 @@ describe('MapScreen', () => {
     // The one exception, and Truman's call on 2026-08-03: a long press names a
     // point, often near an edge or under the sheet, so answering the question
     // without travelling to it puts the answer where it cannot be seen. The
-    // travelling waits for the callout — the press that says yes.
+    // travelling waits for the offer — the press that says yes.
     await show();
     await waitFor(() => {
       expect(mockNearby).toHaveBeenCalledTimes(1);
@@ -532,7 +655,7 @@ describe('MapScreen', () => {
     await fireEvent.press(screen.getByLabelText('long press the map'));
     expect(mockCameraMoves).toEqual([]);
 
-    await fireEvent.press(screen.getByLabelText('callout'));
+    await fireEvent.press(screen.getByLabelText('pin pending-anchor'));
 
     await waitFor(() => {
       expect(mockNearby).toHaveBeenLastCalledWith({ lat: 21.45, lon: -157.95 });
@@ -552,7 +675,7 @@ describe('MapScreen', () => {
     await fireEvent.press(screen.getByLabelText('zoom in close'));
 
     await fireEvent.press(screen.getByLabelText('long press the map'));
-    await fireEvent.press(screen.getByLabelText('callout'));
+    await fireEvent.press(screen.getByLabelText('pin pending-anchor'));
 
     await waitFor(() => {
       expect(mockCameraMoves).toHaveLength(1);
@@ -657,10 +780,12 @@ describe('MapScreen', () => {
       await waitFor(() => {
         expect(screen.queryByLabelText('Back to nearby stops')).toBeNull();
       });
-      // Both stops are rows again, not just the one that was open. Two matches
-      // apiece: the pin's title renders the name as well as the row does.
-      expect(screen.getAllByText('LAGOON DR').length).toBeGreaterThan(1);
-      expect(screen.getAllByText('KAPALULU PL').length).toBeGreaterThan(1);
+      // Both stops are rows again, not just the one that was open, and at the
+      // zoom the map opens on neither pin is showing its name.
+      expect(screen.getAllByText('LAGOON DR').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('KAPALULU PL').length).toBeGreaterThan(0);
+      expect(labelOpacity('LAGOON DR')).toBe(0);
+      expect(labelOpacity('KAPALULU PL')).toBe(0);
     });
 
     it('raises the sheet to medium when a stop is selected from peek', async () => {
@@ -719,6 +844,130 @@ describe('MapScreen', () => {
         screen.getByText(NOTICES.unreachable);
       });
       expect(screen.queryByText(NOTICES.empty)).toBeNull();
+    });
+  });
+
+  /**
+   * The long-press state machine, driven hard on purpose.
+   *
+   * These exist because of the crash in docs/backlog.md, which Truman narrowed
+   * to the tap-hold *Search here* gesture. They were written to *reproduce* it
+   * and they do not: the JavaScript survives every order and repetition below.
+   * That is the finding they record. Keeping them means the ruling-out stays
+   * true rather than being a claim someone made once — and the paths they cover
+   * (a stale `pending` captured by the offer, a marker replaced without being
+   * dismissed) are ones nothing else exercises.
+   *
+   * The offer used to be a `Callout` raised by an imperative `showCallout()`
+   * on the marker's ref, and this block used to carry a warning that the suite
+   * structurally could not reach that call. It is gone: `PendingMarker` draws
+   * the pill in its own view and there is no ref, no effect and no native
+   * command left on this path. **That deletes one of the backlog's two crash
+   * candidates without testing it, which is not the same as fixing the crash.**
+   * The other candidate is untouched and these tests still cannot settle it:
+   * taking up the offer unmounts the marker from inside its own press handler,
+   * which is exactly what `searchHere` still does.
+   */
+  describe('the long-press anchor gesture, under abuse', () => {
+    const longPress = () => fireEvent.press(screen.getByLabelText('long press the map'));
+    const callout = () => fireEvent.press(screen.getByLabelText('pin pending-anchor'));
+    const tapMap = () => fireEvent.press(screen.getByLabelText('map surface'));
+    const panAway = () => fireEvent.press(screen.getByLabelText('pan the camera away'));
+
+    it('survives twenty long presses each taken up in turn', async () => {
+      mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+      await show();
+      await waitFor(() => screen.getByLabelText('pin 5'));
+
+      for (let i = 0; i < 20; i++) {
+        await longPress();
+        await callout();
+      }
+
+      // Each one is a real anchor move, so each one pans. The count is the point:
+      // nothing is being swallowed or doubled.
+      expect(mockCameraMoves).toHaveLength(20);
+    });
+
+    it('replaces an undismissed marker rather than stacking a second one', async () => {
+      await show();
+      await longPress();
+      await longPress();
+      await longPress();
+
+      // One marker, one offer — three presses do not leave two offers to tap.
+      expect(screen.getAllByLabelText('pin pending-anchor')).toHaveLength(1);
+      await callout();
+      expect(mockCameraMoves).toHaveLength(1);
+    });
+
+    it('takes up an offer that the camera has since moved away from', async () => {
+      // The offer closes over the coordinate the press landed on, and a pan in
+      // between must not change which point gets searched.
+      await show();
+      await longPress();
+      await panAway();
+      await callout();
+
+      expect(mockCameraMoves).toHaveLength(1);
+    });
+
+    it('keeps a pending offer alive across a selection, and clears the card when it is taken', async () => {
+      mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120)]);
+      await show();
+      await waitFor(() => screen.getByLabelText('pin 5'));
+
+      await longPress();
+      await fireEvent.press(screen.getByLabelText('pin 5'));
+
+      // Selecting a stop does not dismiss the marker — only a map tap and
+      // taking the offer do — so the offer is still there to take.
+      await waitFor(() => screen.getByLabelText('Back to nearby stops'));
+      screen.getByLabelText('pin pending-anchor');
+
+      await callout();
+
+      // And taking it drops the card on purpose: the stop set behind that card
+      // is about to be replaced, and a card for a stop no longer in the list
+      // would go on polling for it.
+      await waitFor(() => {
+        expect(screen.queryByLabelText('Back to nearby stops')).toBeNull();
+      });
+      expect(mockCameraMoves).toHaveLength(1);
+    });
+
+    it('survives ten offers dismissed without being taken', async () => {
+      await show();
+      for (let i = 0; i < 10; i++) {
+        await longPress();
+        await tapMap();
+      }
+
+      expect(screen.queryByLabelText('pin pending-anchor')).toBeNull();
+      expect(mockCameraMoves).toHaveLength(0);
+
+      await longPress();
+      await callout();
+      expect(mockCameraMoves).toHaveLength(1);
+    });
+
+    it('survives the gesture interleaved with everything else on the screen', async () => {
+      mockNearby.mockResolvedValue([stop('5', 'LAGOON DR', 120), stop('6', 'KAPALULU PL', 340)]);
+      await show();
+      await waitFor(() => screen.getByLabelText('pin 5'));
+
+      for (let i = 0; i < 8; i++) {
+        await longPress();
+        await panAway();
+        await callout();
+        await fireEvent.press(screen.getByLabelText('pin 5'));
+        await tapMap();
+        await fireEvent.press(screen.getByLabelText('Centre on my location'));
+      }
+
+      // Still usable at the end of all that, which is the whole assertion.
+      await longPress();
+      screen.getByLabelText('pin pending-anchor');
     });
   });
 });

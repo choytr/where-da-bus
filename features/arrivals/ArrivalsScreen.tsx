@@ -14,6 +14,7 @@ import type { Stop } from '../../data/gtfs/types';
 import type { TheBusClient } from '../../data/thebus';
 import { ArrivalRow } from './ArrivalRow';
 import { BoardHeader } from './BoardHeader';
+import { Attribution } from '../../lib/Attribution';
 import { NOTICES, describe, useArrivalBoard } from './board';
 import { useTheme } from '../../lib/theme';
 
@@ -88,45 +89,55 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
   }
 
   return (
-    <SectionList
-      style={{ backgroundColor: palette.background }}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
-      sections={sections}
-      keyExtractor={(arrival) => arrival.id}
-      stickySectionHeadersEnabled={false}
-      refreshControl={
-        // Spins only for a pull, never for the 60s poll, and never in place
-        // of the list — the times stay readable the whole way through.
-        <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={palette.muted} />
-      }
-      ListHeaderComponent={
-        <BoardHeader
-          stopName={stop?.stop_name ?? (stopResolved ? NOTICES.unknownStop : ' ')}
-          stopCode={stopCode}
-          fetchedAt={fetchedAt}
-          failure={failure}
-          now={tick}
-        />
-      }
-      renderSectionHeader={({ section }) =>
-        section.data.length === 0 ? null : (
-          <Text style={[styles.sectionHeader, { color: palette.muted, backgroundColor: palette.section }]}>
-            {section.title}
-          </Text>
-        )
-      }
-      renderItem={({ item }) => <ArrivalRow arrival={item} now={now} />}
-      ListEmptyComponent={
-        <View style={styles.empty}>
-          <Text style={[styles.emptyText, { color: palette.text }]}>{NOTICES.empty}</Text>
-          <Text style={[styles.emptyHint, { color: palette.muted }]}>{NOTICES.emptyHint}</Text>
-        </View>
-      }
-    />
+    <View style={[styles.fill, { backgroundColor: palette.background }]}>
+      <SectionList
+        style={{ backgroundColor: palette.background }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        sections={sections}
+        keyExtractor={(arrival) => arrival.id}
+        stickySectionHeadersEnabled={false}
+        refreshControl={
+          // Spins only for a pull, never for the 60s poll, and never in place
+          // of the list — the times stay readable the whole way through.
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={palette.muted} />
+        }
+        ListHeaderComponent={
+          <BoardHeader
+            stopName={stop?.stop_name ?? (stopResolved ? NOTICES.unknownStop : ' ')}
+            stopCode={stopCode}
+            fetchedAt={fetchedAt}
+            failure={failure}
+            now={tick}
+          />
+        }
+        renderSectionHeader={({ section }) =>
+          section.data.length === 0 ? null : (
+            <Text style={[styles.sectionHeader, { color: palette.muted, backgroundColor: palette.section }]}>
+              {section.title}
+            </Text>
+          )
+        }
+        renderItem={({ item }) => <ArrivalRow arrival={item} now={now} />}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={[styles.emptyText, { color: palette.text }]}>{NOTICES.empty}</Text>
+            <Text style={[styles.emptyHint, { color: palette.muted }]}>{NOTICES.emptyHint}</Text>
+          </View>
+        }
+      />
+
+      {/*
+        Outside the list. It shows whether or not anyone scrolls, and whether or
+        not there are arrivals — "no buses coming" is itself the provider's
+        answer, so the legend is owed either way.
+      */}
+      <Attribution />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   centerText: { fontSize: 14 },
   errorTitle: { fontSize: 16, fontWeight: '600', textAlign: 'center', maxWidth: 320 },

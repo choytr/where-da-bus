@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import { KeyGate, REGISTRATION_URL } from '../KeyGate';
 import { TheBusProvider, type ApiKeyStorage } from '../../../data/thebus';
 import { TestTheme } from '../../../lib/testing/theme';
+import { ATTRIBUTION } from '../../../lib/legal';
 
 const KEY = '3f7c1e92-8a4b-4d16-9f03-c5e28b71da40';
 
@@ -120,6 +121,18 @@ describe('KeyGate', () => {
     await fireEvent.press(screen.getByLabelText('Hide key'));
 
     expect(screen.getByLabelText('API key').props.secureTextEntry).toBe(true);
+  });
+
+  it('does not carry the provider legend, because it presents no data', async () => {
+    // The gate stands precisely because there is no key yet, so no request has
+    // been made and nothing on this screen is the provider's. The terms bind
+    // "you must present the Data with the following legend"; this presents
+    // none. Asserted rather than merely deleted, because the legend looks like
+    // something that has gone missing by accident. See lib/Attribution.tsx.
+    await show(fakeStorage());
+
+    await screen.findByText('Add your API key');
+    expect(screen.queryByText(ATTRIBUTION)).toBeNull();
   });
 
   it('shows where to register', async () => {
