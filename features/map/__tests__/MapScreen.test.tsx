@@ -136,10 +136,20 @@ jest.mock('react-native-maps', () => {
     </Pressable>
   );
 
+  /**
+   * Reports its coordinate count as text, because the assertion that matters is
+   * that this is **always mounted** and only its coordinates change. A double
+   * that rendered nothing for an empty line could not tell the two apart.
+   */
+  const MockPolyline = ({ coordinates, testID }: any) => (
+    <Text testID={testID}>{`polyline points: ${coordinates?.length ?? 0}`}</Text>
+  );
+
   return {
     __esModule: true,
     default: MockMapView,
     Marker: MockMarker,
+    Polyline: MockPolyline,
   };
 });
 
@@ -221,6 +231,11 @@ const mockQueries = {
     short_name: '1',
     long_name: 'Kalihi - Waikiki',
   })),
+  shapeById: jest.fn(async (): Promise<Coords[] | null> => [
+    { lat: 21.33, lon: -157.87 },
+    { lat: 21.31, lon: -157.85 },
+    { lat: 21.28, lon: -157.83 },
+  ]),
   routeStops: jest.fn(async (): Promise<RouteDirection[]> => [
     {
       directionId: '0',
@@ -1671,6 +1686,74 @@ describe('MapScreen', () => {
 
       await waitFor(() => screen.getByTestId('route-band'));
       expect(screen.getByLabelText('Stop 2, WAIKIKI')).toBeTruthy();
+    });
+
+    describe('the route line', () => {
+      /**
+       * The rule the map section of `docs/backlog.md` exists for. Route mode
+       * changes this overlay's coordinates, never its presence — mounting a
+       * child inside `MapView` is the seam with a SIGABRT behind it.
+       */
+      it('is mounted with no points before a route is showing', async () => {
+        await show();
+
+        expect(screen.getByTestId('route-line')).toBeTruthy();
+        expect(screen.getByText('polyline points: 0')).toBeTruthy();
+      });
+
+      it('draws the representative shape of the direction being shown', async () => {
+        await showRoute();
+
+        await waitFor(() => screen.getByText('polyline points: 3'));
+        expect(mockQueries.shapeById).toHaveBeenCalledWith('s-out');
+      });
+
+      it('draws the other direction’s shape after a flip', async () => {
+        await showRoute();
+        await waitFor(() => screen.getByText('polyline points: 3'));
+
+        await fireEvent.press(screen.getByLabelText('Show the other direction'));
+
+        await waitFor(() => expect(mockQueries.shapeById).toHaveBeenCalledWith('s-back'));
+      });
+
+      it('is still mounted, with no points, once the route is dismissed', async () => {
+        await showRoute();
+        await waitFor(() => screen.getByText('polyline points: 3'));
+
+        await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+        await waitFor(() => screen.getByText('polyline points: 0'));
+        expect(screen.getByTestId('route-line')).toBeTruthy();
+      });
+
+      /**
+       * It must not fall back to joining the stops up. Measured against the real
+       * shapes: p90 1.3 km out, worst 7.3 km, straight through Kāneʻohe Bay on
+       * the express runs.
+       */
+      it('draws nothing for a direction the feed gave no shape', async () => {
+        mockQueries.routeStops.mockResolvedValue([
+          {
+            directionId: '0',
+            shapeId: null,
+            stops: [
+              { stop_id: 'r1', stop_code: '901', stop_name: 'NO SHAPE HERE', lat: 21.33, lon: -157.87 },
+            ],
+          },
+        ]);
+        await showRoute();
+
+        expect(screen.getByText('polyline points: 0')).toBeTruthy();
+        expect(mockQueries.shapeById).not.toHaveBeenCalled();
+      });
+
+      it('draws nothing when the asset does not carry the shape it names', async () => {
+        mockQueries.shapeById.mockResolvedValue(null);
+        await showRoute();
+
+        expect(screen.getByText('polyline points: 0')).toBeTruthy();
+      });
     });
 
     /** A route the feed runs one way has nothing to flip to. */

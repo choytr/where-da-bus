@@ -292,6 +292,13 @@ unmistakably, the X, tab-switch-and-return, and any crash. Screenshots to
 `~/wheredabus-screenshots/<date>/`; **transcribe findings into a log the moment
 they arrive** — images do not survive a compaction and text does.
 
+**What was built.** As specified. `RouteLine` is `memo`ised and takes only its
+points; the colour is `palette.pin`, so the line and the stops on it read as one
+thing. The `Polyline` double in `MapScreen.test.tsx` reports its coordinate
+**count as text** — a double that rendered nothing for an empty line could not
+distinguish "always mounted with no points" from "not mounted", which is the one
+property these tests exist to hold.
+
 **Tests:** `draws the representative shape for the current direction`; `flipping
 direction draws the other shape`; `the line is empty rather than absent outside
 route mode`; `a direction with no shape draws no line`.

@@ -17,6 +17,7 @@ import { useAnchoredStops } from './useAnchoredStops';
 import { StopMarker } from './StopMarker';
 import { labelledStopIds } from './labels';
 import { PendingMarker } from './PendingMarker';
+import { RouteLine } from './RouteLine';
 import {
   centredOn,
   hasDriftedFrom,
@@ -227,7 +228,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     requestLocation,
     locationStatus,
   } = useAnchoredStops();
-  const { routesForStops, routeById, routeStops } = useStopQueries();
+  const { routesForStops, routeById, routeStops, shapeById } = useStopQueries();
 
   const map = useRef<MapView | null>(null);
   const sheet = useRef<BottomSheet | null>(null);
@@ -518,6 +519,36 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
       })),
     [direction, anchor],
   );
+
+  /**
+   * The line the map draws, decoded from the direction's representative shape.
+   *
+   * Empty rather than null: `RouteLine` is always mounted and only its
+   * coordinates change, because mounting a child inside `MapView` is the seam
+   * with a SIGABRT behind it. A direction the feed gave no shape draws nothing —
+   * it does **not** fall back to joining the stops up, which is 1.3 km wrong at
+   * p90.
+   */
+  const [linePoints, setLinePoints] = useState<readonly Coords[]>([]);
+
+  useEffect(() => {
+    const shapeId = direction?.shapeId ?? null;
+    if (shapeId === null) {
+      setLinePoints([]);
+      return;
+    }
+    let cancelled = false;
+    void shapeById(shapeId)
+      .then((points) => {
+        if (!cancelled) setLinePoints(points ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setLinePoints([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [direction, shapeById]);
 
   /**
    * What the map draws pins for: the route's stops in route mode, the anchor's
@@ -875,6 +906,13 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
           showsMyLocationButton={false}
           toolbarEnabled={false}
         >
+          {/*
+            First, and always mounted. Overlays draw under annotations on
+            MapKit either way, but the ordering says what is intended — and the
+            "always" is load-bearing rather than stylistic; see `RouteLine`.
+          */}
+          <RouteLine points={linePoints} />
+
           {pins.map((stop) => (
             <StopMarker
               key={stop.stop_id}
