@@ -63,6 +63,11 @@ one glance before anything is changed.
 - [ ] Does the **nearby** list scroll? (Not instrumented — just try it.)
 - [ ] Does the **arrivals card** scroll on a busy stop?
 
+**There is no control for the live buses.** They appear on their own once a
+route is showing, as green dots labelled `<fleet number> · here <n> s ago`. If a
+route is up during service hours and no dot ever appears, that is itself the
+finding. Pick a frequent route — 1, 2, A, E — rather than a half-hourly one.
+
 ## 2. Live buses — the churn this increment was most afraid of
 
 Markers are added and removed every 60 seconds, which is far more tree change

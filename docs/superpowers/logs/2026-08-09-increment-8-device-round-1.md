@@ -130,3 +130,50 @@ One muted line above the list reads `frame N · content M · …`. What it settl
 
 - Live buses on the route (Task 6) and the arrival→bus highlight (Task 7).
 - Those are device round 2, which needs a fresh build.
+
+---
+
+# The measurement, from round 2's build
+
+**Observed 2026-08-09, Route 10, sheet at full height on an `.ipa`:**
+
+```
+frame 2846 · content 3363 · has room to scroll
+```
+
+Truman: *"This particular list lets me scroll a little bit but there's more that
+it won't let me scroll to."*
+
+## The prediction was wrong, and the number says why
+
+The prediction in round 2's log was a false dichotomy. It offered
+`content > frame` ("frame is right, the gesture is swallowed") and
+`content == frame` ("unbounded, nothing to scroll"), and reality is a **third
+case neither covered**:
+
+**The frame is ~4× the visible sheet.** His phone is 414 × 896 pt; the tallest
+detent is about 730. The list's frame is **2846**. Content is 3363, so the list
+scrolls by exactly `3363 − 2846 = 517` pt and then stops — which is precisely
+"a little bit, and there's more it won't let me scroll to".
+
+**So the `scrollEnabled`/`useAnimatedProps` theory is dead.** Scrolling is
+enabled; there is simply almost nothing to scroll, because the frame is enormous.
+
+## What that means
+
+The sheet's content column is **not bounded by the sheet's height**. `flex: 1`
+against an unbounded parent does not bound anything, so the list sizes to its own
+rendered rows instead of to the sheet. 2846 ÷ 3363 is about 25 of ~30 rows, which
+is a virtualization window rather than a layout — the frame grows as more rows
+render, which is why it scrolls a little and then stops again.
+
+This is the same family as the bug `08e189d` fixed on 2026-08-08 — *"a scroll
+view that is a flex child of a sized column sizes to its content"* — except the
+column here is **not sized**, so adding `flex: 1` to the children could never
+have fixed it. That is why six lists got `flex: 1` and the sheet stayed broken.
+
+**It also retires the Expo Go/`.ipa` puzzle**, which was never the right frame:
+nothing here is native-specific. A 2846 pt frame with 30 rows behaves very
+differently from one with 6 — the nearby list at the peek shows a handful of
+stops and fits, so it looks fine until a list gets long. What differed was
+probably how far anyone scrolled, not the runtime.

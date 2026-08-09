@@ -202,6 +202,31 @@ describe('StopSheet', () => {
    * because Jest runs no layout.
    */
   /**
+   * The regression guard for the bug that made every list in the sheet
+   * unscrollable on a real build for two increments.
+   *
+   * Measured on a device 2026-08-09: with `flex: 1` here, the route list's frame
+   * came back as 2846 pt inside a sheet at most ~730 pt tall. `flex: 1` bounds a
+   * child against its parent, and this parent was not bounded — so the list
+   * sized itself to its rendered rows and scrolled by the 517 pt difference
+   * before stopping.
+   *
+   * Asserted as a relationship against the sheet's own detents rather than as a
+   * literal, so tuning a detent cannot break a test about something else.
+   */
+  it('bounds its content column to a real height, never flex', async () => {
+    await show(null);
+
+    const column = StyleSheet.flatten(screen.getByTestId('sheet-content').props.style);
+
+    expect(typeof column.height).toBe('number');
+    expect(column.height).toBeLessThanOrEqual(DETENTS[FULL_DETENT]);
+    expect(column.height).toBeGreaterThan(DETENTS[MEDIUM_DETENT]);
+    // `flex: 1` against an unbounded parent is what this replaced.
+    expect(column.flex).toBeUndefined();
+  });
+
+  /**
    * All three, not two. The resting sheet is the handle, one band and one row;
    * a band of a different height in any mode changes the sheet's height the
    * moment a rider switches to it, and reads as a twitch.

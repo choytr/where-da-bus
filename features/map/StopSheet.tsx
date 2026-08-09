@@ -264,6 +264,28 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     [onDetentChange],
   );
 
+  /**
+   * The content column's height, in points — **not `flex: 1`**.
+   *
+   * Measured on a device 2026-08-09: with `flex: 1` the route list's frame came
+   * back as **2846 pt inside a sheet at most ~730 pt tall**, against 3363 pt of
+   * content. The list therefore scrolled by 517 pt and stopped, with the rest
+   * unreachable. `flex: 1` bounds a child against its parent, and this parent
+   * was not bounded, so the list sized itself to however many rows
+   * virtualization had rendered — which is also why it scrolled a little,
+   * stopped, and then allowed a little more.
+   *
+   * This is the same family as the bug `08e189d` fixed on 2026-08-08, and the
+   * reason that fix did not reach the sheet: adding `flex: 1` to six children
+   * cannot bound anything when the column above them is unbounded.
+   *
+   * The height is knowable rather than inheritable — it is the tallest detent,
+   * less the grab handle that sits above the content. Taking it from `detents`
+   * means the column cannot disagree with the sheet it lives in, and every list
+   * inside it gets a real frame to be `flex: 1` against.
+   */
+  const contentHeight = Math.max(0, (detents[FULL_DETENT] ?? 0) - HANDLE_HEIGHT);
+
   const animationConfigs = useBottomSheetSpringConfigs({
     damping: 90,
     stiffness: 650,
@@ -324,7 +346,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
         rather than living at the foot of each one's scroll. Both modes are
         `flex: 1` above it.
       */}
-      <View style={styles.fill}>
+      <View testID="sheet-content" style={{ height: contentHeight }}>
         {selectedStop !== null ? null : routeView !== null ? (
           <>
             {/*
