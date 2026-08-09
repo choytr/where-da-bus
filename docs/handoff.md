@@ -7,40 +7,30 @@ up. Update it in place rather than adding a dated section each time.
 `CLAUDE.md` are the record; anything already in them belongs there, not here.
 When an increment ships, its write-up in this file collapses to a pointer.
 
-Last updated: **2026-08-09**. **Increments 1–6 are shipped, device-verified and
-merged.** **Increment 7 is code-complete and pushed on `dev`**, with five rounds
-of Expo Go feedback folded in; an `.ipa` device round is running and the
-whole-diff review is **still owed**. `main` is still at Increment 6.
+Last updated: **2026-08-09**. **Increments 1–7 are shipped and merged**, and
+`main` is at Increment 7. Increment 7's whole-diff review came back with one
+cosmetic finding, now in `docs/backlog.md`; its device round passed but was
+recorded only collectively — see the caveat in
+`docs/superpowers/logs/2026-08-09-increment-7-device-round.md`, which matters if
+a list turns out not to scroll.
 
 ---
 
 ## Start here
 
-**The live thread is Increment 8's grilling, which is mid-question.** See the
-section near the bottom of this file — it carries measurements that cost real
-effort and must not be re-derived.
+**Increment 8's grilling is COMPLETE. The next action is to write its spec and
+plan**, from the settled decisions in the *Increment 8* section at the foot of
+this file. Do not re-grill it, and do not re-derive its measurements — several
+cost a 73 MB file parse and one overturned a premise this document previously
+asserted.
 
-Two things are owed on Increment 7 before it can close, and neither blocks the
-grilling:
-
-1. **The whole-diff review at the increment boundary**, per `CLAUDE.md`. It has
-   not happened. This is where the cross-cutting findings live, and Increment 7
-   is nine tasks plus five feedback rounds — the largest diff the project has
-   reviewed at once.
-2. **The device round.** Truman started the build himself on 2026-08-09 and
-   expects nothing to break. The checklist is
-   `docs/superpowers/logs/2026-08-09-increment-7-device-round.md`, ordered by
-   risk — **section 1 is the seven lists whose `flex: 1` was changed on the
-   strength of one report and confirmed on none of them.** Findings go in that
-   file's table, marked `observed` or `inferred`.
-
-Then merging to `main`, which needs Truman's explicit permission.
+Nothing is owed on Increment 7. It is merged.
 
 Increment 7's spec and plan are
 `docs/superpowers/specs/2026-08-09-increment-7-peek-and-search.md` and its plan.
 Do not re-grill it and do not re-open what the spec settled.
 
-### What Increment 7 built
+### What Increment 7 built — shipped, for reference
 
 The map sheet's detents are points computed from a **measured** container. Its
 resting peek is the grab handle, a band naming the mode, and one row. Tapping a
@@ -79,9 +69,9 @@ network calls injected so they test without the native module.
   else, so the window is rebuilt from the query radius; a long press names a
   point on a map the rider is already looking at, at a zoom they chose.
 
-**Increment 8 is *routes on the map*, and its grilling is under way** — see the
-section at the foot of this file, which carries the measurements and the open
-question.
+**Increment 8 is *routes on the map*, and its grilling is finished** — see the
+section at the foot of this file, which carries every settled decision and the
+measurements behind them.
 
 ### Address search — built, and untried on a device
 
@@ -107,8 +97,9 @@ native module.
 
 ## Where things stand
 
-`dev` is ahead of `main` by the whole of Increment 7. **539 Jest, 91
-`node --test`, clean typecheck, clean `npm ci`.**
+`dev` and `main` are level at Increment 7. **539 Jest across 38 suites, 91
+`node --test`, clean typecheck** — verified locally 2026-08-09 immediately
+before the merge.
 
 **The sheet and the search have both been through Expo Go**, over five rounds on
 2026-08-09, and Truman is happy with them. On the sheet: "Ok I like this a lot
@@ -171,7 +162,7 @@ Read the plan for the increment you care about rather than the diff.
 | 4 | Each user brings their own AppID; no secret in the build |
 | 5 | The data refreshes itself, from a weekly Action |
 | 6 | Six correctness fixes, then a screenshot-driven UI pass over the map |
-| 7 | The sheet at rest, and search across stops, routes and addresses *(code complete; .ipa round and whole-diff review owed)* |
+| 7 | The sheet at rest, and search across stops, routes and addresses |
 
 Increment 6's record is `docs/superpowers/specs/2026-08-04-increment-6-correctness-and-ui.md`,
 its plan, and `docs/superpowers/logs/2026-08-04-increment-6-ui.md` — the UI log
@@ -244,64 +235,152 @@ only because the throwaway probe showed the unbiased reply beside the verdict.
 independent unofficial app against ours. Both of its actionable findings are
 built. Read it before touching the vehicle endpoint or the map.
 
-## Increment 8 — *routes on the map*, grilling in progress
+## Increment 8 — *routes on the map*. Grilled 2026-08-09, settled, unbuilt
 
-Opened 2026-08-09 with the `grilling` skill, as Truman expects for every
-increment. **One question has been put to him and is unanswered.** Resume there
-rather than starting over; the skill's rule is one question at a time, each with
-a recommendation, and facts looked up rather than asked.
+**The grilling is finished and every decision below is Truman's.** Do not
+re-open them. The next action is a spec and a plan.
 
-### What the increment was named as, in Increment 7's spec
+### What a rider gets
 
-A route result draws (a) that route's stops as the map's pins, (b) polylines
-under them, and (c) the one-bus-behind-a-single-arrival view. They were grouped
-because all three mount children inside `MapView` — the code path with the
-SIGABRT history in `docs/backlog.md`.
+Pick a route on the map and **the map draws it and stays** — it does not
+navigate to `/route/[id]` any more. It draws the route's real road line, that
+route's stops as the map's pins, and the buses actually driving it right now.
 
-### Measured 2026-08-09 — do not re-derive
+- **One direction at a time**, named by where it ends up — reuse
+  `RouteScreen`'s existing `Toward <last stop name>` wording
+  (`features/routes/RouteScreen.tsx:44`), because GTFS's `0`/`1` tells a rider
+  nothing. A flip control switches. **Truman asked for the current direction to
+  be made unmistakable in the UI**; the treatment is his to confirm on device.
+- **The sheet carries the route's full stop list in order** — a third sheet
+  mode. Its band must be exactly `PEEK_BAND` tall like the other two, or the
+  resting sheet twitches (`features/map/peek.ts:4`).
+- **An X leaves route mode, and nothing else does.** Panning does not drop it;
+  leaving the tab and coming back does not drop it. Both were put to him
+  explicitly.
+- **Each bus is labelled with its fleet number and the age of its last report** —
+  e.g. `252 · here 20 s ago`. Truman asked for this by name, after the old
+  DaBus app.
+- **Tapping an arrival highlights the bus already on screen**, joined on trip id.
 
-- **The bundled asset has no shape data at all.** `scripts/build-gtfs` reads
-  exactly five files — `feed_info`, `routes`, `stop_times`, `stops`, `trips` —
-  and emits `stops`, `routes`, `stop_routes`, `route_stops`, `meta` and the FTS
-  tables. Confirmed against the built asset, not just the script.
-- **`shapes.txt` is 9.8 MB: 278,384 points across 532 shapes**, averaging 523
-  points each, longest 2,516. **The whole asset today is 1.2 MB.**
-- `trips.txt` does carry `shape_id`, so shapes are joinable to routes. 532
-  shapes for 118 routes means many trip patterns per route, so "the" line for a
-  route is a *choice* of representative shape per direction, the way
-  `route_stops` already chooses for stops.
-- **`Arrival` already carries `tripId`, `vehicle` and `position`**
-  (`Coords | null`, never the `"0"`/`"???"` sentinels), already parsed and
-  already tested. The one-bus view needs no new endpoint and no XML parser.
+### The data — and a premise this file previously got wrong
 
-**So the three parts have wildly unequal prices.** (a) and (c) need no data
-change whatsoever. (b) needs a new table, a **`SCHEMA_VERSION` bump** (it is
-`1`), a republished generation, and an asset several times its current size —
-the exact data-migration tail Increment 7 recorded itself as having avoided.
+**The old claim that shapes cost "an asset several times its size" was wrong,
+and it is why polylines nearly got cut.** 9.8 MB is the raw CSV: full
+precision, redundant columns, all 532 variants. Measured 2026-08-09 as actually
+*stored* — Douglas–Peucker simplified, encoded polyline, against the 1.17 MB
+asset:
 
-### The open question
+| stored | 5 m | 10 m | 20 m |
+|---|---|---|---|
+| all 532 shapes | 201 KiB | **152 KiB** | 116 KiB |
+| 236, one per route+direction | 97 KiB | 73 KiB | 56 KiB |
 
-Does the polyline stay in Increment 8, or does the increment become stops-as-pins
-plus the bus view, leaving polylines to their own increment where the bump, the
-republish and the size *are* the subject?
+**Settled: all 532 shapes, keyed by `shape_id`, simplified at 10 m — ~152 KiB.**
+Not the cheaper 236, because **every live arrival carries a `shape` field naming
+the exact variant that bus is running** (`docs/api/README.md:162`, present on
+all 25 rows of `arrivals-mixed.json`). Storing only a representative per
+direction would draw a short-turn or express bus beside a line it is not on.
+The route view draws the representative; the bus view draws the named variant.
 
-**The recommendation put to him was to cut polylines out**, on three grounds:
-every rider carries the asset in the bundle whether or not they ever open a
-route; a schema bump means an old binary must be *refused* the new generation,
-which deserves its own device round; and the SIGABRT risk they were grouped for
-is fully exercised by stops-as-pins alone.
+**The cheap connect-the-stops line is dead, and was killed by measurement, not
+argument.** Comparing the representative trip's stops against *that same trip's*
+real shape, 236 route/directions, 132,332 points: median deviation 29 m, p90
+**1.3 km**, p99 **5.6 km**, worst **7.3 km** (route 60, both directions).
+**202 of 236 route/directions are ≥150 m wrong at their worst; none is under
+50 m.** It is fine in town and draws straight through Kāneʻohe Bay on the
+express and rural runs. Do not revive it.
 
-The follow-up already queued, if he cuts them: a cheap line drawn by connecting
-the route's stops in order costs nothing and is wrong at every curve — is that
-better or worse than no line at all?
+**`route_stops` is one representative trip, not a union** — `derive.mjs:150`
+picks the trip visiting the most stops per route+direction. Comparing its stops
+against a *different* trip's shape inflates the error badly; that mistake was
+made and corrected on 2026-08-09.
+
+### The buses — the fleet endpoint, not the arrival's own position
+
+**Settled: every live bus on the route, not the one bus behind an arrival.**
+The spec'd one-bus view is available for only about 1 arrival in 10 — in the
+real 25-arrival capture, **23 of 25 carry the `"0"` position sentinel**, because
+position exists only for `estimated: "1"` and `docs/api/README.md` records 96%
+of sampled arrivals as the undocumented `"2"`. A feature that is a dead end nine
+times out of ten is worse than one that is absent.
+
+- **The fleet endpoint is the only route to fleet-wide positions** and is **XML
+  only** — `docs/api/README.md:215`. Omit `num` and one request returns every
+  bus on Oahu: 1,184 elements, 333 KB, 29 KB gzipped. `route=` does **not**
+  filter; filtering is ours to do client-side.
+- **A freshness filter is mandatory, not hardening.** Most of that response is
+  dead buses carrying *plausible Oahu coordinates* — 929 stale ones in the
+  daytime sample. Unfiltered, it draws ~1,100 ghosts parked since 2022.
+- **Settled: a 5-minute window, applied as one rule in both directions** — a bus
+  is drawn while its last report is fresh and leaves the map when it stops being
+  fresh. The data makes this nearly judgement-free: 232 of 235 live buses
+  reported within five minutes and **the next-freshest was over ten hours old**.
+  Because the age is computed from the bus's own `last_message`, **a failed
+  fetch needs no special case at all** — the labels simply keep counting up and
+  the buses age off on their own. An earlier proposal for a separate two-minute
+  outage timer was dropped; do not reintroduce it.
+- **Poll every 60 s**, matching `features/arrivals/useArrivals.ts:28` and for the
+  same reason recorded there.
+- **`data/thebus/time.ts:89` already parses `<last_message>`'s
+  `M/D/YYYY h:mm:ss AM`**, including the UTC−10 trap that makes `Date.parse`
+  wrong every evening. The age is a subtraction, not new work.
+- **`<driver>` is an employee number and must be dropped at the parse
+  boundary**, not merely left unrendered. It is right there next to
+  `<number>` — the fleet number, which *is* what gets displayed.
+- **17 of 235 live buses report no route**, so some real buses cannot be
+  attributed to the route being viewed and will be left off. Known, accepted.
+
+### The schema bump, and the floor
+
+`SCHEMA_VERSION` goes **1 → 2**. **Truman authorised rebuilding and committing
+the bundled floor** (`assets/db/gtfs.db`, 1.17 MB → ~1.32 MB) so a fresh offline
+install still draws lines. This is the sanctioned exception to `CLAUDE.md`'s ban
+on rebuilding it by hand — the ban is against casual rebuilds, and a bump leaves
+no choice: the queries would otherwise ask the floor for a table it lacks.
+
+**The bump commit and the floor rebuild must land together.** Either alone
+leaves the app asking for something it cannot get. The weekly Action publishes
+**both v1 and v2** generations from here on, so an old sideloaded build keeps
+receiving fresh data — there is no App Store to push a fix through.
+
+### Chosen without asking him, per the working agreement
+
+Tapping a route stop in the sheet centres the map on it, matching Increment 7's
+row-taps-pan / pin-taps-don't rule. Tapping a bus does nothing yet. The XML
+parser is hand-rolled rather than a dependency — the document is flat and Expo
+Go's ceiling makes every package a real cost.
+
+### Deferred, in `docs/backlog.md`
+
+**Where a bus's lateness is shown.** `adherence` gets parsed and carried in the
+model so surfacing it later is a UI change, not a data change. Truman ruled it
+off the bus label — which already carries two facts — and wants it elsewhere on
+the map, but deferred placement until he can see it. Positive means **early**;
+nothing bounds it to ±60.
+
+### The risk to plan around
+
+**Buses move, so markers are added and removed every 60 s** — far more tree
+churn than stops, which change only on a pan. That is the same seam as the
+SIGABRT at `docs/backlog.md:165`, which is fixed but never proven gone. **The
+live-bus layer goes on a device early, not at the end.** The label rules from
+that entry are non-negotiable: labels **always mounted** and hidden with
+`opacity` rather than conditionally rendered, and `position: 'absolute'` so they
+sit outside the marker's frame.
+
+### Unknowable from here — do not assert either
+
+- **How often the arrival→bus highlight lands.** It needs a live call with
+  Truman's AppID, which is in his keychain. Build it to light up when the join
+  succeeds; promise no hit rate.
+- **How any of it looks.** No simulator and no device on this side.
 
 ## Suggested skills
 
-- **`grilling` is already open on Increment 8** and mid-question. Not for
-  Increment 7, which had its own on 2026-08-09 and whose spec records what it
-  settled.
-- **`superpowers:requesting-code-review`** for Increment 7's owed whole-diff
-  review, once the device round is in.
+- **Not `grilling`.** Increment 8's is finished and its decisions are above.
+  Reopening them wastes the session and re-argues settled calls.
+- **`superpowers:writing-plans`** is the next skill, for Increment 8's spec and
+  plan. `superpowers:requesting-code-review` again at that increment's boundary.
 - **`superpowers:systematic-debugging`** — whenever the app's *appearance* or a
   native-layer bug comes up. It is what stopped a fix being aimed at a cause the
   backlog merely asserted.

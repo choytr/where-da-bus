@@ -107,6 +107,27 @@ wrong, correct the entry rather than only the code.
   ten-second-old times is the behaviour the immediate refetch exists for. Worth
   measuring before changing, and worth changing only with a device to check it
   on.
+- **Switching the search filter shows the previous filter's results for one
+  debounce window.** `useSearch` re-runs its effect on a filter change and sets
+  `{ state: 'running', results: onScreen.current }`, so `SearchOverlay`'s
+  `ResultList` renders stop rows under a *Routes* chip — or the reverse — for
+  ~175 ms while "Searching…" is on screen. **`StopsScreen` is immune**: it
+  splits results by `kind` through `foundStops`/`foundRoutes`, so the
+  mismatched rows are filtered out client-side and the list simply shows
+  nothing. Found by Increment 7's whole-diff review on 2026-08-09, **not on a
+  device**; cosmetic, self-correcting, and a mis-tap during the window still
+  opens the stop the row names. The fix is to distinguish a filter change from
+  a query change in the effect and reset to `NO_RESULTS` on the former — the
+  carry-forward exists so a *keystroke* never blanks the list under a thumb,
+  which is not what an explicit change of filter is.
+- **Where a bus's lateness is shown is undecided.** Increment 8 will parse
+  `adherence` and carry it in the model, so surfacing it later is a UI change
+  and not a data change. Settled in the increment's grilling: it does **not**
+  go on the bus icon's label, which already carries the fleet number and the
+  age of that bus's last report. Truman wants it elsewhere on the map and
+  deferred the placement until he can see it on a device, so nothing renders it
+  until then. Two traps for whoever does: **positive `adherence` means
+  *early***, and nothing bounds it to ±60 minutes.
 - Route chips flicker for one frame when search clears, and stale entries
   persist when the id list is empty.
 - The favorite `Pressable` lacks `accessibilityState={{ selected: isFavorite }}`.

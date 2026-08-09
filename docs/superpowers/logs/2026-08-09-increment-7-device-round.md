@@ -104,4 +104,20 @@ which is public.
 
 | # | Screen | What happened | observed / inferred |
 |---|---|---|---|
-| | | | |
+| 1 | all of it | Nothing broken. The `.ipa` from run `31315624586` (built off `dev`, 2026-08-09 13:22Z) went on the phone and Truman found no defect. | **observed by Truman, reported verbally 2026-08-09** — not transcribed line by line at the time |
+
+**This round was run and passed, but it was not recorded checklist-line by
+checklist-line.** Truman confirmed on 2026-08-09, when authorising the merge,
+that he had put the build on the phone and nothing broke. That is his
+observation and it is recorded as such — but it is *not* the same artefact as
+seven ticked boxes against section 1, and this file should not be read as if it
+were.
+
+**So section 1 remains the thinnest-covered part of Increment 7.** The seven
+lists' `flex: 1` was changed on the strength of one report, and this round
+confirms them only collectively, by their absence from a list of complaints. A
+scroll view that cannot scroll still reports every scroll affordance as
+present — which is exactly how the first one got missed by 90 Jest tests and a
+clean typecheck. **If a list turns out not to scroll after all, this is the
+entry that explains why nobody caught it, and the fix belongs on a follow-up
+branch rather than being treated as a regression.**
