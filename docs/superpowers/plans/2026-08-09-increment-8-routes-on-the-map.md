@@ -427,6 +427,20 @@ the label is **always mounted** and hidden with `opacity`, it is
 **Then push, and run device round 2** — the churn round. This is the layer the
 spec names as the risk to plan around.
 
+**What was built.** As contracted, with `busLabel` and `ageWords` living in
+`BusMarker.tsx` rather than the hook — they are how the marker draws, and the
+`memo` comparator keys on the label string, so the two belong together.
+
+`useVehicles` keys its fetch effect on **whether** a route is showing, not on
+which one. The response is the whole island either way, so flipping direction or
+switching route must not throw away a current fleet to receive the same bytes
+again. Route matching is on `short_name`, trimmed and case-insensitive — `A LINE`
+and `1L` are real route numbers and the two sides disagree on case.
+
+`ageWords` is deliberately coarse — "here now", then fifteens, then minutes.
+Precision the thirty-second tick cannot keep current would cost a marker
+re-snapshot for nothing.
+
 **Tests:** `drops a bus whose last report is older than five minutes`; `keeps a
 bus reporting within five minutes`; `a bus ages off between polls`; `a failed
 fetch keeps the buses and lets them age`; `only buses on the route are drawn`; `a

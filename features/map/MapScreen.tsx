@@ -18,6 +18,8 @@ import { StopMarker } from './StopMarker';
 import { labelledStopIds } from './labels';
 import { PendingMarker } from './PendingMarker';
 import { RouteLine } from './RouteLine';
+import { BusMarker } from './BusMarker';
+import { useVehicles } from './useVehicles';
 import {
   centredOn,
   hasDriftedFrom,
@@ -521,6 +523,15 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   );
 
   /**
+   * The buses on this route, right now.
+   *
+   * Keyed on the route's `short_name` rather than its id, because that is what
+   * the fleet response carries. Null when no route is showing, and then nothing
+   * is requested at all.
+   */
+  const { buses } = useVehicles(client, loadedRoute?.route?.short_name ?? null);
+
+  /**
    * The line the map draws, decoded from the direction's representative shape.
    *
    * Empty rather than null: `RouteLine` is always mounted and only its
@@ -912,6 +923,10 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
             "always" is load-bearing rather than stylistic; see `RouteLine`.
           */}
           <RouteLine points={linePoints} />
+
+          {buses.map((bus) => (
+            <BusMarker key={bus.vehicle.number} bus={bus} highlighted={false} />
+          ))}
 
           {pins.map((stop) => (
             <StopMarker

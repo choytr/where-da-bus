@@ -12,7 +12,7 @@ import { ATTRIBUTION } from '../../../lib/legal';
 import { NOTICES } from '../../arrivals/board';
 import type { RouteSummary, Stop, StopWithDistance } from '../../../data/gtfs/types';
 import type { RouteDirection } from '../../../data/gtfs/db';
-import type { ArrivalsResult } from '../../../data/thebus/types';
+import type { ArrivalsResult, FleetResult, Vehicle } from '../../../data/thebus/types';
 import type { TheBusClient } from '../../../data/thebus';
 import type { LocationState } from '../../stops/useLocation';
 import type { Coords } from '../../../lib/distance';
@@ -326,12 +326,40 @@ let mockArrivalsResult: ArrivalsResult = {
  * the user and the client is rebuilt whenever it changes. The route reads the
  * real one from `useTheBus()`.
  */
+/**
+ * The fleet the map draws buses from. Held in a `let` so a test can replace it
+ * before rendering, the way `mockArrivalsResult` works.
+ */
+let mockFleetResult: FleetResult = {
+  ok: true,
+  fleet: { serverTime: new Date('2026-08-02T21:43:00Z'), vehicles: [] },
+};
+
 const client: TheBusClient = {
   arrivals: jest.fn(async (stopCode: string, options?: { signal?: AbortSignal }) => {
     mockArrivalCalls.push({ stopCode, signal: options?.signal });
     return mockArrivalsResult;
   }),
+  vehicles: jest.fn(async () => mockFleetResult),
 };
+
+/** A bus that reported `agoMs` before the fleet's own timestamp. */
+function bus(number: string, route: string | null, agoMs = 20_000): Vehicle {
+  const serverTime = new Date('2026-08-02T21:43:00Z');
+  return {
+    number,
+    tripId: `trip-${number}`,
+    route,
+    position: { lat: 21.31, lon: -157.85 },
+    headsign: 'WAIKIKI',
+    adherence: 0,
+    lastMessage: new Date(serverTime.getTime() - agoMs),
+  };
+}
+
+function fleetOf(...vehicles: Vehicle[]): FleetResult {
+  return { ok: true, fleet: { serverTime: new Date('2026-08-02T21:43:00Z'), vehicles } };
+}
 
 /**
  * The opacity of the name drawn under a pin, or null if no marker carries that
@@ -443,6 +471,7 @@ describe('MapScreen', () => {
     mockSnapCalls.length = 0;
     mockCameraMoves.length = 0;
     mockRequest.mockResolvedValue(null);
+    mockFleetResult = fleetOf();
     mockNearby.mockResolvedValue([]);
     mockRoutesForStops.mockResolvedValue(new Map());
     // `clearAllMocks` clears call records, not implementations, so the defaults
@@ -1686,6 +1715,63 @@ describe('MapScreen', () => {
 
       await waitFor(() => screen.getByTestId('route-band'));
       expect(screen.getByLabelText('Stop 2, WAIKIKI')).toBeTruthy();
+    });
+
+    describe('the live buses', () => {
+      it('draws a fresh bus on the route being shown', async () => {
+        mockFleetResult = fleetOf(bus('252', '32'));
+        await showRoute();
+
+        // The double labels a marker by its `identifier`, which for a bus is
+        // its fleet number — the same key that keeps markers stable across a
+        // poll that replaces the whole set.
+        await waitFor(() => screen.getByLabelText('pin bus-252'));
+      });
+
+      it('draws no buses before a route is picked', async () => {
+        mockFleetResult = fleetOf(bus('252', '32'));
+        await show();
+
+        expect(screen.queryByLabelText('pin bus-252')).toBeNull();
+        expect(client.vehicles).not.toHaveBeenCalled();
+      });
+
+      /**
+       * 929 stale vehicles in the daytime sample carried plausible Oahu
+       * coordinates. Unfiltered this layer is a car park, not a map.
+       */
+      it('leaves a bus parked since 2022 off the map', async () => {
+        mockFleetResult = fleetOf(bus('801', '32', 4 * 365 * 24 * 60 * 60_000));
+        await showRoute();
+
+        await waitFor(() => expect(client.vehicles).toHaveBeenCalled());
+        expect(screen.queryByLabelText('pin bus-801')).toBeNull();
+      });
+
+      it('leaves a bus on another route off the map', async () => {
+        mockFleetResult = fleetOf(bus('300', '13'));
+        await showRoute();
+
+        await waitFor(() => expect(client.vehicles).toHaveBeenCalled());
+        expect(screen.queryByLabelText('pin bus-300')).toBeNull();
+      });
+
+      it('stops drawing buses once the route is dismissed', async () => {
+        mockFleetResult = fleetOf(bus('252', '32'));
+        await showRoute();
+        await waitFor(() => screen.getByLabelText('pin bus-252'));
+
+        await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+        await waitFor(() => expect(screen.queryByLabelText('pin bus-252')).toBeNull());
+      });
+
+      it('labels a bus with its fleet number and the age of its report', async () => {
+        mockFleetResult = fleetOf(bus('252', '32'));
+        await showRoute();
+
+        await waitFor(() => screen.getByText('252 · here 15 s ago'));
+      });
     });
 
     describe('the route line', () => {
