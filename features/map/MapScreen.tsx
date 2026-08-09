@@ -45,7 +45,7 @@ import {
   loadFavorites,
   removeFavorite,
 } from '../../data/storage/favorites';
-import type { TheBusClient } from '../../data/thebus';
+import type { Arrival, TheBusClient } from '../../data/thebus';
 import { useTheme } from '../../lib/theme';
 import type { RouteSummary, Stop, StopWithDistance } from '../../data/gtfs/types';
 import { metersBetween, type Coords } from '../../lib/distance';
@@ -532,6 +532,23 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const { buses } = useVehicles(client, loadedRoute?.route?.short_name ?? null);
 
   /**
+   * The arrival a rider tapped in the card, or null.
+   *
+   * Two things hang off it, and they are independent on purpose. The **bus**
+   * lights up when a drawn bus shares its trip id — a join that may simply not
+   * land, since only about one arrival in ten has a bus reporting against it.
+   * The **line** switches to the variant the arrival names, which every arrival
+   * carries, so a rider who taps a short-turn sees the road that bus is
+   * actually on even when its position is unknown.
+   */
+  const [selectedArrival, setSelectedArrival] = useState<Arrival | null>(null);
+
+  /** A new stop is a new board; the arrival selected on the last one is gone. */
+  useEffect(() => {
+    setSelectedArrival(null);
+  }, [selectedStop?.stop_id, routeMode?.routeId, routeMode?.directionIndex]);
+
+  /**
    * The line the map draws, decoded from the direction's representative shape.
    *
    * Empty rather than null: `RouteLine` is always mounted and only its
@@ -543,7 +560,11 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const [linePoints, setLinePoints] = useState<readonly Coords[]>([]);
 
   useEffect(() => {
-    const shapeId = direction?.shapeId ?? null;
+    // A selected arrival names the exact variant its bus is running, which is
+    // not necessarily the representative the route view draws — a short-turn or
+    // an express is a different line. Present on every arrival, unlike a
+    // position.
+    const shapeId = selectedArrival?.shape ?? direction?.shapeId ?? null;
     if (shapeId === null) {
       setLinePoints([]);
       return;
@@ -559,7 +580,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     return () => {
       cancelled = true;
     };
-  }, [direction, shapeById]);
+  }, [selectedArrival, direction, shapeById]);
 
   /**
    * What the map draws pins for: the route's stops in route mode, the anchor's
@@ -925,7 +946,13 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
           <RouteLine points={linePoints} />
 
           {buses.map((bus) => (
-            <BusMarker key={bus.vehicle.number} bus={bus} highlighted={false} />
+            <BusMarker
+              key={bus.vehicle.number}
+              bus={bus}
+              highlighted={
+                selectedArrival !== null && bus.vehicle.tripId === selectedArrival.tripId
+              }
+            />
           ))}
 
           {pins.map((stop) => (
@@ -1011,6 +1038,8 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         client={client}
         detents={detents}
         tabBarOverlap={tabBarOverlap}
+        onSelectArrival={routeMode === null ? undefined : setSelectedArrival}
+        selectedTripId={selectedArrival?.tripId ?? null}
         routeView={
           routeMode === null
             ? null

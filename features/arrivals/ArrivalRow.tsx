@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Arrival } from '../../data/thebus';
 import { countdown, hawaiiClock } from './format';
 import { useTheme } from '../../lib/theme';
@@ -7,6 +7,14 @@ export type ArrivalRowProps = {
   arrival: Arrival;
   /** The server's clock, carried onto the device's — see `serverClockOffset`. */
   now: Date;
+  /**
+   * Optional, and only the map passes it: tapping an arrival there highlights
+   * the bus already drawn behind the sheet, joined on trip id. `/stop/[code]`
+   * has no map to point at, so a row there stays a row rather than growing an
+   * affordance that leads nowhere.
+   */
+  onPress?: (arrival: Arrival) => void;
+  selected?: boolean;
 };
 
 /**
@@ -23,7 +31,7 @@ export type ArrivalRowProps = {
  * deciding whether to leave the house deserves to know which one they are
  * reading.
  */
-export function ArrivalRow({ arrival, now }: ArrivalRowProps) {
+export function ArrivalRow({ arrival, now, onPress, selected = false }: ArrivalRowProps) {
   const { palette } = useTheme();
   const isLive = arrival.estimate === 'live';
 
@@ -40,20 +48,32 @@ export function ArrivalRow({ arrival, now }: ArrivalRowProps) {
       : `Live · Bus ${arrival.vehicle}`
     : 'Scheduled · no GPS';
 
+  // A plain `View` where nothing can be done with the row, a `Pressable` where
+  // something can. Rendering a Pressable that does nothing would announce an
+  // affordance to VoiceOver that leads nowhere — and `/stop/[code]` has no map
+  // behind it to point at.
+  const Row = onPress === undefined ? View : Pressable;
+
   return (
-    <View
+    <Row
       // `accessible` is what makes the label below replace the children rather
       // than sit alongside them: without it VoiceOver reads the countdown, the
       // clock, the route and the status as four separate unlabelled items.
       accessible
-      accessibilityRole="text"
+      accessibilityRole={onPress === undefined ? 'text' : 'button'}
+      accessibilityState={onPress === undefined ? undefined : { selected }}
+      onPress={onPress === undefined ? undefined : () => onPress(arrival)}
       accessibilityLabel={
         `Route ${arrival.route} to ${arrival.headsign}, ` +
         `${countdown(arrival.arrivesAt, now)}, at ${hawaiiClock(arrival.arrivesAt)}, ` +
         (isLive ? 'tracked live' : 'scheduled, not tracked') +
         (arrival.canceled ? ', canceled' : '')
       }
-      style={[styles.row, { borderBottomColor: palette.border }]}
+      style={[
+        styles.row,
+        { borderBottomColor: palette.border },
+        selected && { backgroundColor: palette.section },
+      ]}
     >
       <View style={styles.when}>
         <Text
@@ -89,7 +109,7 @@ export function ArrivalRow({ arrival, now }: ArrivalRowProps) {
           <Text style={[styles.canceled, { color: palette.canceled }]}>Canceled</Text>
         ) : null}
       </View>
-    </View>
+    </Row>
   );
 }
 

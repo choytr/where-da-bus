@@ -468,12 +468,37 @@ selected *arrival* rather than to a successful join, because `shape` is present 
 every arrival while a position is present on one in ten; that reading of "the bus
 view draws the named variant" goes to Truman on the device round.
 
+**What was built.** As contracted, and the reading flagged in the spec held up
+in code: **the bus highlight and the variant line are independent**. The
+highlight needs a drawn bus sharing the arrival's trip id, which will often not
+land — 23 of 25 sampled arrivals carry no position at all. The line needs only
+the arrival's `shape`, which every arrival has. Tying them together would have
+made the common case do nothing.
+
+`ArrivalRow` renders a `Pressable` only when it is given an `onPress`, and stays
+a plain `View` otherwise. Announcing a button to VoiceOver that leads nowhere is
+worse than announcing nothing, and `/stop/[code]` has no map behind it to point
+at. It gained its own test file — its behaviour had only ever been covered
+through `ArrivalsScreen`.
+
 **Tests:** `highlights the bus whose trip matches the arrival`; `an arrival with
 no bus on the map highlights nothing`; `draws the variant the arrival names`;
 `clearing the selection restores the representative line`; `the arrivals screen
 is unchanged by all of this`.
 
 ---
+
+## Where the increment stands
+
+**All seven tasks are built.** 651 Jest across 44 suites, 130 `node --test`, a
+clean typecheck and a clean `npm ci` — verified locally 2026-08-09.
+
+**What remains is the two device rounds and the whole-diff review.** Round 1's
+build is `gh run 31330482911` off `dev` at Task 4. Round 2 needs a fresh build
+once round 1 comes back — deliberately not the same build, because the pin swap
+and the polyline are one set of failure modes and the sixty-second bus churn is
+another, and confounding them is how a SIGABRT gets attributed to the wrong
+thing.
 
 ## Closing the increment
 

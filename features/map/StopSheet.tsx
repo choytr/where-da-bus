@@ -14,7 +14,7 @@ import { useTheme } from '../../lib/theme';
 import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
 import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
 import type { RouteDirection } from '../../data/gtfs/db';
-import type { TheBusClient } from '../../data/thebus';
+import type { Arrival, TheBusClient } from '../../data/thebus';
 import type { AnchoredStatus } from './useAnchoredStops';
 
 /**
@@ -189,6 +189,12 @@ export type StopSheetProps = {
    * every existing caller and test predates it.
    */
   routeView?: RouteView | null;
+  /**
+   * Only route mode passes these, and only through to the card: an arrival
+   * tapped there highlights the bus already drawn on the map behind the sheet.
+   */
+  onSelectArrival?: (arrival: Arrival) => void;
+  selectedTripId?: string | null;
 };
 
 /** What the sheet needs in order to draw a route, from `MapScreen`. */
@@ -220,6 +226,8 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     detents,
     tabBarOverlap,
     routeView = null,
+    onSelectArrival,
+    selectedTripId = null,
   },
   ref,
 ) {
@@ -437,6 +445,8 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
             onToggleFavorite={onToggleFavorite}
             onPressRoute={onOpenRoute}
             client={client}
+            onSelectArrival={onSelectArrival}
+            selectedTripId={selectedTripId}
           />
         )}
 

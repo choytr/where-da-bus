@@ -8,7 +8,7 @@ import { formatDistance } from '../stops/StopRow';
 import { LEGEND_GAP } from '../../lib/Attribution';
 import { useTheme } from '../../lib/theme';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
-import type { TheBusClient } from '../../data/thebus';
+import type { Arrival, TheBusClient } from '../../data/thebus';
 
 /**
  * One selected stop, filling the sheet: the **full** arrival board, not a
@@ -46,6 +46,13 @@ export type StopCardProps = {
   onPressRoute: (route: RouteSummary) => void;
   /** Handed down from MapScreen, which reads it from `useTheBus()`. */
   client: TheBusClient;
+  /**
+   * Only the map passes these: tapping an arrival highlights the bus already
+   * drawn behind the sheet, joined on trip id. `/stop/[code]` renders the same
+   * board with neither, and so keeps plain rows.
+   */
+  onSelectArrival?: (arrival: Arrival) => void;
+  selectedTripId?: string | null;
 };
 
 export function StopCard({
@@ -58,6 +65,8 @@ export function StopCard({
   onToggleFavorite,
   onPressRoute,
   client,
+  onSelectArrival,
+  selectedTripId = null,
 }: StopCardProps) {
   const { palette } = useTheme();
   const code = stop.stop_code || stop.stop_id;
@@ -171,7 +180,14 @@ export function StopCard({
             </Text>
           )
         }
-        renderItem={({ item }) => <ArrivalRow arrival={item} now={now} />}
+        renderItem={({ item }) => (
+          <ArrivalRow
+            arrival={item}
+            now={now}
+            onPress={onSelectArrival}
+            selected={selectedTripId !== null && item.tripId === selectedTripId}
+          />
+        )}
         ListEmptyComponent={
           // §4's states, kept apart at this size as much as at full screen:
           // still asking, asked and there is nothing, and could not ask.

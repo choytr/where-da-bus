@@ -12,7 +12,7 @@ import { ATTRIBUTION } from '../../../lib/legal';
 import { NOTICES } from '../../arrivals/board';
 import type { RouteSummary, Stop, StopWithDistance } from '../../../data/gtfs/types';
 import type { RouteDirection } from '../../../data/gtfs/db';
-import type { ArrivalsResult, FleetResult, Vehicle } from '../../../data/thebus/types';
+import type { Arrival, ArrivalsResult, FleetResult, Vehicle } from '../../../data/thebus/types';
 import type { TheBusClient } from '../../../data/thebus';
 import type { LocationState } from '../../stops/useLocation';
 import type { Coords } from '../../../lib/distance';
@@ -359,6 +359,34 @@ function bus(number: string, route: string | null, agoMs = 20_000): Vehicle {
 
 function fleetOf(...vehicles: Vehicle[]): FleetResult {
   return { ok: true, fleet: { serverTime: new Date('2026-08-02T21:43:00Z'), vehicles } };
+}
+
+/**
+ * An arrival naming a trip and a shape. `shape` is present on every real
+ * arrival; `position` is present on about one in ten, which is why the bus
+ * highlight and the variant line are independent of each other.
+ */
+function arrival(tripId: string, shape: string | null, route = '32'): Arrival {
+  return {
+    id: `a-${tripId}`,
+    tripId,
+    route,
+    headsign: 'WAIKIKI',
+    direction: 'Westbound',
+    arrivesAt: new Date('2026-08-02T22:10:00Z'),
+    estimate: 'scheduled',
+    vehicle: null,
+    position: null,
+    shape,
+    canceled: false,
+  };
+}
+
+function boardOf(...arrivals: Arrival[]): ArrivalsResult {
+  return {
+    ok: true,
+    board: { stopCode: '901', serverTime: new Date('2026-08-02T22:00:00Z'), arrivals },
+  };
 }
 
 /**
@@ -1771,6 +1799,90 @@ describe('MapScreen', () => {
         await showRoute();
 
         await waitFor(() => screen.getByText('252 · here 15 s ago'));
+      });
+    });
+
+    describe('tapping an arrival', () => {
+      /**
+       * Getting to an arrival: a route stop's pin opens the card, whose board is
+       * the same one `/stop/[code]` renders.
+       */
+      async function openArrivals() {
+        await fireEvent.press(screen.getByLabelText('Stop 1, KALIHI TRANSIT CENTER'));
+        await waitFor(() => screen.getByTestId('stop-card-band'));
+      }
+
+      it('highlights the bus whose trip matches', async () => {
+        mockFleetResult = fleetOf(bus('252', '32'));
+        mockArrivalsResult = boardOf(arrival('trip-252', 's-out'));
+        await showRoute();
+        await waitFor(() => screen.getByLabelText('pin bus-252'));
+        await openArrivals();
+
+        await fireEvent.press(screen.getByLabelText(/Route 32 to WAIKIKI/));
+
+        await waitFor(() =>
+          expect(screen.getByLabelText(/Route 32 to WAIKIKI/).props.accessibilityState.selected)
+            .toBe(true),
+        );
+      });
+
+      /**
+       * Only about one arrival in ten has a bus reporting against it — 23 of 25
+       * in the real capture carry the "0" position sentinel — so the join
+       * failing is the ordinary case, not an error.
+       */
+      it('is not an error when no bus on the map matches', async () => {
+        mockFleetResult = fleetOf(bus('999', '32'));
+        mockArrivalsResult = boardOf(arrival('trip-nothing', 's-out'));
+        await showRoute();
+        await openArrivals();
+
+        await fireEvent.press(screen.getByLabelText(/Route 32 to WAIKIKI/));
+
+        expect(screen.getByLabelText('pin bus-999')).toBeTruthy();
+      });
+
+      /**
+       * The line follows the *arrival*, not the join, because `shape` is on
+       * every arrival while a position is on one in ten. A rider tapping a
+       * short-turn sees the road that bus is on either way.
+       */
+      it('redraws the line as the variant the arrival names', async () => {
+        mockArrivalsResult = boardOf(arrival('trip-252', 's-short-turn'));
+        await showRoute();
+        await openArrivals();
+
+        await fireEvent.press(screen.getByLabelText(/Route 32 to WAIKIKI/));
+
+        await waitFor(() =>
+          expect(mockQueries.shapeById).toHaveBeenCalledWith('s-short-turn'),
+        );
+      });
+
+      it('keeps the representative line for an arrival that names no shape', async () => {
+        mockArrivalsResult = boardOf(arrival('trip-252', null));
+        await showRoute();
+        await openArrivals();
+
+        await fireEvent.press(screen.getByLabelText(/Route 32 to WAIKIKI/));
+
+        expect(mockQueries.shapeById).not.toHaveBeenCalledWith(null);
+        expect(mockQueries.shapeById).toHaveBeenCalledWith('s-out');
+      });
+
+      it('restores the representative line when the route direction changes', async () => {
+        mockArrivalsResult = boardOf(arrival('trip-252', 's-short-turn'));
+        await showRoute();
+        await openArrivals();
+        await fireEvent.press(screen.getByLabelText(/Route 32 to WAIKIKI/));
+        await waitFor(() => expect(mockQueries.shapeById).toHaveBeenCalledWith('s-short-turn'));
+
+        await fireEvent.press(screen.getByText('‹ Route 32'));
+        await waitFor(() => screen.getByTestId('route-band'));
+        await fireEvent.press(screen.getByLabelText('Show the other direction'));
+
+        await waitFor(() => expect(mockQueries.shapeById).toHaveBeenCalledWith('s-back'));
       });
     });
 
