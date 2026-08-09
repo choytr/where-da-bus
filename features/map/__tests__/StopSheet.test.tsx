@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import {
   StopSheet,
   detentsFor,
@@ -9,6 +9,7 @@ import {
   MEDIUM_DETENT,
   FULL_DETENT,
 } from '../StopSheet';
+import { PEEK_BAND } from '../peek';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
 import type { StopWithDistance } from '../../../data/gtfs/types';
@@ -122,25 +123,28 @@ const show = (
  * cannot be told about it.
  */
 describe('the detents', () => {
-  it('derives a peek that is the grab handle and nothing else', () => {
-    // The old `'14%'` left about a dozen points of content, which is what three
-    // separately-reported complaints were about. It was then sized to fit the
-    // card's header, ~211 pt, and on a device that took too much map for what
-    // it bought. A peek showing *part* of something has to be right about which
-    // part; a peek showing nothing is honest about being a handle.
-    expect(DETENTS[PEEK_DETENT]).toBe(24);
+  it('derives a peek that is the grab handle and one band', () => {
+    // Three device rounds settled this. `'14%'` left about a dozen points of
+    // content; sizing it to the card's header gave ~211 pt and spent too much
+    // map; the handle alone was Truman's "horrendous". One band says what the
+    // sheet is without being a view in its own right.
+    expect(DETENTS[PEEK_DETENT]).toBe(24 + PEEK_BAND);
     expect(DETENTS[PEEK_DETENT]).toBeLessThan(DETENTS[MEDIUM_DETENT]);
   });
 
   it('adds the tab bar to the peek only where the bar actually covers the sheet', () => {
     // The bug this measurement exists to close. Assuming the bar overlaid a
     // scene that was in fact inset above it added 83 pt to the peek, so a sheet
-    // meant to show a grab handle showed a screenful of stops.
-    const overlaid = detentsFor(WINDOW_HEIGHT, tabBarOverlapOf(WINDOW_HEIGHT, WINDOW_HEIGHT, TAB_BAR), TOP_INSET);
+    // meant to show one band showed a screenful of stops.
+    const overlaid = detentsFor(
+      WINDOW_HEIGHT,
+      tabBarOverlapOf(WINDOW_HEIGHT, WINDOW_HEIGHT, TAB_BAR),
+      TOP_INSET,
+    );
 
     expect(OVERLAP).toBe(0);
-    expect(overlaid[PEEK_DETENT]).toBe(24 + TAB_BAR);
-    // Either way, the handle is what shows above the bar.
+    expect(overlaid[PEEK_DETENT]).toBe(24 + PEEK_BAND + TAB_BAR);
+    // Either way, the same band is what shows above the bar.
     expect(overlaid[PEEK_DETENT] - TAB_BAR).toBe(DETENTS[PEEK_DETENT]);
   });
 
@@ -174,6 +178,39 @@ describe('the detents', () => {
 const raise = () => fireEvent.press(screen.getByLabelText('settle the sheet at 1'));
 
 describe('StopSheet', () => {
+  /**
+   * The resting sheet is one band, and both modes have to fill exactly it — or
+   * the sheet changes height when a rider selects a stop, which reads as a
+   * twitch. Asserted on the two heights rather than by rendering at the peek,
+   * because Jest runs no layout.
+   */
+  it('gives both modes a top band of the same height', async () => {
+    await show(null);
+    const heading = StyleSheet.flatten(screen.getByTestId('nearby-band').props.style);
+
+    await show(STOPS[0]);
+    const card = StyleSheet.flatten(screen.getByTestId('stop-card-band').props.style);
+
+    expect(heading.height).toBe(PEEK_BAND);
+    expect(card.height).toBe(PEEK_BAND);
+  });
+
+  it('names the stop in the card’s band, which is all the resting sheet shows', async () => {
+    // "‹ Nearby ★" on its own would say nothing about which stop is open, and
+    // that band is the whole of the peek.
+    await show(STOPS[0]);
+
+    within(screen.getByTestId('stop-card-band')).getByText('LAGOON DR');
+  });
+
+  it('does not print the stop’s name twice', async () => {
+    // It is in the band now, so `BoardHeader` is told to leave it out — the
+    // same name a few points apart reads as a rendering fault.
+    await show(STOPS[0]);
+
+    expect(screen.getAllByText('LAGOON DR')).toHaveLength(1);
+  });
+
   it('shows the nearby list when nothing is selected', async () => {
     await show(null);
 

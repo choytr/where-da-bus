@@ -518,11 +518,12 @@ describe('MapScreen', () => {
     // The middle of what the rider can *see*, which at the peek detent is a
     // little north of the window's own 21.45 — the sheet covers the bottom.
     //
-    // Barely north of it, because the peek is now the tab bar plus the grab
-    // handle and nothing else — 107 pt, of the 750 × 1334 window React Native
-    // reports under Jest (not the 393 × 852 in `METRICS`).
+    // A little north of it: the peek is the grab handle, one band, and whatever
+    // the tab bar covers — 151 pt here, against the 750 × 1334 window React
+    // Native reports under Jest. `onLayout` never fires off-device, so the
+    // screen falls back to the window and the bar counts as overlapping it.
     expect(mockNearby).toHaveBeenLastCalledWith({
-      lat: expect.closeTo(21.4512, 4),
+      lat: expect.closeTo(21.4517, 4),
       lon: -157.8583,
     });
     // Re-anchored to the screen centre, so the offer is answered and retires.

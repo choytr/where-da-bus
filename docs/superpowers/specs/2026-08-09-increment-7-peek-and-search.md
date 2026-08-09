@@ -27,8 +27,9 @@ own device rounds rather than riding along on a search increment.
 **A fleet-wide vehicle layer stays deferred**, unchanged: `vehicle/` with no
 parameters returns ~1,184 vehicles as 333 KB of XML.
 
-**Headings in the sheet are dropped**, having been Truman's own opening
-proposal. See below — the height fix subsumes them.
+~~**Headings in the sheet are dropped**, having been Truman's own opening
+proposal.~~ **Reinstated on the third device round** — see below. A peek short
+enough not to waste map is also too short to say what it is without one.
 
 ---
 
@@ -105,13 +106,30 @@ is the more prominent placement rather than the less.
 
 It costs ~35 pt of the 45% detent, which the scroll-footer version did not.
 
-### Headings, and why they are not built
+### Headings, reinstated
 
-Truman proposed "Nearby Stops" and "Selected Stop". Rejected during the
-grilling, by him, once the two modes' top edges were put side by side: the list
-renders a `StopRow` and the card renders a **‹ Back** control, and a back
-control appears in exactly one of them. Once the peek is tall enough to show
-either, a heading spends ~24 pt of map naming what the content already says.
+*Revised 2026-08-09, third device round.* Truman proposed "Nearby Stops" and
+"Selected Stop" at the top of the grilling and withdrew them during it; this
+spec recorded them as dropped. He asked for the heading back after seeing the
+handle-only peek: **"having just the top tab thing visible is horrendous."**
+
+So the peek is the handle plus **one band**, `PEEK_BAND`, and both modes fill
+exactly that band — otherwise the resting sheet changes height the moment a stop
+is selected, which reads as a twitch. The list fills it with *Nearby Stops*. The
+card fills it with **‹ Nearby · the stop's name · ★**, because that band is now
+the whole of the resting sheet and a back control on its own says nothing about
+*which* stop is open. `BoardHeader` is told to drop its own copy of the name in
+this host, so it is not printed twice a few points apart.
+
+The withdrawal's reasoning was sound and simply did not survive contact: it
+assumed a peek tall enough to show a `StopRow` or the card's header, where a
+heading would be naming what the content already said. At one band there is no
+such content, and the band is all the rider has to go on.
+
+**`PEEK_BAND` lives in `features/map/peek.ts`, alone.** `StopSheet` renders
+`StopCard`, so a constant exported from one and imported by the other is a
+cycle — and its victim would be a `StyleSheet.create` evaluated at module scope
+with `undefined` for a height.
 
 The real question underneath — *why these stops?* — was considered for the
 search bar instead and rejected there too; see below.

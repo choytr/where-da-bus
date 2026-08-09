@@ -8,6 +8,7 @@ import BottomSheet, {
 } from '@gorhom/bottom-sheet';
 import { StopRow } from '../stops/StopRow';
 import { StopCard } from './StopCard';
+import { PEEK_BAND } from './peek';
 import { useTheme } from '../../lib/theme';
 import { Attribution } from '../../lib/Attribution';
 import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
@@ -47,6 +48,8 @@ const HANDLE_HEIGHT = 24;
 /** Clear air between the raised sheet and the notch. */
 const TOP_GAP = 16;
 
+const NEARBY_HEADING = 'Nearby Stops';
+
 /**
  * The three detents, in **points**, against the height of the sheet's own
  * container.
@@ -63,13 +66,10 @@ const TOP_GAP = 16;
  * zero when the scene is already inset above it. Derived from the same
  * measurement rather than from a belief about React Navigation.
  *
- * **The peek shows the handle and nothing else.** It was briefly sized to fit
- * `StopCard`'s header — ~211 pt, one full row plus a sliver — and Truman's
- * verdict was that it took too much map for what it bought. A peek that shows
- * *part* of something has to be right about which part, and there was no
- * version of that anyone was happy with; a peek that shows nothing is honest
- * about being a grab handle, and the map gets the height back. What belongs in
- * a resting sheet is a question for a later increment, with a device in hand.
+ * **The peek is the handle plus one band**, `PEEK_BAND`. It has now been all
+ * three things on a device: ~211 pt showing a full row (too much map spent),
+ * the handle alone (Truman: "horrendous"), and this. One band is enough to say
+ * what the sheet is without being a view in its own right.
  *
  * The tallest detent is 90% of the container **or** as tall as it can be while
  * still clearing the safe area, whichever is shorter. The cap is what makes the
@@ -84,7 +84,7 @@ export function detentsFor(
   const medium = Math.round(containerHeight * 0.45);
   const clearsNotch = containerHeight - topInset - TOP_GAP;
   return [
-    HANDLE_HEIGHT + tabBarOverlap,
+    HANDLE_HEIGHT + PEEK_BAND + tabBarOverlap,
     medium,
     // Never below medium, however small the container or however deep the
     // notch — an ordering violation would make the sheet unsnappable.
@@ -279,73 +279,89 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
       backdropComponent={renderBackdrop}
       onChange={handleDetentChange}
     >
-    {/*
-      A column, so the legend can be pinned under whichever mode is showing
-      rather than living at the foot of each one's scroll. Both modes are
-      `flex: 1` above it.
-    */}
-    <View style={styles.fill}>
-      {selectedStop === null ? (
-        <BottomSheetFlatList
-          testID="nearby-stops"
-          // Explicit, because it is now a sibling of the legend rather than the
-          // sheet's only child: without it the list sizes to its content and
-          // pushes the legend out of the sheet entirely.
-          style={styles.fill}
-          data={stops}
-          keyExtractor={(stop) => stop.stop_id}
-          renderItem={renderItem}
-          contentContainerStyle={listContent}
-          ListEmptyComponent={
-            // Three states kept apart, as §4 requires: still looking, looked and
-            // found nothing here, and could not look at all.
-            <View style={styles.empty}>
-              {status === 'loading' ? (
-                <Text style={[styles.emptyText, { color: palette.muted }]}>{LOADING}</Text>
-              ) : null}
-              {status === 'empty' ? (
-                <Text style={[styles.emptyText, { color: palette.muted }]}>{EMPTY_HERE}</Text>
-              ) : null}
-              {status === 'failed' ? (
-                <Text style={[styles.emptyText, { color: palette.warning }]}>{FAILED}</Text>
-              ) : null}
-            </View>
-          }
-        />
-      ) : (
-        /*
-          Mounted only while a stop is selected, which is what keeps exactly one
-          arrivals poll running: unmounting tears down useArrivals' fetch and its
-          60-second timer with it, so changing selection cannot leave the
-          previous stop polling in the background.
-        */
-        <StopCard
-          stop={selectedStop}
-          meters={selectedStop.meters}
-          routes={routesByStop.get(selectedStop.stop_id) ?? []}
-          isFavorite={favoriteIds.includes(selectedStop.stop_id)}
-          onBack={onBack}
-          onToggleFavorite={onToggleFavorite}
-          onPressRoute={onOpenRoute}
-          client={client}
-        />
-      )}
-
       {/*
-        Pinned under the content, not at the foot of its scroll — the same
-        placement the stop list, the arrival board and route detail already
-        use, so the legend is on screen from the first frame at every detent
-        that shows any Data. `lib/Attribution.tsx` carries the reading of the
-        terms behind that, and why the sheet stopped being the exception.
-
-        Not at the peek: see `settled` above.
+        A column, so the legend can be pinned under whichever mode is showing
+        rather than living at the foot of each one's scroll. Both modes are
+        `flex: 1` above it.
       */}
-      {settled === PEEK_DETENT ? null : (
-        <View testID="sheet-attribution" style={[styles.legend, footer]}>
-          <Attribution />
-        </View>
-      )}
-    </View>
+      <View style={styles.fill}>
+        {selectedStop === null ? (
+          <>
+            {/*
+              Outside the scroll, so it is still there at the peek and does not
+              slide away under a thumb. Exactly `PEEK_BAND` tall, which is what
+              keeps the resting sheet the same height in both modes.
+            */}
+            <View testID="nearby-band" style={[styles.band, { borderBottomColor: palette.border }]}>
+              <Text
+                accessibilityRole="header"
+                style={[styles.heading, { color: palette.text }]}
+              >
+                {NEARBY_HEADING}
+              </Text>
+            </View>
+
+            <BottomSheetFlatList
+              testID="nearby-stops"
+              // Explicit, because it is now a sibling of the legend rather than the
+              // sheet's only child: without it the list sizes to its content and
+              // pushes the legend out of the sheet entirely.
+              style={styles.fill}
+              data={stops}
+              keyExtractor={(stop) => stop.stop_id}
+              renderItem={renderItem}
+              contentContainerStyle={listContent}
+              ListEmptyComponent={
+                // Three states kept apart, as §4 requires: still looking, looked and
+                // found nothing here, and could not look at all.
+                <View style={styles.empty}>
+                  {status === 'loading' ? (
+                    <Text style={[styles.emptyText, { color: palette.muted }]}>{LOADING}</Text>
+                  ) : null}
+                  {status === 'empty' ? (
+                    <Text style={[styles.emptyText, { color: palette.muted }]}>{EMPTY_HERE}</Text>
+                  ) : null}
+                  {status === 'failed' ? (
+                    <Text style={[styles.emptyText, { color: palette.warning }]}>{FAILED}</Text>
+                  ) : null}
+                </View>
+              }
+            />
+          </>
+        ) : (
+          /*
+            Mounted only while a stop is selected, which is what keeps exactly one
+            arrivals poll running: unmounting tears down useArrivals' fetch and its
+            60-second timer with it, so changing selection cannot leave the
+            previous stop polling in the background.
+          */
+          <StopCard
+            stop={selectedStop}
+            meters={selectedStop.meters}
+            routes={routesByStop.get(selectedStop.stop_id) ?? []}
+            isFavorite={favoriteIds.includes(selectedStop.stop_id)}
+            onBack={onBack}
+            onToggleFavorite={onToggleFavorite}
+            onPressRoute={onOpenRoute}
+            client={client}
+          />
+        )}
+
+        {/*
+          Pinned under the content, not at the foot of its scroll — the same
+          placement the stop list, the arrival board and route detail already
+          use, so the legend is on screen from the first frame at every detent
+          that shows any Data. `lib/Attribution.tsx` carries the reading of the
+          terms behind that, and why the sheet stopped being the exception.
+
+          Not at the peek: see `settled` above.
+        */}
+        {settled === PEEK_DETENT ? null : (
+          <View testID="sheet-attribution" style={[styles.legend, footer]}>
+            <Attribution />
+          </View>
+        )}
+      </View>
     </BottomSheet>
   );
 });
@@ -355,6 +371,19 @@ const CONTENT_INSET = 32;
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  /**
+   * The band the peek shows. Fixed height and no shrink, because the whole
+   * point is that it is exactly as tall as the card's own band — see
+   * `PEEK_BAND` and `StopCard`.
+   */
+  band: {
+    height: PEEK_BAND,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    flexShrink: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  heading: { fontSize: 17, fontWeight: '700' },
   /** Never squeezed by the list above it, and never squeezing it either. */
   legend: { flexShrink: 0 },
   empty: { paddingHorizontal: 16, paddingTop: 8 },

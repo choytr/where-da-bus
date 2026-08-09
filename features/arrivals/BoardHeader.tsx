@@ -18,6 +18,14 @@ import { ageLabel } from './format';
 export type BoardHeaderProps = {
   /** Already resolved by the host. Empty and unknown-stop wording differ per host. */
   stopName: string;
+  /**
+   * False where the host already titles itself with the name. The map's card
+   * carries it in the fixed band above this — that band is the whole of the
+   * resting sheet, so the name has to be there — and printing it twice a few
+   * points apart reads as a rendering fault. `/stop/[code]` has no such band
+   * and leaves this alone.
+   */
+  showName?: boolean;
   stopCode: string;
   fetchedAt: Date | null;
   failure: ArrivalsFailure | null;
@@ -28,7 +36,14 @@ export type BoardHeaderProps = {
   now: Date;
 };
 
-export function BoardHeader({ stopName, stopCode, fetchedAt, failure, now }: BoardHeaderProps) {
+export function BoardHeader({
+  stopName,
+  showName = true,
+  stopCode,
+  fetchedAt,
+  failure,
+  now,
+}: BoardHeaderProps) {
   const { palette } = useTheme();
 
   return (
@@ -37,7 +52,9 @@ export function BoardHeader({ stopName, stopCode, fetchedAt, failure, now }: Boa
           closes each host's list instead — see `lib/Attribution.tsx` for the
           reading of the terms that allows it and the prominence it costs.
           Both hosts render it; neither renders it here. */}
-      <Text style={[styles.stopName, { color: palette.text }]}>{stopName}</Text>
+      {showName ? (
+        <Text style={[styles.stopName, { color: palette.text }]}>{stopName}</Text>
+      ) : null}
       <Text style={[styles.stopCode, { color: palette.muted }]}>Stop {stopCode}</Text>
 
       {fetchedAt === null ? null : (
