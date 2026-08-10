@@ -1,5 +1,5 @@
 import { Dimensions, StyleSheet } from 'react-native';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { MapScreen, COMPASS_LAYOUT_OFFSET } from '../MapScreen';
 import { MEDIUM_DETENT, PEEK_DETENT, detentsFor, tabBarOverlapOf, visibleAbove } from '../StopSheet';
@@ -1995,11 +1995,16 @@ describe('MapScreen', () => {
         await waitFor(() => expect(screen.queryByLabelText('pin bus-252')).toBeNull());
       });
 
-      it('labels a bus with its fleet number and the age of its report', async () => {
+      /**
+       * The fleet number alone. The age moved into the popup in Increment 9,
+       * which is what stops an unselected bus re-snapshotting its bitmap every
+       * thirty seconds to change a string nobody is reading.
+       */
+      it('labels a bus with its fleet number', async () => {
         mockFleetResult = fleetOf(bus('252', '32'));
         await showRoute();
 
-        await waitFor(() => screen.getByText('252 · here 15 s ago'));
+        await waitFor(() => expect(screen.getByTestId('bus-label-252')).toHaveTextContent('252'));
       });
 
       /**
@@ -2049,6 +2054,105 @@ describe('MapScreen', () => {
           await showRoute();
 
           await waitFor(() => screen.getByLabelText('pin bus-300'));
+        });
+      });
+
+      /**
+       * **The bus wins the tap and hands the stop down.**
+       *
+       * `651bb07` gave the tap away entirely — the bus found the stop under it
+       * and selected that, doing nothing at all when there was none — because
+       * buses draw above the stops and a covered pin otherwise took two
+       * presses. That guarantee has to survive selecting the bus, so the popup
+       * names the covered stop and takes it on the next press.
+       */
+      describe('tapping a bus', () => {
+        const popup = () => screen.getByTestId('bus-popup-252');
+
+        const openPopup = async () => {
+          await fireEvent.press(screen.getByLabelText('pin bus-252'));
+          await waitFor(() =>
+            expect(StyleSheet.flatten(popup().props.style).opacity).toBe(1),
+          );
+        };
+
+        it('selects the bus rather than the stop underneath it', async () => {
+          // Drawn at r1's own coordinates, so the dot covers the pin exactly.
+          mockFleetResult = fleetOf({
+            ...bus('252', '32'),
+            position: { lat: 21.33, lon: -157.87 },
+          });
+          await showRoute();
+          await waitFor(() => screen.getByLabelText('pin bus-252'));
+
+          await openPopup();
+
+          // The stop's card did not open in the bus's place.
+          expect(screen.queryByTestId('stop-card-band')).toBeNull();
+        });
+
+        it('offers the covered stop in the popup', async () => {
+          mockFleetResult = fleetOf({
+            ...bus('252', '32'),
+            position: { lat: 21.33, lon: -157.87 },
+          });
+          await showRoute();
+          await waitFor(() => screen.getByLabelText('pin bus-252'));
+
+          await openPopup();
+
+          expect(within(popup()).getByText('KALIHI TRANSIT CENTER')).toBeTruthy();
+        });
+
+        it('takes the covered stop on the next press', async () => {
+          mockFleetResult = fleetOf({
+            ...bus('252', '32'),
+            position: { lat: 21.33, lon: -157.87 },
+          });
+          await showRoute();
+          await waitFor(() => screen.getByLabelText('pin bus-252'));
+          await openPopup();
+
+          await fireEvent.press(screen.getByLabelText('pin bus-252'));
+
+          await waitFor(() => screen.getByTestId('stop-card-band'));
+        });
+
+        it('offers no stop when the dot is covering nothing', async () => {
+          mockFleetResult = fleetOf(bus('252', '32'));
+          await showRoute();
+          await waitFor(() => screen.getByLabelText('pin bus-252'));
+
+          await openPopup();
+
+          expect(within(popup()).queryByText(/KALIHI/)).toBeNull();
+        });
+
+        it('closes the popup when the same bus is pressed again', async () => {
+          mockFleetResult = fleetOf(bus('252', '32'));
+          await showRoute();
+          await waitFor(() => screen.getByLabelText('pin bus-252'));
+          await openPopup();
+
+          await fireEvent.press(screen.getByLabelText('pin bus-252'));
+
+          await waitFor(() =>
+            expect(StyleSheet.flatten(popup().props.style).opacity).toBe(0),
+          );
+        });
+
+        /** The bus layer is emptied and rebuilt by a flip; a popup for a bus no
+         *  longer drawn would be a popup for nothing. */
+        it('closes the popup on a direction flip', async () => {
+          mockFleetResult = fleetOf(bus('252', '32'));
+          await showRoute();
+          await waitFor(() => screen.getByLabelText('pin bus-252'));
+          await openPopup();
+
+          await fireEvent.press(screen.getByLabelText('Show the other direction'));
+
+          await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
+          expect(screen.queryByTestId('bus-popup-252')).toBeNull();
         });
       });
     });

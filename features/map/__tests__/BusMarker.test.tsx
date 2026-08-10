@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
-import { render, screen } from '@testing-library/react-native';
-import { BusMarker, ageWords, busLabel } from '../BusMarker';
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
+import { BusMarker } from '../BusMarker';
 import { adherenceOf } from '../adherence';
 import { TestTheme } from '../../../lib/testing/theme';
 import type { BusOnMap } from '../useVehicles';
@@ -31,72 +31,51 @@ const busOnMap = (ageMs: number, number = '252', adherence: number | null = 4): 
   },
 });
 
-describe('ageWords', () => {
-  /**
-   * Coarse on purpose: the value is recomputed on a thirty-second tick, and
-   * every change re-snapshots the marker's bitmap. Precision it cannot keep
-   * current would cost redraws for nothing.
-   */
-  it('says "here now" for a report that just landed', () => {
-    expect(ageWords(3_000)).toBe('here now');
-  });
-
-  it('counts seconds in fifteens', () => {
-    expect(ageWords(20_000)).toBe('here 15 s ago');
-    expect(ageWords(50_000)).toBe('here 45 s ago');
-  });
-
-  it('switches to minutes past a minute', () => {
-    expect(ageWords(65_000)).toBe('here 1 min ago');
-    expect(ageWords(200_000)).toBe('here 3 min ago');
-  });
-});
-
-describe('busLabel', () => {
-  /** Truman asked for this shape by name, after the old DaBus app. */
-  it('is the fleet number and how much to trust the dot', () => {
-    expect(busLabel(busOnMap(20_000))).toBe('252 · here 15 s ago');
-  });
-});
-
 /**
- * A bus is not interactive; `onPress` exists only so `MapScreen` can hand the
- * tap to the stop underneath. Nothing in this file is about that, so every
- * render passes the same one — which is also what the prop's contract asks for.
+ * Both handlers are stable across renders, which is what the props' contract
+ * asks for and what keeps `memo` doing its job.
  */
 const noop = () => {};
+
+/** The default shape: drawn, not tapped, covering nothing. */
+const plain = {
+  highlighted: false,
+  selected: false,
+  stopUnder: null,
+  onPress: noop,
+  onPressStopUnder: noop,
+} as const;
 
 describe('BusMarker', () => {
   it('draws the fleet number, which is what a rider is shown', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(20_000)} highlighted={false} placement="below" onPress={noop} />
+        <BusMarker bus={busOnMap(20_000)} {...plain} placement="below" />
       </TestTheme>,
     );
 
-    expect(screen.getByText('252 · here 15 s ago')).toBeTruthy();
+    expect(screen.getByTestId('bus-label-252')).toHaveTextContent('252');
   });
 
   /**
-   * The label is always mounted and hidden with opacity elsewhere; here it is
-   * always visible, because the age is the reason the bus is drawn at all. What
-   * must not happen is a *conditional* mount — see this component's header and
-   * the map section of docs/backlog.md.
+   * The label and the popup are both always mounted and hidden with opacity.
+   * What must not happen is a *conditional* mount — see this component's header
+   * and the map section of docs/backlog.md.
    */
   it('mounts its label unconditionally', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(0)} highlighted={false} placement="below" onPress={noop} />
+        <BusMarker bus={busOnMap(0)} {...plain} placement="below" />
       </TestTheme>,
     );
 
-    expect(screen.getByText('252 · here now')).toBeTruthy();
+    expect(screen.getByTestId('bus-label-252')).toHaveTextContent('252');
   });
 
   it('identifies itself by fleet number, so keys stay stable across polls', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(20_000, '197')} highlighted={false} placement="below" onPress={noop} />
+        <BusMarker bus={busOnMap(20_000, '197')} {...plain} placement="below" />
       </TestTheme>,
     );
 
@@ -107,12 +86,12 @@ describe('BusMarker', () => {
   it('never renders anything but the number and the age', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(20_000)} highlighted={false} placement="below" onPress={noop} />
+        <BusMarker bus={busOnMap(20_000)} {...plain} placement="below" />
       </TestTheme>,
     );
 
     expect(screen.queryByText(/WAIKIKI/)).toBeNull();
-    expect(screen.queryByText(/4/)).toBeNull();
+    expect(screen.queryByText(/t-1/)).toBeNull();
   });
 });
 
@@ -170,7 +149,7 @@ function wrapperOf(testID: string) {
 async function dotStyle(adherence: number | null) {
   const view = await render(
     <TestTheme>
-      <BusMarker bus={busOnMap(0, '252', adherence)} highlighted={false} placement="below" onPress={noop} />
+      <BusMarker bus={busOnMap(0, '252', adherence)} {...plain} placement="below" />
     </TestTheme>,
   );
   const style = StyleSheet.flatten(wrapperOf('bus-252').props.children[0].props.style);
@@ -211,21 +190,193 @@ describe('BusMarker’s label placement', () => {
   it('keeps an unplaced label mounted and hides it', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(0)} highlighted={false} placement={null} onPress={noop} />
+        <BusMarker bus={busOnMap(0)} {...plain} placement={null} />
       </TestTheme>,
     );
 
-    const label = screen.getByText('252 · here now');
+    const label = screen.getByTestId('bus-label-252');
     expect(StyleSheet.flatten(label.props.style).opacity).toBe(0);
   });
 
   it('shows it once the labeller has placed it', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(0)} highlighted={false} placement="above" onPress={noop} />
+        <BusMarker bus={busOnMap(0)} {...plain} placement="above" />
       </TestTheme>,
     );
 
-    expect(StyleSheet.flatten(screen.getByText('252 · here now').props.style).opacity).toBe(1);
+    expect(StyleSheet.flatten(screen.getByTestId('bus-label-252').props.style).opacity).toBe(1);
+  });
+});
+
+/**
+ * The popup, which is the whole of "tapping a bus" — no card, no sheet mode, no
+ * camera follow, all three offered and set aside. It is the accepted fix for
+ * lateness being communicated by ring colour alone.
+ */
+describe('BusMarker’s popup', () => {
+  const stopUnder = {
+    stop_id: 'r1',
+    stop_code: '901',
+    stop_name: 'KALIHI TRANSIT CENTER',
+    lat: 21.31,
+    lon: -157.85,
+  };
+
+  it('shows only the fleet number when unselected', async () => {
+    await render(
+      <TestTheme>
+        <BusMarker bus={busOnMap(20_000)} {...plain} placement="below" />
+      </TestTheme>,
+    );
+
+    expect(StyleSheet.flatten(screen.getByTestId('bus-label-252').props.style).opacity).toBe(1);
+    expect(StyleSheet.flatten(screen.getByTestId('bus-popup-252').props.style).opacity).toBe(0);
+  });
+
+  it('adds lateness and age when selected', async () => {
+    await render(
+      <TestTheme>
+        <BusMarker bus={busOnMap(20_000, '252', -12)} {...plain} selected placement="below" />
+      </TestTheme>,
+    );
+
+    const popup = screen.getByTestId('bus-popup-252');
+    expect(StyleSheet.flatten(popup.props.style).opacity).toBe(1);
+    expect(within(popup).getByText('252')).toBeTruthy();
+    expect(within(popup).getByText('12 min behind')).toBeTruthy();
+    expect(within(popup).getByText('here 15 s ago')).toBeTruthy();
+  });
+
+  /** The number is the popup's own first line; two copies of it is one too many. */
+  it('hides the collapsed label behind the popup', async () => {
+    await render(
+      <TestTheme>
+        <BusMarker bus={busOnMap(20_000)} {...plain} selected placement="below" />
+      </TestTheme>,
+    );
+
+    expect(StyleSheet.flatten(screen.getByTestId('bus-label-252').props.style).opacity).toBe(0);
+  });
+
+  it('says early rather than late for a positive adherence', async () => {
+    await render(
+      <TestTheme>
+        <BusMarker bus={busOnMap(20_000, '252', 4)} {...plain} selected placement="below" />
+      </TestTheme>,
+    );
+
+    expect(within(screen.getByTestId('bus-popup-252')).getByText('4 min ahead')).toBeTruthy();
+  });
+
+  /**
+   * Mounted at all times and hidden, exactly like the label. This one would
+   * otherwise mount and unmount on every tap — the most frequent churn this
+   * component could possibly have had across the seam behind the SIGABRT.
+   */
+  it('keeps the popup mounted while the bus is not selected', async () => {
+    await render(
+      <TestTheme>
+        <BusMarker bus={busOnMap(20_000)} {...plain} placement={null} />
+      </TestTheme>,
+    );
+
+    expect(screen.getByTestId('bus-popup-252')).toBeTruthy();
+  });
+
+  it('names the stop it is covering', async () => {
+    await render(
+      <TestTheme>
+        <BusMarker bus={busOnMap(20_000)} {...plain} selected stopUnder={stopUnder} placement="below" />
+      </TestTheme>,
+    );
+
+    expect(within(screen.getByTestId('bus-popup-252')).getByText('KALIHI TRANSIT CENTER')).toBeTruthy();
+  });
+
+  it('names no stop when the dot covers nothing', async () => {
+    await render(
+      <TestTheme>
+        <BusMarker bus={busOnMap(20_000)} {...plain} selected placement="below" />
+      </TestTheme>,
+    );
+
+    expect(within(screen.getByTestId('bus-popup-252')).queryByText(/KALIHI/)).toBeNull();
+  });
+
+  /**
+   * The second tap. Before Increment 9 the bus gave its tap away entirely, so a
+   * stop pin under a dot was reachable and the bus was not; now the first tap is
+   * the bus's own and the covered stop is one tap further on. Nothing becomes
+   * unreachable.
+   */
+  it('hands a press to the covered stop once the popup is open', async () => {
+    const onPress = jest.fn();
+    const onPressStopUnder = jest.fn();
+    await render(
+      <TestTheme>
+        <BusMarker
+          bus={busOnMap(20_000)}
+          highlighted={false}
+          selected
+          stopUnder={stopUnder}
+          placement="below"
+          onPress={onPress}
+          onPressStopUnder={onPressStopUnder}
+        />
+      </TestTheme>,
+    );
+
+    await fireEvent.press(screen.getByTestId('bus-252'), { stopPropagation: () => {} });
+
+    expect(onPressStopUnder).toHaveBeenCalledWith(stopUnder);
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it('takes the press itself when it is covering nothing', async () => {
+    const onPress = jest.fn();
+    const onPressStopUnder = jest.fn();
+    await render(
+      <TestTheme>
+        <BusMarker
+          bus={busOnMap(20_000)}
+          highlighted={false}
+          selected
+          stopUnder={null}
+          placement="below"
+          onPress={onPress}
+          onPressStopUnder={onPressStopUnder}
+        />
+      </TestTheme>,
+    );
+
+    await fireEvent.press(screen.getByTestId('bus-252'), { stopPropagation: () => {} });
+
+    expect(onPress).toHaveBeenCalled();
+    expect(onPressStopUnder).not.toHaveBeenCalled();
+  });
+
+  /** The first tap is always the bus's own, covered stop or not. */
+  it('takes the first press even when a stop is underneath', async () => {
+    const onPress = jest.fn();
+    const onPressStopUnder = jest.fn();
+    await render(
+      <TestTheme>
+        <BusMarker
+          bus={busOnMap(20_000)}
+          highlighted={false}
+          selected={false}
+          stopUnder={stopUnder}
+          placement="below"
+          onPress={onPress}
+          onPressStopUnder={onPressStopUnder}
+        />
+      </TestTheme>,
+    );
+
+    await fireEvent.press(screen.getByTestId('bus-252'), { stopPropagation: () => {} });
+
+    expect(onPress).toHaveBeenCalled();
+    expect(onPressStopUnder).not.toHaveBeenCalled();
   });
 });

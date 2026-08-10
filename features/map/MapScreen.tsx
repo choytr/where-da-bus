@@ -624,6 +624,26 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   }, [selectedStop?.stop_id, routeMode?.routeId, routeMode?.directionIndex]);
 
   /**
+   * The bus a rider tapped, by fleet number, or null.
+   *
+   * **A number rather than the `BusOnMap`.** Every poll replaces the objects,
+   * so holding one would keep a sixty-second-old position selected while the
+   * bus it names had moved — and the popup's whole content is how fresh that
+   * position is. The fleet number is the only stable identity a bus has, which
+   * is also why `BusMarker` is keyed on it.
+   */
+  const [selectedBusNumber, setSelectedBusNumber] = useState<string | null>(null);
+
+  /**
+   * Leaving route mode, flipping direction, or changing route drops the
+   * selection. The bus layer is emptied and rebuilt in each of those, so an
+   * open popup would be a popup for a bus no longer drawn.
+   */
+  useEffect(() => {
+    setSelectedBusNumber(null);
+  }, [routeMode?.routeId, routeMode?.directionIndex]);
+
+  /**
    * The drawn bus behind the selected arrival, joined on trip id, or null.
    *
    * Hoisted out of the render so the labeller and the markers cannot disagree
@@ -639,6 +659,16 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     if (selectedArrival === null) return null;
     return buses.find((bus) => bus.vehicle.tripId === selectedArrival.tripId) ?? null;
   }, [buses, selectedArrival]);
+
+  /**
+   * A bus that has aged off the map, or moved onto the other direction's line,
+   * takes its popup with it. Resolved against the current list every poll
+   * rather than remembered, so the selection cannot outlive what it names.
+   */
+  const selectedBus = useMemo(
+    () => buses.find((bus) => bus.vehicle.number === selectedBusNumber) ?? null,
+    [buses, selectedBusNumber],
+  );
 
   /**
    * The line the map draws, decoded from the direction's representative shape.
@@ -863,37 +893,74 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   );
 
   /**
-   * A tap on a bus, which is a tap meant for whatever is under it.
+   * The stop the selected bus is drawn over, if any — the extra line in its
+   * popup, and what a second tap takes.
    *
-   * **Buses are not interactive yet** — Truman wants them to be eventually, and
-   * this is not that. They draw above the stops and MapKit gives the tap to the
-   * annotation on top, so a stop pin under a dot needed two presses: one
-   * absorbed by the bus, one that got through. Handing the tap down makes it
-   * one, and the stop rises above the dot because selecting it is what raises
-   * it.
-   *
-   * A dot with no stop under it swallows the tap rather than passing it to the
-   * map, which would dismiss an open card — a bus that does nothing should do
-   * nothing, not something surprising.
-   *
-   * Through a ref for the same reason `onPinPress` is: this reads `pins` and the
-   * settled `camera`, and a handler that changed identity when the camera
-   * settled would re-render every bus on the map on every pan.
+   * **Only for the selected bus.** Answering this needs the settled camera, so
+   * asking it for every bus would re-render the whole layer on every pan, which
+   * is the cost this component is shaped to avoid. One bus's prop changing when
+   * the camera settles is one marker re-snapshotted.
    */
-  const busPressRef = useRef<(bus: BusOnMap, event: MarkerPressEvent) => void>(() => {});
-  busPressRef.current = (bus, event) => {
-    event.stopPropagation();
-    const under = stopUnderBus(bus.vehicle.position, pins, camera ?? region, {
+  const stopUnderSelectedBus = useMemo(() => {
+    if (selectedBus === null) return null;
+    return stopUnderBus(selectedBus.vehicle.position, pins, camera ?? region, {
       width: windowWidth,
       height: mapHeight,
       visibleHeight: mapHeight,
     });
-    if (under === null) return;
+  }, [selectedBus, pins, camera, region, windowWidth, mapHeight]);
+
+  /**
+   * A tap on a bus, which is now the bus's own.
+   *
+   * **It used to be given away entirely.** Buses draw above the stops and
+   * MapKit gives the tap to the annotation on top, so a stop pin under a dot
+   * needed two presses — one absorbed by the bus, one that got through — and
+   * `651bb07` fixed that by having the bus find the stop underneath and select
+   * it instead. That made pins reachable and made buses untappable.
+   *
+   * Increment 9 gives the bus the tap and keeps the guarantee: the popup names
+   * the covered stop, and `BusMarker` takes it on the next press. Nothing
+   * becomes unreachable and nobody has to hit a pin they cannot see.
+   *
+   * Pressing the selected bus again with nothing underneath closes the popup,
+   * which is the only way to dismiss it without touching the map.
+   *
+   * Through a ref for the same reason `onPinPress` is: a handler that changed
+   * identity when the camera settled would re-render every bus on the map on
+   * every pan.
+   */
+  const busPressRef = useRef<(bus: BusOnMap, event: MarkerPressEvent) => void>(() => {});
+  busPressRef.current = (bus, event) => {
+    // Without this the press also reaches `MapView`'s `onPress`, which would
+    // dismiss the popup in the same gesture that opened it.
+    event.stopPropagation();
     holdZoomOff();
-    selectRef.current(under, { pan: false });
+    setSelectedBusNumber((current) =>
+      current === bus.vehicle.number ? null : bus.vehicle.number,
+    );
   };
   const onBusPress = useCallback((bus: BusOnMap, event: MarkerPressEvent) => {
     busPressRef.current(bus, event);
+  }, []);
+
+  /**
+   * The popup's covered-stop line, taken. Selecting the stop closes the popup.
+   *
+   * The pressed stop is not read off the argument: `stopUnderSelectedBus` is
+   * the only stop `BusMarker` can offer, and it is a `StopWithDistance`, which
+   * is what `select` wants. Taking it from the ref keeps the distance rather
+   * than looking the row up again to recover it.
+   */
+  const stopUnderPressRef = useRef<() => void>(() => {});
+  stopUnderPressRef.current = () => {
+    if (stopUnderSelectedBus === null) return;
+    setSelectedBusNumber(null);
+    holdZoomOff();
+    selectRef.current(stopUnderSelectedBus, { pan: false });
+  };
+  const onPressStopUnder = useCallback(() => {
+    stopUnderPressRef.current();
   }, []);
 
   /**
@@ -1140,13 +1207,31 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
           height: mapHeight,
           visibleHeight: Math.round(mapHeight * visibleAbove(detents, detent, mapHeight)),
         },
-        selectedStop?.stop_id ?? null,
-        // The bus behind a tapped arrival keeps its number at any zoom. The
-        // join may simply not land — only about one arrival in ten has a bus
-        // reporting against it — in which case nothing is forced.
-        highlightedBus?.vehicle.number ?? null,
+        {
+          selectedStopId: selectedStop?.stop_id ?? null,
+          // The bus behind a tapped arrival keeps its number at any zoom. The
+          // join may simply not land — only about one arrival in ten has a bus
+          // reporting against it — in which case nothing is forced.
+          highlightedBusNumber: highlightedBus?.vehicle.number ?? null,
+          // The tapped bus keeps its popup at any zoom, including route scale,
+          // where everything else goes quiet. A tap that does nothing at one
+          // zoom is worse than no popup at all.
+          selectedBusNumber: selectedBus?.vehicle.number ?? null,
+        },
       ),
-    [pins, buses, highlightedBus, camera, region, windowWidth, mapHeight, detent, detents, selectedStop],
+    [
+      pins,
+      buses,
+      highlightedBus,
+      selectedBus,
+      camera,
+      region,
+      windowWidth,
+      mapHeight,
+      detent,
+      detents,
+      selectedStop,
+    ],
   );
 
   /**
@@ -1248,8 +1333,12 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
               key={`${routeMode?.directionIndex ?? 'none'}-${bus.vehicle.number}`}
               bus={bus}
               highlighted={bus === highlightedBus}
+              selected={bus === selectedBus}
               placement={labelled.buses.get(bus.vehicle.number) ?? null}
+              // Null for every bus but the selected one; see `stopUnderSelectedBus`.
+              stopUnder={bus === selectedBus ? stopUnderSelectedBus : null}
               onPress={onBusPress}
+              onPressStopUnder={onPressStopUnder}
             />
           ))}
 

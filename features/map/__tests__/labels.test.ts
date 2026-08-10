@@ -304,6 +304,13 @@ function bus(number: string, lat = 21.3069, lon = -157.8583): LabelledBus {
   return { number, lat, lon };
 }
 
+/** Nothing tapped, so nothing is exempt from the collision rules or the caps. */
+const NOTHING_FOCUSED = {
+  selectedStopId: null,
+  highlightedBusNumber: null,
+  selectedBusNumber: null,
+};
+
 describe('labelledMapIds', () => {
   /**
    * The ordering decision, and the one that fixes what was seen on a device on
@@ -320,8 +327,8 @@ describe('labelledMapIds', () => {
   it('gives a bus the side it wants and makes the stop name yield', () => {
     const beside = stop('a', 21.3069, -157.8583 + 0.0025, 10);
 
-    const alone = labelledMapIds([beside], [], CLOSE, VIEWPORT, null, null);
-    const shared = labelledMapIds([beside], [bus('875')], CLOSE, VIEWPORT, null, null);
+    const alone = labelledMapIds([beside], [], CLOSE, VIEWPORT, NOTHING_FOCUSED);
+    const shared = labelledMapIds([beside], [bus('875')], CLOSE, VIEWPORT, NOTHING_FOCUSED);
 
     // On its own the stop takes the side every label prefers.
     expect(alone.stops.get('a')).toBe('below');
@@ -335,7 +342,7 @@ describe('labelledMapIds', () => {
     // 27 points below the bus, which is inside the box its label wants.
     const inTheWay = stop('below', 21.3069 - 0.00039, -157.8583, 10);
 
-    const labels = labelledMapIds([inTheWay], [bus('875')], CLOSE, VIEWPORT, null, null);
+    const labels = labelledMapIds([inTheWay], [bus('875')], CLOSE, VIEWPORT, NOTHING_FOCUSED);
 
     expect(labels.buses.get('875')).toBe('above');
   });
@@ -347,7 +354,7 @@ describe('labelledMapIds', () => {
   it('labels no buses at route scale', () => {
     const wide = { ...CLOSE, longitudeDelta: 0.09 };
 
-    const labels = labelledMapIds([], [bus('875'), bus('171')], wide, VIEWPORT, null, null);
+    const labels = labelledMapIds([], [bus('875'), bus('171')], wide, VIEWPORT, NOTHING_FOCUSED);
 
     expect(labels.buses.size).toBe(0);
   });
@@ -356,7 +363,10 @@ describe('labelledMapIds', () => {
   it('keeps the highlighted bus labelled at route scale', () => {
     const wide = { ...CLOSE, longitudeDelta: 0.09 };
 
-    const labels = labelledMapIds([], [bus('875'), bus('171')], wide, VIEWPORT, null, '171');
+    const labels = labelledMapIds([], [bus('875'), bus('171')], wide, VIEWPORT, {
+      ...NOTHING_FOCUSED,
+      highlightedBusNumber: '171',
+    });
 
     expect(labels.buses.get('171')).toBe('below');
     expect(labels.buses.has('875')).toBe(false);
@@ -367,7 +377,7 @@ describe('labelledMapIds', () => {
     // placed. The cap is what stops them.
     const many = [0, 1, 2, 3, 4, 5].map((i) => bus(`b${i}`, 21.3069 + (2 - i) * 0.0012));
 
-    expect(labelledMapIds([], many, CLOSE, VIEWPORT, null, null).buses.size).toBe(4);
+    expect(labelledMapIds([], many, CLOSE, VIEWPORT, NOTHING_FOCUSED).buses.size).toBe(4);
   });
 
   /** Both budgets are spent independently: buses claiming first must not starve the stops. */
@@ -377,12 +387,67 @@ describe('labelledMapIds', () => {
       [bus('875', 21.3069 + 0.004)],
       CLOSE,
       VIEWPORT,
-      null,
-      null,
+      NOTHING_FOCUSED,
     );
 
     expect(labels.buses.size).toBe(1);
     expect(labels.stops.size).toBe(3);
+  });
+
+  /**
+   * The tapped bus's popup, which is the one box on this map with a height of
+   * its own — four lines rather than one — and the one that must survive route
+   * scale. A tap that silently does nothing at one zoom is worse than no popup.
+   */
+  describe('the tapped bus', () => {
+    const tapped = { ...NOTHING_FOCUSED, selectedBusNumber: '171' };
+
+    it('keeps the selected bus’s label at route scale', () => {
+      const wide = { ...CLOSE, longitudeDelta: 0.09 };
+
+      const labels = labelledMapIds([], [bus('875'), bus('171')], wide, VIEWPORT, tapped);
+
+      expect(labels.buses.get('171')).toBe('below');
+      expect(labels.buses.has('875')).toBe(false);
+    });
+
+    /**
+     * The popup is four lines where a fleet number is one, so it needs its own
+     * geometry: a box claiming the collapsed height would be placed into a gap
+     * it does not fit, and would draw straight through whatever is there.
+     *
+     * The observable consequence is which side it opens on. A stop 60 points
+     * below clears a one-line label comfortably and is well inside a four-line
+     * popup, so the same fixture places the same bus on opposite sides
+     * depending only on whether it was tapped.
+     */
+    it('reserves the popup’s whole height rather than a label’s', () => {
+      const beneath = stop('a', 21.3069 - 0.00086, -157.8583, 10);
+
+      const collapsed = labelledMapIds([beneath], [bus('171')], CLOSE, VIEWPORT, NOTHING_FOCUSED);
+      const expanded = labelledMapIds([beneath], [bus('171')], CLOSE, VIEWPORT, tapped);
+
+      expect(collapsed.buses.get('171')).toBe('below');
+      expect(expanded.buses.get('171')).toBe('above');
+    });
+
+    /**
+     * Placed first, so the widest box on the map takes the side it wants rather
+     * than being squeezed onto the worse one by labels nobody asked for.
+     */
+    it('wins its side against a bus that would otherwise place first', () => {
+      // Two buses whose labels contend for the space between them.
+      const labels = labelledMapIds(
+        [],
+        [bus('875'), bus('171', 21.3069 - 0.0004)],
+        CLOSE,
+        VIEWPORT,
+        tapped,
+      );
+
+      expect(labels.buses.get('171')).toBe('below');
+      expect(labels.buses.get('875')).toBe('above');
+    });
   });
 });
 

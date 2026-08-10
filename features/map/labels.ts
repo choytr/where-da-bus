@@ -183,11 +183,29 @@ const STOP_GEOMETRY: Geometry = {
   offset: LABEL_OFFSET,
 };
 
-/** Wider and shorter than a stop's: one line of `252 · here 30 s ago`. */
+/** Wider and shorter than a stop's: one line holding a fleet number. */
 const BUS_GEOMETRY: Geometry = {
   tile: TILE_SIZE,
   labelWidth: 150,
   labelHeight: 14,
+  offset: LABEL_OFFSET,
+};
+
+/**
+ * The tapped bus's popup, which is a different shape from every other label on
+ * the map: narrower, and four lines tall.
+ *
+ * **The one variable-height box, and it has to be reserved at its full size.**
+ * A popup that draws taller than it claimed would land on the names placed
+ * around it. These numbers mirror `BusMarker`'s `DETAIL_*` constants — kept as
+ * literals rather than imported, because this module is pure arithmetic tested
+ * without React and importing a component would drag `react-native-maps` in
+ * with it.
+ */
+const SELECTED_BUS_GEOMETRY: Geometry = {
+  tile: TILE_SIZE,
+  labelWidth: 132,
+  labelHeight: 15 * 4 + 5 * 2,
   offset: LABEL_OFFSET,
 };
 
@@ -263,7 +281,7 @@ type Projection = ReturnType<typeof projectionFor>;
 function placeInto(
   items: readonly Placeable[],
   tiles: readonly Box[],
-  geometry: Geometry,
+  geometryFor: (item: Placeable) => Geometry,
   projection: Projection,
   claimed: Box[],
   max: number,
@@ -276,6 +294,9 @@ function placeInto(
     const tile = tiles[index];
     if (tile === undefined) continue;
 
+    // Per item rather than per layer, because the tapped bus's popup is four
+    // lines where every other bus is one.
+    const geometry = geometryFor(item);
     const forced = placement.get(item.id);
     // Off the edge or behind the sheet is nobody reading it. The forced entry
     // is exempt: a rider who just tapped something must see which.
@@ -307,6 +328,23 @@ export type MapLabels = {
 };
 
 /**
+ * What the rider has touched, and therefore what keeps its name whatever else
+ * is on screen.
+ *
+ * One parameter rather than three: they are three `string | null`s in a row
+ * meaning three different things, and the only thing standing between the
+ * caller and swapping two of them would be argument order.
+ */
+export type MapFocus = {
+  /** The stop whose card is open. */
+  readonly selectedStopId: string | null;
+  /** The bus behind a tapped *arrival* — drawn larger, and always named. */
+  readonly highlightedBusNumber: string | null;
+  /** The bus a rider tapped, which is showing its popup. */
+  readonly selectedBusNumber: string | null;
+};
+
+/**
  * Every name the map writes, decided in one pass over one collision map.
  *
  * **Buses claim before stops, and that ordering is the decision.** A bus label
@@ -323,22 +361,26 @@ export type MapLabels = {
  * red line, which is the question that scale is asking. The two forced entries
  * survive it — see below.
  *
- * `selectedStopId` and `highlightedBusNumber` are labelled unconditionally, at
- * any zoom: each marks a thing the rider has just this moment tapped, and both
- * would otherwise be lost in exactly the crowd that made them tap it.
+ * Everything in `focus` is labelled unconditionally, at any zoom: each marks a
+ * thing the rider has just this moment tapped, and each would otherwise be lost
+ * in exactly the crowd that made them tap it. **The selected bus is the reason
+ * that exemption has to survive route scale** — its popup is the answer to the
+ * tap, and a tap that silently does nothing at one zoom is worse than no popup
+ * at all.
  */
 export function labelledMapIds(
   stops: readonly StopWithDistance[],
   buses: readonly LabelledBus[],
   region: Region | null,
   viewport: Viewport,
-  selectedStopId: string | null,
-  highlightedBusNumber: string | null,
+  focus: MapFocus,
 ): MapLabels {
+  const { selectedStopId, highlightedBusNumber, selectedBusNumber } = focus;
   const stopPlacement = new Map<string, LabelPlacement>();
   const busPlacement = new Map<string, LabelPlacement>();
   if (selectedStopId !== null) stopPlacement.set(selectedStopId, 'below');
   if (highlightedBusNumber !== null) busPlacement.set(highlightedBusNumber, 'below');
+  if (selectedBusNumber !== null) busPlacement.set(selectedBusNumber, 'below');
 
   const labels: MapLabels = { stops: stopPlacement, buses: busPlacement };
 
@@ -351,6 +393,9 @@ export function labelledMapIds(
   // opaque, they cannot move, and every one is drawn whether or not it is
   // named — including the ones behind the sheet, which a label above them could
   // still run into.
+  const busGeometry = (item: { id: string }) =>
+    item.id === selectedBusNumber ? SELECTED_BUS_GEOMETRY : BUS_GEOMETRY;
+
   const busTiles = buses.map((bus) => projection.tileBox(bus, BUS_GEOMETRY));
   const stopTiles = stops.map((stop) => projection.tileBox(stop, STOP_GEOMETRY));
   const claimed: Box[] = [...busTiles, ...stopTiles];
@@ -363,18 +408,23 @@ export function labelledMapIds(
       item: { id: bus.number, lat: bus.lat, lon: bus.lon },
       tile: busTiles[index] ?? projection.tileBox(bus, BUS_GEOMETRY),
     }))
-    // The highlighted bus first; the rest in the order they arrived, which
-    // `useVehicles` has already sorted freshest first.
-    .sort((a, b) => {
-      if (a.item.id === highlightedBusNumber) return -1;
-      if (b.item.id === highlightedBusNumber) return 1;
-      return 0;
-    });
+    // **The tapped bus first, and it wins every tie**, because its popup is the
+    // answer to a tap and it is the widest box on the map — placed late it
+    // would be squeezed onto the worse side by labels nobody asked for. Then
+    // the highlighted one, then the order they arrived in, which `useVehicles`
+    // has already sorted freshest first.
+    .sort((a, b) => rankOf(a.item.id) - rankOf(b.item.id));
+
+  function rankOf(number: string): number {
+    if (number === selectedBusNumber) return 0;
+    if (number === highlightedBusNumber) return 1;
+    return 2;
+  }
 
   placeInto(
     busOrder.map(({ item }) => item),
     busOrder.map(({ tile }) => tile),
-    BUS_GEOMETRY,
+    busGeometry,
     projection,
     claimed,
     MAX_BUS_LABELS,
@@ -397,7 +447,7 @@ export function labelledMapIds(
   placeInto(
     stopOrder.map(({ item }) => item),
     stopOrder.map(({ tile }) => tile),
-    STOP_GEOMETRY,
+    () => STOP_GEOMETRY,
     projection,
     claimed,
     MAX_LABELS,
@@ -422,7 +472,11 @@ export function labelledStopIds(
   viewport: Viewport,
   selectedId: string | null,
 ): Map<string, LabelPlacement> {
-  return labelledMapIds(stops, [], region, viewport, selectedId, null).stops;
+  return labelledMapIds(stops, [], region, viewport, {
+    selectedStopId: selectedId,
+    highlightedBusNumber: null,
+    selectedBusNumber: null,
+  }).stops;
 }
 
 /**
