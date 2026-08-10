@@ -7,9 +7,9 @@ up. Update it in place rather than adding a dated section each time.
 `CLAUDE.md` are the record; anything already in them belongs there, not here.
 When an increment ships, its write-up in this file collapses to a pointer.
 
-Last updated: **2026-08-09**. **Increments 1–7 are shipped and merged**, and
-`main` is at Increment 7. Increment 7's whole-diff review came back with one
-cosmetic finding, now in `docs/backlog.md`.
+Last updated: **2026-08-09**, after the route mode UX pass. **Increments 1–7 are
+shipped and merged**, and `main` is at Increment 7. Increment 7's whole-diff
+review came back with one cosmetic finding, now in `docs/backlog.md`.
 
 **Increment 7's device round never happened.** This file previously said it
 passed; Truman said on 2026-08-09 that he had not run it. Every box in
@@ -24,20 +24,52 @@ increments without anyone noticing.
 
 ## Start here
 
-**Increment 8 is built and verified on a device. Nothing is broken and nothing
-is owed from the device rounds.** Route mode, the red route line, the live
-buses and the sheet's scrolling have all been seen working on an `.ipa` —
-Truman, 2026-08-09: *"Everything looks good."*
+**Increment 8 is built and device-verified, and the UX pass over it is built and
+unverified on a device.** All three items it had deferred are now done, plus
+two bugs found by reading and one gesture Truman asked to have removed.
 
-**The next action is a short round of small changes Truman has in mind, then a
-review pass over the whole diff, then the merge to `main`** — which needs his
-explicit permission. Ask him what the small changes are; they were not specified
-before the context was cleared.
+**The next action is one device reading, then the review pass over the whole
+diff, then the merge to `main`** — which needs his explicit permission.
 
-`docs/backlog.md` takes what is not worth fixing now — **where `adherence` is
-shown**, **stop pins covering the route line**, and **bus labels being
-unreadable among the stop pins**. The last two are Truman's own calls from the
-device rounds.
+**The one reading owed, and it is a glance rather than a checklist.** Open a
+route, *do not touch the map*, and watch the second line of the route band:
+
+- `Looking for buses…` → `7 buses running`, dots appearing, no gesture → the
+  bug Truman reported was **fetch latency**, the zoom was coincidental, and the
+  line is already the fix.
+- a count sitting there over an empty map → it is **native**, and it gets
+  `superpowers:systematic-debugging` rather than another theory.
+
+That bug — *"on first render of the route view, the bus icons don't show
+automatically. If I zoom in and then out they show"* — is the only thing in the
+pass that is not settled. **Do not guess at it.** React cannot be the cause of
+the redraw: `BusMarker` is memoised on label, highlight, placement, adherence
+and position, and a zoom changes none of them, so the elements React hands the
+map across a zoom are identical.
+
+### What the UX pass changed
+
+The reframe is the useful part: **route mode drew the street-scale view at every
+scale**, and the two backlog items about the map were one defect rather than
+two. Truman's screenshots are transcribed in
+`docs/superpowers/logs/2026-08-09-route-mode-ux.md`; the reasoning and every
+settled decision are in
+`docs/superpowers/specs/2026-08-09-route-mode-ux-pass.md`.
+
+- `scaleOf` splits `'route'` from `'street'` off **`MAX_SPAN_FOR_LABELS`, not a
+  threshold of its own** — "names are hopeless" and "tiles have fused" are one
+  fact about one set of 34-pt boxes.
+- Stop tiles collapse to 8-pt dots past it. **The wrapper view stays 34 pt**;
+  shrinking it would make forty stops untappable *and* move every one of them.
+- `labels.ts` decides both layers against one collision map, **buses first**.
+- Adherence is the ring on the dot plus a count in the band. `adherence.ts`
+  holds the sign convention: **positive means early**.
+- The route band's second line says what the bus layer is doing, in four
+  states. **It shares that line with the direction** because the band is pinned
+  at `PEEK_BAND` and cannot grow.
+
+`docs/backlog.md` keeps what this pass did not fix: **which** bus is late is
+colour-only, and **test files are not typechecked at all**.
 
 **The device-round checklist is retired as a practice.** Truman ended it on
 2026-08-09: *"drop them / mark them as fine, honestly. We'll fix bugs as I come
@@ -127,9 +159,10 @@ native module.
 
 ## Where things stand
 
-`main` is at Increment 7. **`dev` is seven commits ahead with all of Increment 8
-built and unverified on a device.** 651 Jest across 44 suites, 130 `node --test`,
-clean typecheck and clean `npm ci` — verified locally 2026-08-09.
+`main` is at Increment 7. **`dev` carries all of Increment 8 and the UX pass over
+it.** 693 Jest across 46 suites, 130 `node --test` and a clean typecheck —
+verified locally 2026-08-09. `npm ci` last verified clean before the UX pass,
+which added no dependencies.
 
 **The sheet's lists could not scroll on any real build, for two increments, and
 that is fixed.** The content column was `flex: 1` against a parent that
@@ -247,6 +280,12 @@ line by line.
 There is no simulator here and no device on this side. Say which of the two you
 are doing, every time.
 
+**A screenshot is worth more than a description of one, and it does not
+survive.** Three shots on 2026-08-09 overturned a framing two backlog entries
+had held for a day — the clutter was one zoom problem, not two independent
+defects — and neither entry could have been written from the words alone.
+Transcribe them into a log the moment they arrive.
+
 **Reading native source is not measuring, and this includes layout.** Six wrong
 claims so far. The map crash's two recorded causes were both readings; one
 `.ips` file off the phone settled in a single look what six weeks of reasoning
@@ -314,15 +353,15 @@ AppID) and **how any of it looks** (no simulator, no device on this side).
 
 ## Suggested skills
 
-- **Not `grilling`, and not `writing-plans`.** Increment 8's grilling is
-  finished, and its spec and plan are written. Reopening either wastes the
-  session and re-argues settled calls.
-- **`superpowers:executing-plans`** is the next skill, for Increment 8's plan,
-  starting at Task 1. `superpowers:requesting-code-review` again at that
-  increment's boundary.
-- **`superpowers:systematic-debugging`** — whenever the app's *appearance* or a
-  native-layer bug comes up. It is what stopped a fix being aimed at a cause the
-  backlog merely asserted.
+- **Not `grilling`, not `brainstorming`, not `writing-plans`.** Increment 8 and
+  the UX pass over it are both specced, planned and built. Reopening any of it
+  re-argues settled calls.
+- **`superpowers:requesting-code-review`** is the next skill, over the whole
+  `dev` diff — one review at the increment boundary, which is where the
+  cross-cutting findings live.
+- **`superpowers:systematic-debugging`** if the band's second line shows a bus
+  count over an empty map. That is the only outcome that makes the first-render
+  bug a real defect, and it is a native one.
 - **Not `dispatching-parallel-agents` or `subagent-driven-development`.**
   `CLAUDE.md` is explicit: execute inline, review once at the boundary.
 

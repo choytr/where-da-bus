@@ -158,3 +158,58 @@ entries out of `docs/backlog.md`, note what replaced them, and update
 
 **The one device reading owed:** open a route, do not touch the map, watch the
 band's second line. It settles the bus bug either way. See the spec.
+
+---
+
+## What was built
+
+Where reality disagreed with the plan above, in the order it came up.
+
+**Task 1 — as planned.** `scaleOf` and the 8-pt dot. One thing the plan did not
+foresee: `StopMarker`'s bus glyph could not be *conditionally rendered* at the
+threshold, because that is a mount instruction against a view whose subviews
+belong to MapKit — the family behind the SIGABRT. It takes an `opacity` and a
+zero `scale` instead, like the label beside it.
+
+**Task 2 — as planned, with a different public shape.** The plan had
+`labelledBusIds` as a second exported function; that could not work, because the
+two passes must share one mutable obstacle list and exporting the array would
+have been worse. It is one `labelledMapIds` returning both maps, with
+`labelledStopIds` kept as a thin wrapper over it — which is also what let all 17
+of the existing assertions run untouched as the refactor's check.
+
+One test in the plan was wrong about the geometry it was testing. *"A bus label
+wins a collision against a stop name"* cannot be shown with the two co-located:
+the stop's 34-pt **tile** blocks both of the bus's sides, so neither gets a
+label and the result says nothing about priority. It is now *"gives a bus the
+side it wants and makes the stop name yield"*, 100 points apart, asserting the
+stop takes `'below'` alone and `'above'` once a bus contends.
+
+**Task 3 — `adherenceOf` moved out of `BusMarker`.** The plan put it there, and
+then Task 4 needed it in `useVehicles` to count late buses. A hook importing a
+component is the wrong seam even though the cycle is type-only and erases, so it
+is `features/map/adherence.ts`, imported by both. That is also what guarantees
+the ring and the count cannot disagree about what "late" means.
+
+Thresholds landed asymmetric — 5 minutes late, 2 minutes early — which the plan
+did not specify. Running late is ordinary; running early strands someone who
+arrived on time.
+
+**Task 4 — one thing the plan got wrong about the band.** `busLayerWords`'
+output could not be the whole of the state element's text, because the `· `
+separator has to disappear when the direction is still loading and empty. The
+separator is its own `Text`, which also means the state reads alone to
+VoiceOver.
+
+**Task 5 — the test was verified to bite.** The `setNow` line was commented out
+and the suite re-run: *"ages a fleet against a current clock after a long idle"*
+fails, and only that test. A test for a bug found by reading is worth nothing
+until it has been seen to fail.
+
+**Task 6 — as planned.**
+
+**Task 7 — one finding worth more than the task.** `tsconfig.json` excludes
+`**/__tests__/**/*`, so **no test file is typechecked**. Adding a required field
+to `RouteView` broke seven `StopSheet` tests at runtime with a completely clean
+`tsc`. Filed in `docs/backlog.md` rather than fixed here — including the tests
+would surface whatever else has drifted, and that belongs in its own change.

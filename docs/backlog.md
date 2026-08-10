@@ -120,14 +120,22 @@ wrong, correct the entry rather than only the code.
   a query change in the effect and reset to `NO_RESULTS` on the former — the
   carry-forward exists so a *keystroke* never blanks the list under a thumb,
   which is not what an explicit change of filter is.
-- **Where a bus's lateness is shown is undecided.** Increment 8 will parse
-  `adherence` and carry it in the model, so surfacing it later is a UI change
-  and not a data change. Settled in the increment's grilling: it does **not**
-  go on the bus icon's label, which already carries the fleet number and the
-  age of that bus's last report. Truman wants it elsewhere on the map and
-  deferred the placement until he can see it on a device, so nothing renders it
-  until then. Two traps for whoever does: **positive `adherence` means
-  *early***, and nothing bounds it to ±60 minutes.
+- ~~**Where a bus's lateness is shown is undecided.**~~ **Done**, 2026-08-09, in
+  the route mode UX pass. It is the ring around the bus's dot — amber behind,
+  violet ahead, nothing when on time or unreported — plus a count in the route
+  band's second line. **Not on the arrival rows**, which was the first design:
+  `Arrival` has no `adherence` field, the only join to a `Vehicle` is `tripId`,
+  and ~96% of arrivals are schedule-only, so a row could carry it about one time
+  in twenty-five. `features/map/adherence.ts` holds the thresholds and the
+  sign convention.
+
+- **Which bus is late is colour-only, and that is accepted.** The count in the
+  band states the fact in words, so the map never says something *only* in
+  colour — but a rider who cannot separate amber from violet learns how many are
+  late and not which. Recorded rather than fixed because the honest fix is
+  making buses tappable, which is a feature rather than a UX pass. Whoever picks
+  it up: `BusMarker` currently sets `pointerEvents="none"` on its wrapper and
+  passes no `onPress`.
 - Route chips flicker for one frame when search clears, and stale entries
   persist when the id list is empty.
 - The favorite `Pressable` lacks `accessibilityState={{ selected: isFavorite }}`.
@@ -135,34 +143,26 @@ wrong, correct the entry rather than only the code.
 
 ### Map, from the device rounds
 
-- **Bus labels are unreadable with every stop pin showing.** Observed on a device
-  2026-08-09, device round 2, Route 2 through Kalihi: the buses work — green dots
-  labelled `171 · here 30 s ago` — but the labels overlap each other and the
-  stop pins, and on a dense stretch the map is mostly furniture. Truman: *"It's
-  not very readable with every stop icon showing. We can address that in the
-  future, good work getting it working for now."*
+- ~~**Bus labels are unreadable with every stop pin showing.**~~ and
+  ~~**Stop pins cover the route line.**~~ **Both done**, 2026-08-09, in the route
+  mode UX pass — and they turned out to be **one** defect rather than two.
 
-  Deferred by him, not triaged away. Whoever picks it up: `labels.ts` already
-  culls *stop* names by collision and `MAX_LABELS`, and buses currently bypass
-  that entirely — every bus is always labelled, because the age is the reason the
-  bus is drawn at all. The obvious moves are to cull bus labels the same way, to
-  drop stop labels while a route is showing, or to shrink the stop pins in route
-  mode. All three are UI calls and need a device.
+  Truman's screenshots showed route mode is legible at street scale and unusable
+  at route scale, where forty 34-pt tiles fuse into an unbroken chain. Both
+  symptoms were observed only at the wide zoom and neither reproduces at the
+  zoom he was happy with, so the fix is a zoom tier rather than either of the
+  moves listed here before: `scaleOf` in `labels.ts` splits `'route'` from
+  `'street'`, stop tiles collapse to 8-pt dots past the threshold, and both
+  layers' labels go quiet. Buses now go through the same collision map as stop
+  names, claiming first.
 
-- **Stop pins cover the route line, and that is accepted.** Observed on a device
-  2026-08-09, device round 1: on a dense stretch — Route 10 through Alewa
-  Heights — the pins are almost continuous and the line shows only between them.
-  Truman: *"it's also easy for the stop pins to completely cover the line but we
-  should just accept that and move on."*
+  **The `zIndex` rule below was never tested and still stands** — nothing in
+  that pass reintroduced it. The line became visible because the pins got out of
+  its way, not because anything was reordered.
 
-  Recorded rather than fixed because every fix is worse than the problem. Drawing
-  the line **over** the pins needs a `zIndex` on markers, and `zIndex` is the
-  prop whose removal made the SIGABRT stop reproducing — see the rule at the foot
-  of this section. Thinning the pins would take away the stops, which are what
-  route mode is for. Shrinking them below the line's width makes them
-  untappable. The line was made red on the same round, which is as far as this
-  goes: it is now findable between the pins rather than hidden under pins of its
-  own colour.
+  Full reasoning: `docs/superpowers/specs/2026-08-09-route-mode-ux-pass.md`.
+  The screenshots are transcribed in
+  `docs/superpowers/logs/2026-08-09-route-mode-ux.md`.
 
 - **A bare number in Address mode geocodes to something unrelated, and that is
   accepted.** Truman typed `2469`; `findOnOahu` asked `CLGeocoder` for
@@ -245,6 +245,20 @@ but that'll come later. Functionality first."
   Expo Go loop.
 
 ## Tests
+
+- **Test files are not typechecked at all.** `tsconfig.json` excludes
+  `**/__tests__/**/*`, so `npm run typecheck` never compiles a single test. A
+  fixture typed `const ROUTE_VIEW: RouteView` that is missing a required field
+  passes `tsc` and then fails at runtime with `Cannot read properties of
+  undefined` from inside the component — which is how adding one field to
+  `RouteView` broke seven `StopSheet` tests on 2026-08-09 with a clean
+  typecheck.
+
+  The exclusion is not obviously wrong: the comment above it is about subagent
+  worktrees under `.claude/`, and that part is load-bearing. Whether the
+  `__tests__` half was deliberate or collateral is unread. Including them would
+  need `@types/jest` to resolve everywhere and would surface whatever has drifted
+  since — do it as its own change, not folded into something else.
 
 - **`testTimeout: 20000` in `package.json` is load-bearing.** Three tests
   legitimately take 6–8 s on a cold cache and blew Jest's 5 s default. Raising
