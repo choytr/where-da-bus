@@ -376,24 +376,6 @@ but that'll come later. Functionality first."
   before 2026-08-09 recorded the state and not the gesture, which is exactly the
   half that turned out to matter.
 
-- **A stop pin under a bus dot takes two taps to select.** Found on a device
-  2026-08-09, after the bus layer was moved to draw above the stops. The first
-  tap raises the stop pin above the bus dot but does not select it; the second
-  selects it and drops it back underneath.
-
-  Read as MapKit resolving the overlap on the first tap and the app's `onPress`
-  only reaching the pin once it is on top — but that is a *reading*, and this
-  entry's own section is a monument to what those are worth. Measure before
-  fixing. `BusMarker`'s wrapper is already `pointerEvents="none"` and the bus
-  `Marker` has no `onPress`, so whatever is eating the first tap is not an app
-  handler.
-
-  Cosmetically small and never wrong, only slow: the rider gets the stop they
-  asked for on the second tap. Deferred because the trade that produced it is
-  worth keeping — buses drawing over stops is the correct order for a live layer
-  over a reference one, and it was also part of what made the marker arrays
-  safe to drain.
-
 - **Tapping a pin counts toward Apple Maps' double-tap-to-zoom**, and there is
   no supported way off. `zoomTapEnabled` is *iOS: Google Maps only* per
   `react-native-maps`' own type definitions, and the zooming recogniser is
@@ -404,6 +386,16 @@ but that'll come later. Functionality first."
   cost is real and Truman accepted it knowingly:** a deliberate pinch begun
   within that window does nothing. A proper fix is native and would leave the
   Expo Go loop.
+
+  **`Marker`'s `tappable` is the same trap**, and it caught this project a
+  second time on 2026-08-09: also *iOS: Google Maps only*, so a marker cannot
+  be told to decline a tap on Apple Maps. It came up because buses draw above
+  stops and MapKit gives the tap to the annotation on top, which made a stop pin
+  under a bus dot take two presses. Fixed by routing rather than declining —
+  `BusMarker` takes an `onPress` and hands it to `stopUnderBus`. **Check the
+  `@platform` line on any `react-native-maps` prop before building on it**;
+  roughly a third of them are Google-Maps-only and the types say so in a tag
+  that reads like documentation rather than a constraint.
 
 ## Tests
 
