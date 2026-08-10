@@ -60,6 +60,14 @@ note the rebuilt-floor exception to *"do not run `npm run build:gtfs` and commit
 the result"*. Before merge, `gh workflow run gtfs-data.yml` with `force` so a v3
 generation exists.
 
+**What was built.** As planned. 333 triples, confirmed against the feed. Two
+things the contract did not say: a trip missing `direction_id` *or*
+`trip_headsign` is **skipped rather than thrown on** — both are optional in
+GTFS, and `FLOOR.routeDirections` is what catches a feed that lost them
+wholesale — and `downgradeToV1` learned to drop the new table too, or the v1
+generation carries pages no v1 binary reads. `files.ts`'s `isTableCounts` now
+checks `shapes` and `routeDirections`, which it never checked for `shapes`.
+
 ---
 
 ## Task 2 — Hide the other direction's buses
@@ -84,6 +92,13 @@ ambiguous; the other 96% attribute cleanly.
 
 **Tests:** `drops a bus running the other direction`; `keeps a bus whose
 headsign is unknown`; `filters nothing when no headsigns are supplied`.
+
+**What was built.** The contract's signature could not express the settled
+behaviour. One array of headsigns cannot tell "signed the other way" from
+"signed something this app has never heard of", and only the first is a reason
+to hide a bus — so the parameter is a `DirectionFilter` of `showing` and
+`known`. Everything else as planned, plus a MapScreen test, because what the
+hook cannot get wrong is *which two lists it is handed*.
 
 ---
 
@@ -125,6 +140,17 @@ hidden with `opacity`; keep it that way.
 when selected`; `says early rather than late for a positive adherence`; `keeps
 the selected bus's label at route scale`.
 
+**What was built.** Merged with Task 4's tap conflict, which could not be split
+from it: selecting the bus and handing the covered stop down are one behaviour,
+and building the first without the second would have left a covered pin
+unreachable between two commits.
+
+`ageWords` moved to `busDetail.ts` with the rest. The popup reserves **four**
+lines in `labels.ts`, not three — the labeller cannot know whether a covered
+stop is about to add one, and a box that claims more than it draws only makes
+its neighbours more generous. `labelledMapIds` took a `MapFocus` object rather
+than growing a third `string | null` in a row.
+
 ---
 
 ## Task 4 — The tap conflict, and the arrows — DEVICE ROUND AFTER THIS
@@ -163,6 +189,15 @@ checked, not assumed.
 covered stop in the popup`; `returns a constant number of arrows at every
 zoom`; `points along the line`.
 
+**What was built.** The arrows only; the tap conflict shipped with Task 3.
+`arrowPlacements` returns a `visible` flag rather than an opacity, so the
+geometry says nothing about styling. `bearingBetween` is the great-circle
+formula — `atan2(Δlat, Δlon)` is off by cos(latitude), 7% here.
+
+**Open, and a device question:** whether a 16 pt arrow wrapper drawn before the
+pins really stays out of their way. MapKit hit-tests by frame and this project
+has been wrong six times about native behaviour it read rather than measured.
+
 ---
 
 ## Task 5 — The route pill
@@ -183,6 +218,12 @@ the peek renders no legend — raised, and ruled on by Truman twice, on the
 grounds that the sheet carries the legend for the same data and that the peek
 already shows a route name and a stop row without one. *"That's honestly fine."*
 Do not reopen this as a compliance finding.
+
+**What was built.** As planned, plus the layout rule: the pill appears when
+route mode is entered rather than when the route's row arrives, so the name
+landing does not push ⌖ and the compass down. A route with no name yet reads
+`Route`, matching the sheet's band. Its X and the band's X share one label, so
+the MapScreen tests now say which they pressed.
 
 ---
 
@@ -225,6 +266,26 @@ for one in ten, and those disagree.
 any zoom and the trip's own shape. What is missing is arriving in that state
 from another screen.
 
+**What was built.** As planned. `app/(tabs)/index.tsx` needed no change — the
+wiring lives in the row components, so every host gets it without threading
+callbacks through five screens.
+
+`ROUTE_BY_SHORT_NAME` was added: an `Arrival` carries `route: "32"` and the map
+keys on `route_id`, and nothing translated between them. Unique across all 117
+named routes, verified against the asset.
+
+**The measurement came back, and the two figures never disagreed.** 300
+arrivals at 00:40 HST: vehicle-assigned, `estimated="1"` and position-carrying
+were the *same* 19. The 96% figure is a 22:00 HST sample and the API README
+says so; daytime fleet freshness is ~5x the night's, which puts the real share
+nearer `MapScreen`'s one-in-ten. Minority either way, so absent-not-disabled
+stands. Full note in the spec.
+
+Two bugs found on the way: `StopRow`'s tappable area was `disabled` without an
+`onPress`, and a disabled `Pressable` swallows long presses too; and the
+preselected trip had to be *derived* from the selection rather than cleared in
+an effect, which wiped it in the commit that recorded it.
+
 ---
 
 ## Task 7 — The small wins
@@ -247,6 +308,13 @@ from another screen.
 
 **Tests:** `shows route chips for the stop`; `omits distance when location is
 unavailable`; `clears results when the filter changes`.
+
+**What was built.** Two of three as planned. **The tab icons are text glyphs,
+not `@expo/vector-icons`:** the plan's premise was wrong — it is in the lockfile
+but nested at `node_modules/expo/node_modules/`, so it is not resolvable from
+`app/`, and reaching it means a new direct dependency. `useLocation` gained
+`requestIfAllowed`, which reads a fix only when permission already exists and
+so can never put a dialog in front of a rider who deep-linked to a board.
 
 ---
 

@@ -110,19 +110,6 @@ wrong, correct the entry rather than only the code.
   ten-second-old times is the behaviour the immediate refetch exists for. Worth
   measuring before changing, and worth changing only with a device to check it
   on.
-- **Switching the search filter shows the previous filter's results for one
-  debounce window.** `useSearch` re-runs its effect on a filter change and sets
-  `{ state: 'running', results: onScreen.current }`, so `SearchOverlay`'s
-  `ResultList` renders stop rows under a *Routes* chip — or the reverse — for
-  ~175 ms while "Searching…" is on screen. **`StopsScreen` is immune**: it
-  splits results by `kind` through `foundStops`/`foundRoutes`, so the
-  mismatched rows are filtered out client-side and the list simply shows
-  nothing. Found by Increment 7's whole-diff review on 2026-08-09, **not on a
-  device**; cosmetic, self-correcting, and a mis-tap during the window still
-  opens the stop the row names. The fix is to distinguish a filter change from
-  a query change in the effect and reset to `NO_RESULTS` on the former — the
-  carry-forward exists so a *keystroke* never blanks the list under a thumb,
-  which is not what an explicit change of filter is.
 - ~~**Where a bus's lateness is shown is undecided.**~~ **Done**, 2026-08-09, in
   the route mode UX pass. It is the ring around the bus's dot — amber behind,
   violet ahead, nothing when on time or unreported — plus a count in the route
@@ -132,13 +119,16 @@ wrong, correct the entry rather than only the code.
   in twenty-five. `features/map/adherence.ts` holds the thresholds and the
   sign convention.
 
-- **Which bus is late is colour-only, and that is accepted.** The count in the
-  band states the fact in words, so the map never says something *only* in
-  colour — but a rider who cannot separate amber from violet learns how many are
-  late and not which. Recorded rather than fixed because the honest fix is
-  making buses tappable, which is a feature rather than a UX pass. Whoever picks
-  it up: `BusMarker` currently sets `pointerEvents="none"` on its wrapper and
-  passes no `onPress`.
+- ~~**Which bus is late is colour-only, and that is accepted.**~~ **Fixed
+  2026-08-10, in Increment 9's Task 3** — and by exactly the route this entry
+  predicted, which was making buses tappable. Tapping one opens a popup saying
+  in words how far off schedule it is running (`latenessWords` in
+  `features/map/busDetail.ts`), so the ring is now shorthand for something the
+  map will spell out rather than the only place it is said.
+
+  **Not verified on a device yet.** Whether the popup is readable at street
+  scale, and whether it is reachable without fighting the stop pins around it,
+  are the two things the Increment 9 device round is for.
 - Route chips flicker for one frame when search clears, and stale entries
   persist when the id list is empty. **Truman could not reproduce this on the
   Increment 8 `.ipa`, 2026-08-09, and did not recognise the description.** It
@@ -461,6 +451,35 @@ but that'll come later. Functionality first."
   `@platform` line on any `react-native-maps` prop before building on it**;
   roughly a third of them are Google-Maps-only and the types say so in a tag
   that reads like documentation rather than a constraint.
+
+## Increment 9 — deferred by decision
+
+- **Address autocomplete**, and with it the question of whether a CI-only
+  feature is worth having. It is the one item in Truman's dump that needs a
+  native module, which would push address work onto the slow `.ipa` loop
+  permanently while everything else iterates in Expo Go. Re-verified
+  2026-08-09 against the installed types: `geocodeAsync` returns coordinates
+  and nothing printable, and one result at a time, so a suggestion list costs
+  two round trips per keystroke to render one row.
+- **A geometry fallback for the twelve routes that sign both directions
+  alike** — `route_id` 123, 14, 444, 51, 52, 521, 53, 535, 54, 6, 7, 8, which
+  is **4.00% of trips** (1,507 of 37,678). Offered and declined for now. Its
+  failure mode would be benign: where the streets are shared, a bus sits on
+  the line and looks right either way. The obvious next move if those routes
+  annoy him in use.
+- **Camera-follow for a selected bus.** Offered and set aside as fighting the
+  route-mode camera, which is already doing framing a rider did not ask for.
+- **Whether the arrow markers eat taps meant for stop pins.** `RouteArrows`
+  wraps each glyph in a 16 pt box and draws it before the pins, which should
+  put it under them and out of the way — but MapKit hit-tests annotation views
+  by frame, and this project has been wrong six times about native behaviour
+  read rather than measured. **A device question**, and one to ask while the
+  Increment 9 build is on the phone.
+- **Tab icons are text glyphs, not drawn icons.** `@expo/vector-icons` is in
+  the lockfile but nested under `node_modules/expo/`, so it is not resolvable
+  from `app/` — reaching it is `npx expo install @expo/vector-icons`, a new
+  direct dependency. One install and one edit in `app/(tabs)/_layout.tsx` if
+  the glyphs look wrong on a device.
 
 ## Tests
 
