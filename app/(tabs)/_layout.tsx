@@ -1,35 +1,6 @@
-import { Text } from 'react-native';
 import { Tabs } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTheme } from '../../lib/theme';
-
-/**
- * The tab icons.
- *
- * **Glyphs, not an icon set, and that is a dependency decision.** The tab bar
- * passed no `tabBarIcon` at all until Increment 9, which is why iOS drew
- * placeholder triangles. The plan called for `@expo/vector-icons` on the
- * grounds that it is already installed — it is in the lockfile, but npm nests
- * it at `node_modules/expo/node_modules/@expo/vector-icons`, so it is **not
- * resolvable from this file**: `require.resolve` fails from the project root,
- * and Metro resolves from the importing file the same way. Reaching it means
- * `npx expo install @expo/vector-icons`, which is a new direct dependency, and
- * `CLAUDE.md` is explicit that adding one here is an architectural decision
- * rather than a routine install.
- *
- * Text costs nothing, tints with `color` for free, and is the language the rest
- * of this app already speaks — ⌖ recenters the map, ✕ leaves route mode, ⌕ is
- * the search bar, ★ is a favorite. If Truman wants drawn icons, that is one
- * install and one edit here.
- */
-const ICONS = { index: '◎', stops: '≡', settings: '⚙' } as const;
-
-function tabIcon(name: keyof typeof ICONS) {
-  return function TabIcon({ color, size }: { color: string; size: number }) {
-    // `lineHeight` matched to `fontSize`: without it the glyph sits high in the
-    // tab bar, because a glyph's own line box is taller than the character.
-    return <Text style={{ color, fontSize: size, lineHeight: size }}>{ICONS[name]}</Text>;
-  };
-}
 
 /**
  * The three tabs. `(tabs)` is a route *group* — the parentheses keep it out of
@@ -45,6 +16,49 @@ function tabIcon(name: keyof typeof ICONS) {
  * *previous* screen's title, and an unset title is the filename. That is
  * exactly how every back button in Increment 2 came to read "Index".
  */
+
+/**
+ * The tab icons.
+ *
+ * **`@expo/vector-icons`, and it is not a new native dependency.** It ships
+ * with `expo` itself — it was already in the lockfile at this exact version,
+ * 15.1.1, and Expo Go bundles it — but npm nested it under
+ * `node_modules/expo/node_modules/`, where nothing in `app/` can resolve it.
+ * `npx expo install` hoists what was already there rather than fetching
+ * anything new, so the Expo Go loop is untouched. Verified with `npm ci`.
+ *
+ * **Glyphs were tried first and were wrong.** `◎ ≡ ⚙` shipped in the first
+ * Increment 9 build; on a device the gear rendered as a full-colour emoji
+ * (2026-08-10, `IMG_4668.png`) because iOS resolves ⚙ to its emoji
+ * presentation, and the ring was thin and oversized beside it. Truman:
+ * *"The tab icons... need... work... lol"*. Text is the right answer for a
+ * one-off control like ⌖ or ✕; it is not the right answer for a tab bar,
+ * where three icons have to read as one set.
+ *
+ * Filled when selected, outline when not, which is what iOS does everywhere.
+ */
+const ICONS = {
+  index: 'map',
+  stops: 'list',
+  settings: 'settings',
+} as const;
+
+function tabIcon(name: keyof typeof ICONS) {
+  return function TabIcon({
+    color,
+    size,
+    focused,
+  }: {
+    color: string;
+    size: number;
+    focused: boolean;
+  }) {
+    return (
+      <Ionicons name={focused ? ICONS[name] : `${ICONS[name]}-outline`} size={size} color={color} />
+    );
+  };
+}
+
 export default function TabsLayout() {
   const { palette } = useTheme();
 

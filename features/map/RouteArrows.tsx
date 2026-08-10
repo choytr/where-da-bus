@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { schedule } from '../../lib/schedule';
 import { useTheme } from '../../lib/theme';
@@ -26,6 +26,21 @@ import type { Coords } from '../../lib/distance';
  * Their wrapper is deliberately small — an arrowhead is not something anyone
  * aims at, and a wide box would eat taps meant for a stop pin beside it, which
  * is the two-tap problem `stopUnderBus` exists to undo.
+ *
+ * **The rotation is a view transform, never `Marker`'s `rotation` prop.** That
+ * prop is documented `@platform iOS: Google Maps only` in the installed types,
+ * and on a device it did exactly nothing: every arrow pointed north whatever
+ * the line was doing (2026-08-10, `IMG_4669.png`). It is the third prop in this
+ * family to be Google-only — `tappable` and `zoomTapEnabled` are the other two,
+ * both in `docs/backlog.md`. **Check the `@platform` line before using any
+ * `react-native-maps` prop on this project.** A transform on the child is
+ * captured into the annotation's bitmap and so works on Apple Maps.
+ *
+ * **The arrowhead is the *background* colour, not the line's.** Drawn in
+ * `palette.route` it was the same red as the line underneath and vanished into
+ * it — Truman, same round: *"not the most readable"*. Background-coloured, it
+ * reads as a notch cut out of the line, which is what every transit map does,
+ * and it contrasts in both themes by construction.
  */
 
 /**
@@ -37,8 +52,12 @@ import type { Coords } from '../../lib/distance';
  */
 export const ARROW_COUNT = 8;
 
-/** Small enough not to be a tap target; big enough to read at 8 pt. */
-const SLOT = 16;
+/** Small enough not to be a tap target; big enough to read against a 4 pt line. */
+const SLOT = 20;
+
+/** The arrowhead itself. Points north at rest, which is bearing zero. */
+const ARROW_WIDTH = 11;
+const ARROW_HEIGHT = 12;
 
 /** The view is the glyph, so the coordinate sits at its center. */
 const ANCHOR = { x: 0.5, y: 0.5 };
@@ -63,7 +82,6 @@ const Arrow = memo(function Arrow({
   bearingDeg,
   visible,
   color,
-  halo,
 }: {
   /** Which of the fixed pool this is. Stable for the life of the map. */
   slot: number;
@@ -71,7 +89,6 @@ const Arrow = memo(function Arrow({
   bearingDeg: number;
   visible: boolean;
   color: string;
-  halo: string;
 }) {
   const [tracking, setTracking] = useState(true);
 
@@ -87,16 +104,20 @@ const Arrow = memo(function Arrow({
       coordinate={{ latitude: at.lat, longitude: at.lon }}
       anchor={ANCHOR}
       tracksViewChanges={tracking}
-      // The glyph points north, so the marker is turned to the line's bearing.
-      // `rotation` rather than a transform on the child: the child is captured
-      // to a bitmap, and rotating the annotation is what MapKit is given.
-      rotation={bearingDeg}
+      // No `rotation` prop: it is Google-Maps-only on iOS. See the header.
       // Not a thing anyone taps. `Marker`'s `tappable` is Google Maps only on
-      // iOS, so the wrapper is kept small instead — see this file's header.
+      // iOS too, so the wrapper is kept small instead.
       accessibilityElementsHidden
     >
       <View style={[styles.slot, { opacity: visible ? 1 : 0 }]} pointerEvents="none">
-        <Text style={[styles.glyph, { color, textShadowColor: halo }]}>▲</Text>
+        <View
+          style={[
+            styles.arrow,
+            { borderBottomColor: color },
+            // The whole of the direction, and the thing MapKit would not do.
+            { transform: [{ rotate: `${bearingDeg}deg` }] },
+          ]}
+        />
       </View>
     </Marker>
   );
@@ -123,8 +144,9 @@ export const RouteArrows = memo(function RouteArrows({ points, region }: RouteAr
             at={placement?.at ?? FALLBACK}
             bearingDeg={placement?.bearingDeg ?? 0}
             visible={placement?.visible ?? false}
-            color={palette.route}
-            halo={palette.background}
+            // The background, not the route's red: an arrowhead the same
+            // colour as the line it sits on is invisible.
+            color={palette.background}
           />
         );
       })}
@@ -142,13 +164,19 @@ const FALLBACK: Coords = { lat: 19.5, lon: -160.5 };
 
 const styles = StyleSheet.create({
   slot: { width: SLOT, height: SLOT, alignItems: 'center', justifyContent: 'center' },
-  glyph: {
-    fontSize: 11,
-    lineHeight: 13,
-    // A halo, so the arrowhead stays legible over the map's own tiles. Its
-    // colour is the theme's background, set at the call site — map tiles run
-    // from pale sand to dark green under the same glyph.
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 2,
+  /**
+   * A borders triangle rather than a `▲` glyph. The glyph was 11 pt of a font
+   * whose metrics differ per platform, sat off-center in its line box, and
+   * carried a text shadow to stay legible; this is an exact shape at an exact
+   * size, and it rotates cleanly about its own center.
+   */
+  arrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: ARROW_WIDTH / 2,
+    borderRightWidth: ARROW_WIDTH / 2,
+    borderBottomWidth: ARROW_HEIGHT,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
   },
 });

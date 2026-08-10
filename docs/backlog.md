@@ -452,6 +452,13 @@ but that'll come later. Functionality first."
   roughly a third of them are Google-Maps-only and the types say so in a tag
   that reads like documentation rather than a constraint.
 
+  **`Marker`'s `rotation` was the third**, on 2026-08-10: every route arrow
+  pointed due north on the device whatever the line did (`IMG_4669.png`), and
+  `MapMarker.d.ts:195` says *iOS: Google Maps only* in as many words. Fixed by
+  rotating the marker's *child* with a view `transform`, which is captured into
+  the annotation's bitmap rather than asked of MapKit. Three strikes: the rule
+  above is not advice.
+
 ## Increment 9 — deferred by decision
 
 - **Address autocomplete**, and with it the question of whether a CI-only
@@ -477,18 +484,24 @@ but that'll come later. Functionality first."
   *a bus that did not report is not a bus that is on time*. Either narrow the
   band or word it "Roughly on time". **A device question**: whether four
   minutes behind reads as a lie depends on what the countdown beside it says.
+- **"Show live bus on map" can be offered for a bus the map cannot draw.**
+  `hasReportingBus` reads the `Arrival`, which carries `estimated="1"` and a
+  vehicle number; whether the *map* can draw that bus depends on the **fleet**
+  feed attributing it to a route, and the two disagree. Measured 2026-08-10 at
+  02:18 HST: 32 vehicles reporting within 15 minutes, **0 of them carrying a
+  route** — all `route_short_name: "null"`, `trip: "null_trip"` — while the
+  arrivals endpoint simultaneously reported bus 261 as live on Route 2. The
+  menu entry then draws the route and opens the card, and no bus dot appears.
+  Daytime is the normal case (218 of 235 fresh vehicles carry a route at 11:43
+  HST), so this is a night-time artefact. Deciding it *properly* would need the
+  fleet in hand before the menu opens, which the spec deliberately ruled out —
+  "no request" was the point. Recorded rather than fixed.
 - **Whether the arrow markers eat taps meant for stop pins.** `RouteArrows`
   wraps each glyph in a 16 pt box and draws it before the pins, which should
   put it under them and out of the way — but MapKit hit-tests annotation views
   by frame, and this project has been wrong six times about native behaviour
   read rather than measured. **A device question**, and one to ask while the
   Increment 9 build is on the phone.
-- **Tab icons are text glyphs, not drawn icons.** `@expo/vector-icons` is in
-  the lockfile but nested under `node_modules/expo/`, so it is not resolvable
-  from `app/` — reaching it is `npx expo install @expo/vector-icons`, a new
-  direct dependency. One install and one edit in `app/(tabs)/_layout.tsx` if
-  the glyphs look wrong on a device.
-
 ## Tests
 
 - ~~**Test files are not typechecked at all.**~~ **Fixed on 2026-08-09.**
