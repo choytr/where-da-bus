@@ -7,45 +7,51 @@ up. Update it in place rather than adding a dated section each time.
 `CLAUDE.md` are the record; anything already in them belongs there, not here.
 When an increment ships, its write-up in this file collapses to a pointer.
 
-Last updated: **2026-08-09**, after the route mode UX pass and the map bug
-hunt that followed it. **Increments 1–8 are shipped and merged**, and `main` is
-at Increment 8 — merged on Truman's explicit permission that evening, which
-kicked off an `.ipa` build.
+Last updated: **2026-08-09**, late evening, after the Increment 8 `.ipa` went on
+the phone and Increment 9 was grilled and specced. **Increments 1–8 are shipped
+and merged**, `main` is at Increment 8, and **Increment 9 is specced and planned
+but not started**.
 
-**The `.ipa` from that merge has not been installed or checked.** Everything in
-Increment 8 was verified in **Expo Go** over a long device session, which is
-what closed the map crash; the `.ipa` is the artefact that differs and it has
-not been on the phone. That distinction has bitten this project before: the
-sheet's lists could not scroll on a real build through two whole increments
-because five clean Expo Go rounds were read as a device round. Increment 7's
-`.ipa` check was owed and never happened either, and is now owed against a
-build that contains both increments.
+**The `.ipa` was installed and checked.** Truman: *"It looks and works great,
+everything works how I expect it to work."* That closes the check owed since
+Increment 7. The device round found one defect — buses drawing off the route
+line — and two crashes.
 
 ---
 
 ## Start here
 
-**Increment 8 and the UX pass over it are both built, reviewed and pushed.** All
-three deferred items are done, plus two bugs found by reading and one gesture
-Truman asked to have removed. The whole-diff review ran inline and its three
-findings are fixed (`aa83a6e`).
+**The next action is Task 1 of Increment 9.** Spec:
+`docs/superpowers/specs/2026-08-09-increment-9-show-on-map.md`. Plan:
+`docs/superpowers/plans/2026-08-09-increment-9-show-on-map.md`. Both were
+written after a full grilling and **every decision in them is Truman's** — read
+the spec before touching anything, and do not re-argue what it records as
+settled.
 
-**Nothing is now known to block the merge to `main`**, which still needs
-Truman's explicit permission every time. 712 Jest, 130 `node --test`, clean
-typecheck.
+**It is the first polish increment**, and its purpose shapes it:
 
-**The next action is that merge decision, and nothing else is queued.** The map
-work of 2026-08-09 is finished and verified on a device: the crash, the undrawn
-buses, and a stop pin under a bus dot needing two taps (`651bb07`) are all
-closed, each confirmed by Truman on the phone rather than by a passing suite.
-Do not open new work before asking him what he wants next — an increment here
-starts with a grilling, not with a plan.
+> "It'd be nice to have something to work with rather than incomplete features,
+> because as I use it I'll be able to generate feedback on what was built
+> instead of nonexistent things."
 
-**The SIGABRT is fixed, and so is the undrawn-bus fault.** They were never one
-bug. Both were closed on the evening of 2026-08-09 across `6a04caf`, `4f5717c`
-and `18de45f`; the full write-up is in `docs/backlog.md` under the
-"Never mount, unmount or reorder a child" entry, which is the record. Every
-temporary instrument is out of the source.
+So finished things, not a broad sweep of partials.
+
+**The SIGABRT is open again and is deliberately not being chased.** It returned
+on the Increment 8 `.ipa` — two aborts, frame for frame the crash `swapBusyUntil`
+was meant to have closed. Truman's call: *"let's just log it and not spend
+another evening tracking another stupid crash."* The record is in
+`docs/backlog.md`. **What was pressed is unknown**, because he was using the app
+rather than testing it, and it is written down as unknown rather than guessed.
+
+Two consequences that matter for Increment 9. The arrows and the direction
+filter both land in route mode, which is that crash's code path — so the
+**device rounds in the plan are not optional**, and neither is at the end. And
+if it fires again, get the `.ips` and **write down the gesture**; every report
+before 2026-08-09 recorded the state and not the gesture, which is the half that
+turned out to matter.
+
+**Nothing is known to block starting.** 712 Jest, 130 `node --test`, clean
+typecheck as of `d63f2d2`.
 
 ### What the crash actually was
 
@@ -358,47 +364,52 @@ only because the throwaway probe showed the unbiased reply beside the verdict.
 independent unofficial app against ours. Both of its actionable findings are
 built. Read it before touching the vehicle endpoint or the map.
 
-## Increment 8 — *routes on the map*. Specced, planned, unbuilt
+## Increment 9 — *show me that on the map*. Specced, planned, unstarted
 
-Grilled 2026-08-09 and **every decision is settled and written down**. The long
-version that used to live here has moved, in full and with its measurements, to:
+Grilled 2026-08-09 and **every decision is settled and written down**, in:
 
-- `docs/superpowers/specs/2026-08-09-increment-8-routes-on-the-map.md` — what is
-  being built, what was settled and why, the numbers behind it, and what is
-  inference rather than fact.
-- `docs/superpowers/plans/2026-08-09-increment-8-routes-on-the-map.md` — seven
-  tasks, contracts and test names. **Start at Task 1.**
+- `docs/superpowers/specs/2026-08-09-increment-9-show-on-map.md` — what is being
+  built, what was settled and why, and the measurements behind it.
+- `docs/superpowers/plans/2026-08-09-increment-9-show-on-map.md` — seven tasks,
+  contracts and test names. **Start at Task 1.**
 
-**Four things the next session must not undo, restated because undoing any of
+**Five things the next session must not undo, restated because undoing any of
 them is silent:**
 
 - **`assets/db/gtfs.db` gets rebuilt and committed with the `SCHEMA_VERSION`
-  bump, in the same commit.** Truman authorised it; it is the sanctioned
-  exception to `CLAUDE.md`'s ban on rebuilding the floor by hand.
-- **`manifest.json` must keep describing a *v1* generation forever.** That URL is
-  frozen inside binaries already on phones, and publishing a v2 manifest there
-  switches their updates off permanently. Task 2 and the spec explain the whole
-  mechanism.
+  2 → 3 bump, in the same commit.** The sanctioned exception to `CLAUDE.md`'s
+  ban on rebuilding the floor by hand — a v3 binary needs a v3 floor.
+- **The "keep old generations forever" rule is retired**, deliberately, while
+  Truman is the only user. He challenged it as premature and was right. Prune
+  freely; revisit if anyone else installs the app. What was *not* dropped is the
+  version number itself — it is one line, and it is what stops a new binary
+  swapping onto an older published database that lacks the new table.
+- **No attribution work for the route pill.** Ruled on twice by Truman, on the
+  grounds that the peek already shows OTS data without a legend and the sheet
+  carries it for the same data. *"That's honestly fine."* Do not reopen it as a
+  compliance finding.
+- **Long-press gets no discoverability affordance**, by decision rather than
+  omission. Truman treats it as a discovered affordance.
 - **`<driver>` is an employee number.** The model carries no field for it.
-- **The bus layer and the polyline each get a device round before the end of the
-  increment**, not after it — Tasks 4 and 6. Both are the marker-churn seam with
-  a SIGABRT behind it.
 
-Two things remain genuinely unknowable from here and must not be asserted: **how
-often the arrival→bus highlight lands** (it needs a live call with Truman's
-AppID) and **how any of it looks** (no simulator, no device on this side).
+**One thing to re-measure rather than assert:** how often an arrival actually
+has a reporting bus. The project says ~96% of arrivals are schedule-only;
+`MapScreen`'s own comment says the trip join lands for about one in ten. They
+disagree, and the menu entry's availability hangs off it.
 
 ## Suggested skills
 
-- **Not `grilling`, not `brainstorming`, not `writing-plans`.** Increment 8 and
-  the UX pass over it are both specced, planned and built. Reopening any of it
+- **Not `grilling`, not `brainstorming`, not `writing-plans`.** Increment 9 was
+  grilled on 2026-08-09 and is specced and planned. Reopening any of it
   re-argues settled calls.
-- **`superpowers:requesting-code-review`** is the next skill, over the whole
-  `dev` diff — one review at the increment boundary, which is where the
-  cross-cutting findings live.
-- **`superpowers:systematic-debugging`** if the band's second line shows a bus
-  count over an empty map. That is the only outcome that makes the first-render
-  bug a real defect, and it is a native one.
+- **`superpowers:executing-plans`** is the next skill, over
+  `docs/superpowers/plans/2026-08-09-increment-9-show-on-map.md`, starting at
+  Task 1.
+- **`superpowers:requesting-code-review`** at the increment boundary, over the
+  whole `dev` diff — one review, which is where the cross-cutting findings live.
+- **Not `superpowers:systematic-debugging` for the SIGABRT.** It is open and
+  deliberately unchased; chasing it is the thing Truman asked not to spend
+  another evening on.
 - **Not `dispatching-parallel-agents` or `subagent-driven-development`.**
   `CLAUDE.md` is explicit: execute inline, review once at the boundary.
 
