@@ -7,51 +7,61 @@ up. Update it in place rather than adding a dated section each time.
 `CLAUDE.md` are the record; anything already in them belongs there, not here.
 When an increment ships, its write-up in this file collapses to a pointer.
 
-Last updated: **2026-08-09**, late evening, after the Increment 8 `.ipa` went on
-the phone and Increment 9 was grilled and specced. **Increments 1–8 are shipped
-and merged**, `main` is at Increment 8, and **Increment 9 is specced and planned
-but not started**.
-
-**The `.ipa` was installed and checked.** Truman: *"It looks and works great,
-everything works how I expect it to work."* That closes the check owed since
-Increment 7. The device round found one defect — buses drawing off the route
-line — and two crashes.
+Last updated: **2026-08-10**, after Increment 9 was built end to end. All seven
+tasks are implemented, committed and pushed to `dev`; CI is green; `npm ci` is
+clean. **Nothing is half-built, and nothing has been on a phone yet.**
 
 ---
 
 ## Start here
 
-**The next action is Task 1 of Increment 9.** Spec:
+**The next action is the device round, and it is Truman's.** An `.ipa` covering
+all of Increment 9 is built and waiting:
+`gh run list --workflow ios-ipa.yml` — run `31381336090` and later. Everything
+below is written on the assumption that nobody has looked at it yet.
+
+**Increment 9 is code-complete and unverified.** Spec:
 `docs/superpowers/specs/2026-08-09-increment-9-show-on-map.md`. Plan:
-`docs/superpowers/plans/2026-08-09-increment-9-show-on-map.md`. Both were
-written after a full grilling and **every decision in them is Truman's** — read
-the spec before touching anything, and do not re-argue what it records as
-settled.
+`docs/superpowers/plans/2026-08-09-increment-9-show-on-map.md`, which now
+carries a *What was built* note per task recording where reality disagreed with
+the contract. Read those two before touching any of it; every decision in them
+is Truman's and none is open.
 
-**It is the first polish increment**, and its purpose shapes it:
+### What shipped, in one line each
 
-> "It'd be nice to have something to work with rather than incomplete features,
-> because as I use it I'll be able to generate feedback on what was built
-> instead of nonexistent things."
+- **`route_directions` in the asset, `SCHEMA_VERSION` 2 → 3**, and the bundled
+  floor rebuilt and committed with it. 333 headsign triples.
+- **The other direction's buses are hidden**, which is what the "buses draw off
+  the route line" report actually was.
+- **Tapping a bus opens a popup** — fleet number, lateness *in words*, age — and
+  hands a covered stop down on the next press.
+- **Eight arrows along the route line**, a fixed pool, redistributed by arc
+  length along the visible stretch.
+- **A pill under the search bar** naming the route.
+- **Long-press any row to get it on the map**, on `ActionSheetIOS`.
+- **Tab icons, the arrivals screen's meta block, and the search filter reset.**
 
-So finished things, not a broad sweep of partials.
+### What is owed, and in what order
 
-**The SIGABRT is open again and is deliberately not being chased.** It returned
-on the Increment 8 `.ipa` — two aborts, frame for frame the crash `swapBusyUntil`
-was meant to have closed. Truman's call: *"let's just log it and not spend
-another evening tracking another stupid crash."* The record is in
-`docs/backlog.md`. **What was pressed is unknown**, because he was using the app
-rather than testing it, and it is written down as unknown rather than guessed.
+1. **The device round.** Two were planned — after Task 4 and after Task 6 — and
+   both were overtaken by the work finishing; the build on the shelf covers
+   both. **The SIGABRT is open**, and the arrows and the direction filter both
+   land in its code path, so this is not optional. If it fires, get the `.ips`
+   and **write down the gesture** — every report before 2026-08-09 recorded the
+   state and not the gesture, and the gesture turned out to be the half that
+   mattered.
+2. **Three things that can only be answered on a phone**, all recorded in
+   `docs/backlog.md`: whether the 16 pt arrow markers eat taps meant for stop
+   pins, whether the bus popup is readable at street scale, and whether text
+   glyphs are acceptable as tab icons.
+3. **Merging `dev` into `main` needs Truman's explicit permission.** The v3
+   generation is already published — `gtfs-v3-20260810T105656Z.db` and
+   `manifest-v3.json`, run `31381337991` — so that item is closed.
 
-Two consequences that matter for Increment 9. The arrows and the direction
-filter both land in route mode, which is that crash's code path — so the
-**device rounds in the plan are not optional**, and neither is at the end. And
-if it fires again, get the `.ips` and **write down the gesture**; every report
-before 2026-08-09 recorded the state and not the gesture, which is the half that
-turned out to matter.
-
-**Nothing is known to block starting.** 712 Jest, 130 `node --test`, clean
-typecheck as of `d63f2d2`.
+**Do not re-grill Increment 9, and do not re-open what its spec records as
+settled.** In particular: the route pill needs no attribution work (ruled on
+twice), long press gets no discoverability hint, opposite-direction buses are
+hidden entirely, and the twelve ambiguous routes keep today's behaviour.
 
 ### What the crash actually was
 
@@ -90,176 +100,55 @@ reading was wrong. Both fixes here came from Truman's gestures on a device.
 Treat "it stopped reproducing" as provisional until he has abused it over a
 sustained session — the `zIndex` precedent is exactly what that phrase is worth.
 
-### What the UX pass changed
+### Increments 7 and 8 — shipped, and collapsed to pointers
 
-The reframe is the useful part: **route mode drew the street-scale view at every
-scale**, and the two backlog items about the map were one defect rather than
-two. Truman's screenshots are transcribed in
-`docs/superpowers/logs/2026-08-09-route-mode-ux.md`; the reasoning and every
-settled decision are in
-`docs/superpowers/specs/2026-08-09-route-mode-ux-pass.md`.
+Both are merged and on `main`. Their records are their specs and plans, which
+carry every settled decision and the measurements behind them:
 
-- `scaleOf` splits `'route'` from `'street'` off **`MAX_SPAN_FOR_LABELS`, not a
-  threshold of its own** — "names are hopeless" and "tiles have fused" are one
-  fact about one set of 34-pt boxes.
-- Stop tiles collapse to 8-pt dots past it. **The wrapper view stays 34 pt**;
-  shrinking it would make forty stops untappable *and* move every one of them.
-- `labels.ts` decides both layers against one collision map, **buses first**.
-- Adherence is the ring on the dot plus a count in the band. `adherence.ts`
-  holds the sign convention: **positive means early**.
-- The route band's second line says what the bus layer is doing, in four
-  states. **It shares that line with the direction** because the band is pinned
-  at `PEEK_BAND` and cannot grow.
+- `docs/superpowers/specs/2026-08-09-increment-7-peek-and-search.md` — the sheet
+  at rest, and search across stops, routes and addresses.
+- `docs/superpowers/specs/2026-08-09-increment-8-routes-on-the-map.md` — routes
+  on the map.
+- `docs/superpowers/specs/2026-08-09-route-mode-ux-pass.md` — the UX pass over
+  route mode, whose useful reframe was that **route mode drew the street-scale
+  view at every scale**, and that the two backlog items about the map were one
+  defect rather than two.
 
-`docs/backlog.md` keeps what this pass did not fix: **which** bus is late is
-colour-only, and **test files are not typechecked at all**.
+**Six things a cold session will otherwise get wrong**, kept here because they
+are cheap to undo by accident:
 
-**The device-round checklist is retired as a practice.** Truman ended it on
-2026-08-09: *"drop them / mark them as fine, honestly. We'll fix bugs as I come
-across them."* Do not write another one and do not resurrect the unticked boxes
-in `2026-08-09-increment-8-device-round-2.md` as owed work. What earned its keep
-was the *instrumented* check — one number on screen answered in a glance what
-four rounds of reasoning could not — so instrument, ask for one reading, and
-stop.
-
-Do not re-grill the increment, and do not re-derive its measurements — several
-cost a 73 MB file parse and one overturned a premise this document previously
-asserted. They are all in the spec,
-`docs/superpowers/specs/2026-08-09-increment-8-routes-on-the-map.md`, which is
-their permanent home. The plan carries a *What was built* note per task
-recording where reality disagreed with it.
-
-Nothing is owed on Increment 7. It is merged.
-
-Increment 7's spec and plan are
-`docs/superpowers/specs/2026-08-09-increment-7-peek-and-search.md` and its plan.
-Do not re-grill it and do not re-open what the spec settled.
-
-### What Increment 7 built — shipped, for reference
-
-The map sheet's detents are points computed from a **measured** container. Its
-resting peek is the grab handle, a band naming the mode, and one row. Tapping a
-row in the sheet centers the map on that stop; tapping a pin does not. The Stops
-tab has `Stops | Routes` chips over one shared search engine (`useSearch`), and
-a nudge that offers the filter which would have answered.
-
-The map now carries a **persistent search bar** — a button wearing a field's
-clothes, `features/map/SearchBar.tsx` — opening a **fullscreen search**
-(`SearchOverlay.tsx`) with all three filters, defaulting to Address. A stop
-result anchors the map, frames the camera and opens the card **without leaving
-the map**, which is the only thing this host does that the Stops tab cannot. A
-route result opens `/route/[id]`. Address mode geocodes on submit and asks
-*"Did you mean 2500 Campus Rd, Honolulu?"* before anything moves;
-`features/map/address.ts` holds that lookup and its labelling, both with their
-network calls injected so they test without the native module.
-
-**Six things a cold session will otherwise get wrong:**
-
-- **`detentsFor` takes a measured height, never `useWindowDimensions()`.** The
-  tab scene is inset above the tab bar; computing against the window breaks the
-  peek and the tallest detent simultaneously, and looks like two bugs.
-- **No classifier.** 73 route numbers are also valid stop codes — `40` is both
-  Route 40 and stop 40 — and an address heuristic would refuse exactly the
-  queries the device probe proved work. The chips exist because inference is
-  impossible.
+- **`detentsFor` takes a measured height, never `useWindowDimensions()`.**
+- **Every list in the app carries `flex: 1`.** Without it a scroll view sizes to
+  its content, so its frame equals its content and there is nothing to scroll —
+  while every scroll affordance still reports present.
+- **No search classifier.** 73 route numbers are also valid stop codes.
+- **Route search matches `short_name`, never `route_id`.** `route_id: '13'` is
+  route 14; `route_id: '40'` is route **C**.
+- **The search overlay is a sibling of `MapView`, never a child.**
 - **Pin taps do not pan the map; row taps do.** Truman's call, made against the
   stated counter-argument.
-- **Route search must match `short_name`, never `route_id`.** `route_id: '13'`
-  is route `14`; `route_id: '40'` is route **C**.
-- **The search overlay is a sibling of `MapView`, never a child.** The rule the
-  map section of `docs/backlog.md` exists for, and the one with a SIGABRT behind
-  it.
-- **Searching *frames* the camera; the long press *pans* it.** Both anchor the
-  same way. A typed address or a searched stop is the map being opened somewhere
-  else, so the window is rebuilt from the query radius; a long press names a
-  point on a map the rider is already looking at, at a zoom they chose.
 
-**Increment 8 is *routes on the map*, and it is specced and planned** — see the
-pointer at the foot of this file, and the spec, which carries every settled
-decision and the measurements behind them.
-
-### Address search — built, and untried on a device
-
-`data/geocode/oahu.ts` is consumed by `features/map/address.ts`, which
-`SearchOverlay` calls on submit. **`SearchOverlay` is the only file that imports
-`expo-location` for this**, which is what keeps the lookup testable without the
-native module.
-
-- **The geocoder has no regional bias**, and biasing it is a two-step dance with
-  a fallback, because the steer that rescues `"beach"` from *Montana* also
-  breaks `"ala moana beach"`. That is all handled; do not simplify it away.
-- **A failed reverse lookup must not lose a good geocode.** The point is already
-  known to be on the island; the confirmation is asked against what the rider
-  typed instead. There is a test named for this.
-- **`formattedAddress` is Android-only** and `null` here, so the label is built
-  from `streetNumber`, `street`/`name` and `city`.
-- **Autocomplete is out, re-verified 2026-08-09** against the installed type
-  definitions. `geocodeAsync` returns `{ latitude, longitude, altitude?,
-  accuracy? }` — nothing printable — and one result every time, so a suggestion
-  list costs two round trips per keystroke to render one row, and `CLGeocoder`
-  throttles per app. The shipped shape is geocode on submit, reverse-geocode,
-  and a single **"Did you mean…?"** confirmation.
+**The compass is placed by a relationship, not a number**, and
+`COMPASS_LAYOUT_OFFSET` — 54 pt down, 5 pt in — is the one measured constant.
+Re-measure that pair if an SDK bump moves the compass; recompute nothing else.
 
 ## Where things stand
 
-`main` is at Increment 7. **`dev` carries all of Increment 8 and the UX pass over
-it.** 693 Jest across 46 suites, 130 `node --test` and a clean typecheck —
-verified locally 2026-08-09. `npm ci` last verified clean before the UX pass,
-which added no dependencies.
+`main` is at Increment 8. **`dev` carries all of Increment 9.** 811 Jest across
+51 suites, 145 `node --test`, a clean typecheck and a clean `npm ci` — all
+verified locally on 2026-08-10, and CI green on every push.
 
-**The sheet's lists could not scroll on any real build, for two increments, and
-that is fixed.** The content column was `flex: 1` against a parent that
-`@gorhom/bottom-sheet` leaves unbounded until it has measured its container, so
-a list sized itself to its rendered rows — measured at **2846 pt inside a sheet
-730 pt tall**. `flex: 1` is kept, because it is the library's design and is what
-keeps the pinned legend on screen at every detent; a `maxHeight` off the tallest
-detent now guards the window before the measurement lands. **It was never an
-Expo Go versus `.ipa` difference** — that was a red herring that cost four
-eliminations; a short list fits inside a huge frame and looks fine.
+**A v3 generation is published**: `gtfs-v3-20260810T105656Z.db` and
+`manifest-v3.json`, from run `31381337991`. `manifest.json` still describes a
+v1 generation and must keep doing so forever — it is compiled into binaries
+already on phones. There is deliberately **no** `manifest-v2.json` from this
+run, so the Increment 8 build on Truman's phone keeps reading the v2 generation
+it already has until the v3 `.ipa` replaces it.
 
-**Three things in that diff would be silently got wrong.** The bundled floor was
-rebuilt and committed with the schema bump, as authorised. `manifest.json` must
-keep describing a **v1** generation forever, because it is compiled into binaries
-already on phones. And a stored pointer says nothing about the *schema* of the
-file it names — `isReadableGeneration` is what stops a v2 binary opening the v1
-generation still sitting on Truman's phone.
-
-**The sheet and the search have both been through Expo Go**, over five rounds on
-2026-08-09, and Truman is happy with them. On the sheet: "Ok I like this a lot
-better… This is perfect." `MEDIUM_FRACTION` is his and he settled it at
-`0.4985`; `PEEK_BAND` and `PEEK_ROW` are the other two knobs. **Expo Go is not
-the `.ipa`** — the device round in section 1 of the checklist is still what
-confirms the scrolling.
-
-**What those five rounds changed, so it is not undone by accident:**
-
-- **Every list in the app carries `flex: 1`.** A scroll view that is a flex
-  child of a sized column without it sizes to its *content*, so its frame equals
-  its content and there is nothing to scroll — while every scroll affordance
-  still reports present. `08e189d` found this in one list on 2026-08-08 and
-  fixed only that one; the other six followed on 2026-08-09.
-- **`LEGEND_GAP` in `lib/Attribution.tsx`** is the single number for the air
-  above a pinned legend. It replaced `insets.bottom + 24` on the screens that
-  pin the legend at the display's foot — once the legend takes the inset itself,
-  a list reserving it too pays for it twice, and the result was a visible band of
-  dead space.
-- **The compass is placed by a relationship, not a number:**
-  `compassTop = controlsTop + CONTROL_SIZE + CONTROL_INSET` puts it under ⌖ with
-  the same gap ⌖ has under the search bar. The one measured constant is
-  `COMPASS_LAYOUT_OFFSET` — 54 pt down, 5 pt in — which is what MapKit adds
-  between the margins it is given and where it actually draws. **Re-measure that
-  pair if an SDK bump moves the compass; recompute nothing else.**
-- **There is no `idle` location banner.** *"Showing downtown Honolulu"* flashed
-  on every launch because `onMapReady` calls `requestLocation()` from `idle`, so
-  `idle` lasts from the map's first frame to the request going out. Only
-  `denied` and `error` are states a rider sits in, and both say what to do.
-- **The nudge auto-submits into Address mode; the Address *chip* does not.** A
-  chip is a mode change; the nudge is a rider answering a question with yes.
-
-**Two tests were rewritten to assert relationships rather than literals**, after
-Truman's own tuning broke one: the medium-detent framing test and the compass
-placement test both compute their expectations from the screen's own helpers, so
-turning a knob no longer breaks a test about something else. Copy that shape.
+**The bundled floor was rebuilt and committed with the schema bump**, which is
+the sanctioned exception to the never-rebuild rule. Note the published v3
+database is built from a *newer* feed than the committed floor — 560 shapes
+against 532 — which is the design working, not a discrepancy.
 
 ## Read these, in this order
 
@@ -286,6 +175,8 @@ Read the plan for the increment you care about rather than the diff.
 | 5 | The data refreshes itself, from a weekly Action |
 | 6 | Six correctness fixes, then a screenshot-driven UI pass over the map |
 | 7 | The sheet at rest, and search across stops, routes and addresses |
+| 8 | Routes on the map, and a UX pass over route mode |
+| 9 | *Show me that on the map* — long-press menus, the bus popup, arrows, the route pill |
 
 Increment 6's record is `docs/superpowers/specs/2026-08-04-increment-6-correctness-and-ui.md`,
 its plan, and `docs/superpowers/logs/2026-08-04-increment-6-ui.md` — the UI log
@@ -364,52 +255,15 @@ only because the throwaway probe showed the unbiased reply beside the verdict.
 independent unofficial app against ours. Both of its actionable findings are
 built. Read it before touching the vehicle endpoint or the map.
 
-## Increment 9 — *show me that on the map*. Specced, planned, unstarted
-
-Grilled 2026-08-09 and **every decision is settled and written down**, in:
-
-- `docs/superpowers/specs/2026-08-09-increment-9-show-on-map.md` — what is being
-  built, what was settled and why, and the measurements behind it.
-- `docs/superpowers/plans/2026-08-09-increment-9-show-on-map.md` — seven tasks,
-  contracts and test names. **Start at Task 1.**
-
-**Five things the next session must not undo, restated because undoing any of
-them is silent:**
-
-- **`assets/db/gtfs.db` gets rebuilt and committed with the `SCHEMA_VERSION`
-  2 → 3 bump, in the same commit.** The sanctioned exception to `CLAUDE.md`'s
-  ban on rebuilding the floor by hand — a v3 binary needs a v3 floor.
-- **The "keep old generations forever" rule is retired**, deliberately, while
-  Truman is the only user. He challenged it as premature and was right. Prune
-  freely; revisit if anyone else installs the app. What was *not* dropped is the
-  version number itself — it is one line, and it is what stops a new binary
-  swapping onto an older published database that lacks the new table.
-- **No attribution work for the route pill.** Ruled on twice by Truman, on the
-  grounds that the peek already shows OTS data without a legend and the sheet
-  carries it for the same data. *"That's honestly fine."* Do not reopen it as a
-  compliance finding.
-- **Long-press gets no discoverability affordance**, by decision rather than
-  omission. Truman treats it as a discovered affordance.
-- **`<driver>` is an employee number.** The model carries no field for it.
-
-**One thing to re-measure rather than assert:** how often an arrival actually
-has a reporting bus. The project says ~96% of arrivals are schedule-only;
-`MapScreen`'s own comment says the trip join lands for about one in ten. They
-disagree, and the menu entry's availability hangs off it.
-
 ## Suggested skills
 
-- **Not `grilling`, not `brainstorming`, not `writing-plans`.** Increment 9 was
-  grilled on 2026-08-09 and is specced and planned. Reopening any of it
-  re-argues settled calls.
-- **`superpowers:executing-plans`** is the next skill, over
-  `docs/superpowers/plans/2026-08-09-increment-9-show-on-map.md`, starting at
-  Task 1.
-- **`superpowers:requesting-code-review`** at the increment boundary, over the
-  whole `dev` diff — one review, which is where the cross-cutting findings live.
+- **Nothing, until the `.ipa` has been on the phone.** Increment 9 is built and
+  its whole-diff review has run; what it needs is a rider, not a session.
+- **Not `grilling`, not `brainstorming`, not `writing-plans`** for Increment 9.
+  It was grilled on 2026-08-09 and every decision is written down.
 - **Not `superpowers:systematic-debugging` for the SIGABRT.** It is open and
   deliberately unchased; chasing it is the thing Truman asked not to spend
-  another evening on.
+  another evening on. If it fires on this build, record the **gesture**.
 - **Not `dispatching-parallel-agents` or `subagent-driven-development`.**
   `CLAUDE.md` is explicit: execute inline, review once at the boundary.
 
