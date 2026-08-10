@@ -1,4 +1,10 @@
-import { labelledMapIds, labelledStopIds, scaleOf, type LabelledBus } from '../labels';
+import {
+  labelledMapIds,
+  labelledStopIds,
+  scaleOf,
+  stopUnderBus,
+  type LabelledBus,
+} from '../labels';
 import type { Region } from '../region';
 import type { StopWithDistance } from '../../../data/gtfs/types';
 
@@ -377,5 +383,57 @@ describe('labelledMapIds', () => {
 
     expect(labels.buses.size).toBe(1);
     expect(labels.stops.size).toBe(3);
+  });
+});
+
+/**
+ * The lookup behind a one-press stop pin. Buses draw above the stops and MapKit
+ * gives the tap to whatever is on top, so `MapScreen` hands a bus's tap down to
+ * the stop it is covering — Truman found the two-tap version on a device on
+ * 2026-08-09.
+ *
+ * At `CLOSE` the viewport is 40,000 points per degree of longitude and 70,000
+ * per degree of latitude, against the 34-point tile both layers wrap themselves
+ * in. So tiles touch within about 0.00085° of longitude and 0.00049° of
+ * latitude, which is where these fixtures' offsets come from.
+ */
+describe('stopUnderBus', () => {
+  const at = (lat: number, lon: number) => ({ lat, lon });
+
+  it('finds the stop a dot is sitting on', () => {
+    const stops = [stop('a', 21.3069, -157.8583, 10)];
+
+    expect(stopUnderBus(at(21.3069, -157.8583), stops, CLOSE, VIEWPORT)?.stop_id).toBe('a');
+  });
+
+  it('finds a stop the dot only partly covers', () => {
+    // 0.0005° of longitude is 20 points — less than a tile, so they overlap.
+    const stops = [stop('a', 21.3069, -157.8578, 10)];
+
+    expect(stopUnderBus(at(21.3069, -157.8583), stops, CLOSE, VIEWPORT)?.stop_id).toBe('a');
+  });
+
+  it('is null when the dot covers nothing', () => {
+    // 0.002° is 80 points, well clear of the 34-point tiles.
+    const stops = [stop('a', 21.3069, -157.8563, 10)];
+
+    expect(stopUnderBus(at(21.3069, -157.8583), stops, CLOSE, VIEWPORT)).toBeNull();
+  });
+
+  /** Two under one dot is a rider aiming at the nearer of them. */
+  it('takes the nearest when several are under the dot', () => {
+    const stops = [
+      stop('far', 21.3069, -157.85789, 10),
+      stop('near', 21.3069, -157.85825, 20),
+    ];
+
+    expect(stopUnderBus(at(21.3069, -157.8583), stops, CLOSE, VIEWPORT)?.stop_id).toBe('near');
+  });
+
+  /** Before the map has reported a camera there is no way to know what covers what. */
+  it('is null before the camera has settled', () => {
+    const stops = [stop('a', 21.3069, -157.8583, 10)];
+
+    expect(stopUnderBus(at(21.3069, -157.8583), stops, null, VIEWPORT)).toBeNull();
   });
 });

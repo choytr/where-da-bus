@@ -1,6 +1,6 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Marker } from 'react-native-maps';
+import { Marker, type MarkerPressEvent } from 'react-native-maps';
 import { schedule } from '../../lib/schedule';
 import { useTheme } from '../../lib/theme';
 import { adherenceOf } from './adherence';
@@ -81,12 +81,31 @@ export type BusMarkerProps = {
    * answer. Null means *invisible*, never absent; see the render.
    */
   placement: LabelPlacement | null;
+  /**
+   * What to do with a tap on the dot. **A bus is not interactive** — this exists
+   * only so the tap can be handed to whatever is underneath.
+   *
+   * Buses draw above the stops, and MapKit gives a tap to the annotation on
+   * top, so without this a stop pin under a dot took two presses to select. The
+   * bus cannot simply decline the tap: `Marker`'s `tappable` is *iOS: Google
+   * Maps only*.
+   *
+   * **Must be stable across renders.** It is compared by identity below, so a
+   * fresh arrow per render would re-render every bus on the map — the exact
+   * cost `MapScreen`'s `selectRef` was written to avoid.
+   */
+  onPress: (bus: BusOnMap, event: MarkerPressEvent) => void;
 };
 
 export const BusMarker = memo(
-  function BusMarker({ bus, highlighted, placement }: BusMarkerProps) {
+  function BusMarker({ bus, highlighted, placement, onPress }: BusMarkerProps) {
     const { palette } = useTheme();
     const [tracking, setTracking] = useState(true);
+
+    const handlePress = useCallback(
+      (event: MarkerPressEvent) => onPress(bus, event),
+      [onPress, bus],
+    );
 
     const label = busLabel(bus);
     const adherence = adherenceOf(bus.vehicle.adherence);
@@ -117,6 +136,7 @@ export const BusMarker = memo(
         coordinate={{ latitude: bus.vehicle.position.lat, longitude: bus.vehicle.position.lon }}
         anchor={ANCHOR}
         tracksViewChanges={tracking}
+        onPress={handlePress}
         // No `title`: a `Marker` with one gets a native callout that MapKit
         // selects by itself, which is a second selection this app cannot see.
         accessibilityLabel={label}
@@ -166,6 +186,7 @@ export const BusMarker = memo(
     busLabel(before.bus) === busLabel(after.bus) &&
     before.highlighted === after.highlighted &&
     before.placement === after.placement &&
+    before.onPress === after.onPress &&
     adherenceOf(before.bus.vehicle.adherence) === adherenceOf(after.bus.vehicle.adherence) &&
     before.bus.vehicle.position.lat === after.bus.vehicle.position.lat &&
     before.bus.vehicle.position.lon === after.bus.vehicle.position.lon,

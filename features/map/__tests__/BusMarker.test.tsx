@@ -59,11 +59,18 @@ describe('busLabel', () => {
   });
 });
 
+/**
+ * A bus is not interactive; `onPress` exists only so `MapScreen` can hand the
+ * tap to the stop underneath. Nothing in this file is about that, so every
+ * render passes the same one — which is also what the prop's contract asks for.
+ */
+const noop = () => {};
+
 describe('BusMarker', () => {
   it('draws the fleet number, which is what a rider is shown', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(20_000)} highlighted={false} placement="below" />
+        <BusMarker bus={busOnMap(20_000)} highlighted={false} placement="below" onPress={noop} />
       </TestTheme>,
     );
 
@@ -79,7 +86,7 @@ describe('BusMarker', () => {
   it('mounts its label unconditionally', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(0)} highlighted={false} placement="below" />
+        <BusMarker bus={busOnMap(0)} highlighted={false} placement="below" onPress={noop} />
       </TestTheme>,
     );
 
@@ -89,7 +96,7 @@ describe('BusMarker', () => {
   it('identifies itself by fleet number, so keys stay stable across polls', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(20_000, '197')} highlighted={false} placement="below" />
+        <BusMarker bus={busOnMap(20_000, '197')} highlighted={false} placement="below" onPress={noop} />
       </TestTheme>,
     );
 
@@ -100,7 +107,7 @@ describe('BusMarker', () => {
   it('never renders anything but the number and the age', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(20_000)} highlighted={false} placement="below" />
+        <BusMarker bus={busOnMap(20_000)} highlighted={false} placement="below" onPress={noop} />
       </TestTheme>,
     );
 
@@ -163,7 +170,7 @@ function wrapperOf(testID: string) {
 async function dotStyle(adherence: number | null) {
   const view = await render(
     <TestTheme>
-      <BusMarker bus={busOnMap(0, '252', adherence)} highlighted={false} placement="below" />
+      <BusMarker bus={busOnMap(0, '252', adherence)} highlighted={false} placement="below" onPress={noop} />
     </TestTheme>,
   );
   const style = StyleSheet.flatten(wrapperOf('bus-252').props.children[0].props.style);
@@ -204,7 +211,7 @@ describe('BusMarker’s label placement', () => {
   it('keeps an unplaced label mounted and hides it', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(0)} highlighted={false} placement={null} />
+        <BusMarker bus={busOnMap(0)} highlighted={false} placement={null} onPress={noop} />
       </TestTheme>,
     );
 
@@ -215,7 +222,7 @@ describe('BusMarker’s label placement', () => {
   it('shows it once the labeller has placed it', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(0)} highlighted={false} placement="above" />
+        <BusMarker bus={busOnMap(0)} highlighted={false} placement="above" onPress={noop} />
       </TestTheme>,
     );
 

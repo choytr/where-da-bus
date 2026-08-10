@@ -15,11 +15,11 @@ import type BottomSheet from '@gorhom/bottom-sheet';
 import { schedule } from '../../lib/schedule';
 import { useAnchoredStops } from './useAnchoredStops';
 import { StopMarker } from './StopMarker';
-import { labelledMapIds, scaleOf } from './labels';
+import { labelledMapIds, scaleOf, stopUnderBus } from './labels';
 import { PendingMarker } from './PendingMarker';
 import { RouteLine } from './RouteLine';
 import { BusMarker } from './BusMarker';
-import { useVehicles } from './useVehicles';
+import { useVehicles, type BusOnMap } from './useVehicles';
 import {
   centredOn,
   hasDriftedFrom,
@@ -845,6 +845,40 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   );
 
   /**
+   * A tap on a bus, which is a tap meant for whatever is under it.
+   *
+   * **Buses are not interactive yet** — Truman wants them to be eventually, and
+   * this is not that. They draw above the stops and MapKit gives the tap to the
+   * annotation on top, so a stop pin under a dot needed two presses: one
+   * absorbed by the bus, one that got through. Handing the tap down makes it
+   * one, and the stop rises above the dot because selecting it is what raises
+   * it.
+   *
+   * A dot with no stop under it swallows the tap rather than passing it to the
+   * map, which would dismiss an open card — a bus that does nothing should do
+   * nothing, not something surprising.
+   *
+   * Through a ref for the same reason `onPinPress` is: this reads `pins` and the
+   * settled `camera`, and a handler that changed identity when the camera
+   * settled would re-render every bus on the map on every pan.
+   */
+  const busPressRef = useRef<(bus: BusOnMap, event: MarkerPressEvent) => void>(() => {});
+  busPressRef.current = (bus, event) => {
+    event.stopPropagation();
+    const under = stopUnderBus(bus.vehicle.position, pins, camera ?? region, {
+      width: windowWidth,
+      height: mapHeight,
+      visibleHeight: mapHeight,
+    });
+    if (under === null) return;
+    holdZoomOff();
+    selectRef.current(under, { pan: false });
+  };
+  const onBusPress = useCallback((bus: BusOnMap, event: MarkerPressEvent) => {
+    busPressRef.current(bus, event);
+  }, []);
+
+  /**
    * Picking a route **on the map** draws it here rather than pushing
    * `/route/[id]` — the whole point of the increment. `RouteScreen` is untouched
    * and is still what the Stops tab opens.
@@ -1197,6 +1231,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
               bus={bus}
               highlighted={bus === highlightedBus}
               placement={labelled.buses.get(bus.vehicle.number) ?? null}
+              onPress={onBusPress}
             />
           ))}
 

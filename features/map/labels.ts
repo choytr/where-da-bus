@@ -424,3 +424,54 @@ export function labelledStopIds(
 ): Map<string, LabelPlacement> {
   return labelledMapIds(stops, [], region, viewport, selectedId, null).stops;
 }
+
+/**
+ * The stop a bus is sitting on top of, or null — nearest first where several
+ * qualify.
+ *
+ * **Why the map needs to ask.** Buses draw *above* the stops, which is the right
+ * order for a live layer over a reference one, and MapKit gives a tap to the
+ * annotation on top. Truman found on 2026-08-09 that a stop pin under a bus dot
+ * therefore took two taps: the first went to the bus and did nothing, because a
+ * bus is not interactive. Forwarding that tap to the stop underneath is what
+ * makes the pin reachable in one press. It cannot be fixed by making the bus
+ * untappable — `Marker`'s `tappable` is *iOS: Google Maps only*, the same trap
+ * as `zoomTapEnabled` in `docs/backlog.md`.
+ *
+ * **The same projection and the same tiles as the labeller**, deliberately.
+ * Both layers wrap themselves in a 34-point box, so two markers overlap exactly
+ * when their tiles do — and answering it here rather than with a distance in
+ * metres means the answer tracks the zoom for free, and cannot drift out of
+ * agreement with what the rider can see covering what.
+ */
+export function stopUnderBus(
+  bus: { lat: number; lon: number },
+  stops: readonly StopWithDistance[],
+  region: Region | null,
+  viewport: Viewport,
+): StopWithDistance | null {
+  if (region === null || viewport.width <= 0 || viewport.height <= 0) return null;
+
+  const projection = projectionFor(region, viewport);
+  const busTile = projection.tileBox(bus, BUS_GEOMETRY);
+
+  let best: StopWithDistance | null = null;
+  let bestGap = Infinity;
+
+  for (const stop of stops) {
+    const tile = projection.tileBox(stop, STOP_GEOMETRY);
+    if (!overlaps(busTile, tile)) continue;
+
+    // Centre-to-centre, squared: the nearest stop is the one the rider was
+    // aiming at when two of them sit under one dot.
+    const dx = (tile.left + tile.right) / 2 - (busTile.left + busTile.right) / 2;
+    const dy = (tile.top + tile.bottom) / 2 - (busTile.top + busTile.bottom) / 2;
+    const gap = dx * dx + dy * dy;
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = stop;
+    }
+  }
+
+  return best;
+}
