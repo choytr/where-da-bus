@@ -293,8 +293,8 @@ but that'll come later. Functionality first."
   `.ips` files, or a native breakpoint, neither of which this machine can drive.
 
   **Truman stopped the chase on 2026-08-09** — *"Screw this. Give up, and let's
-  just move on."* — and then reopened it the same day with the first hard fact
-  the crash has produced. **It is not intermittent. The trigger is a window:**
+  just move on."* — and then reopened it the same day with what looked like the
+  first hard fact the crash had produced:
 
   > it reliably crashes if I press the close button when the buses have been
   > fetched (specifically after it changes from "Looking for bus" to "1 bus")
@@ -302,42 +302,79 @@ but that'll come later. Functionality first."
   > until you move/zoom the map a bit. But if it's visible and the button is
   > pressed, it doesn't crash.
 
-  **That makes the undrawn-buses bug and this crash one defect.** The window is
-  precisely: marker mounted in React and handed to MapKit, view not yet
-  realised. Unmounting inside it is what leaves React's model and the native
-  array disagreeing, and an out-of-range `insertObject:atIndex:` is what that
-  disagreement raises. Everything earlier that called this "intermittent" was
-  describing an unrecognised precondition.
+  That reading — **one defect, triggered by a window** — was wrong, and is the
+  last of this entry's theories to fall. Both halves of it dissolved separately
+  on the evening of 2026-08-09. Kept because it was reasonable and because the
+  next person will otherwise re-derive it.
 
-  **What is actually known**, stripped of theory: the abort is an out-of-range
-  `insertObject:atIndex:` inside Fabric's mounting transaction; it happens while
-  leaving route mode, which is the largest change this app makes to `MapView`'s
-  children (61 stop markers out and 25 in on Route 10, 190 out on Route 60); it
-  fires only in the window above; and it survived the removal of `zIndex`, of
-  duplicate stop keys and of duplicate bus keys. Everything else written about
-  it has been wrong at least once.
+  ### RESOLVED 2026-08-09: two marker swaps in flight
 
-  **Under test now**, and tracked in `docs/handoff.md` rather than here:
-  `TRACKING_ALWAYS` in `features/map/BusMarker.tsx`, a falsification test for
-  whether the blind 450 ms `tracksViewChanges` timer fires before MapKit has
-  realised the view. **That flag and its `onLayout` logging must be removed
-  before the merge to `main`.**
+  **The cause is overlap, not timing.** Every control on the route view replaces
+  `MapView`'s markers wholesale — the two directions of Route 2 share *2 stops
+  out of 68*, so a direction flip takes 66 annotations off and puts 66 on in one
+  commit, and the X is larger again. Issue a second such swap while the first is
+  still being applied and the map is handed insertions against a subview array
+  that has already moved underneath it. That is the out-of-range
+  `insertObject:atIndex:`, and it is the seam this section has always described.
 
-  **The one untried structural lead**, for whoever picks this up: `MapView`'s
-  children are still *two* separate array slots — `{buses.map(…)}` and
-  `{pins.map(…)}` — whose lengths both change in the same commit, plus a
-  conditionally mounted `PendingMarker`, which is a direct violation of this
-  section's own rule and which `RouteLine` was deliberately written to avoid.
-  Merging the markers into one keyed array and mounting `PendingMarker`
-  unconditionally is defensible on its own terms. It is untested against the
-  crash, and must not be written up as a fix if it is done.
+  Two reproductions, both by Truman, both deliberate: **spamming the direction
+  control**, and **a flip followed quickly by the X**. Slow flips never crashed.
+  Single presses never crashed. That is why every earlier report read as
+  intermittent — the precondition was a second gesture, not a render state.
+
+  Fixed by `swapBusyUntil` in `features/map/MapScreen.tsx`: one window, shared
+  by the controls, sized at `CAMERA_MS` because the camera move and the swap are
+  started by the same commit. A blocked flip is **dropped** (honouring it would
+  land the rider back where they started); a blocked close is **deferred and
+  then honoured** (a close that silently does nothing is a broken app). Entering
+  route mode is deliberately not gated — reaching it needs a search opened and a
+  result tapped, so the gap is human-scale.
+
+  It cannot be fixed where it lives. Expo Go rules out patching
+  `react-native-maps`, and the swap cannot be made small enough not to matter:
+  holding both directions' stops at once is 134 markers and both sides of every
+  street. Serialising is the only join this app owns.
+
+  ### The undrawn buses were a *different* bug
+
+  **They are not one defect.** The crash did not return once the gate was in,
+  with or without any of the marker changes; the drawing fault survived the gate
+  untouched. Two things were being seen at once and read as one:
+
+  - **A single bus on the wrong line.** Route 10 had one bus, running the
+    direction *opposite* the one on screen. `useVehicles` filters on route and
+    never on direction, so the dot was drawn correctly — just nowhere near the
+    red line being scanned. Confirmed by pulling the live fleet endpoint from
+    the dev machine and telling Truman the coordinate to look at.
+  - **Degradation on flip**, which is real and is fixed. Keyed on the fleet
+    number alone, one flip dropped the bus dots *below* the stop pins and a
+    second took them off the map entirely while the band still read "9 buses".
+    The buses are the children React *preserves* across a flip while `pins` is
+    replaced wholesale underneath them, and the carried-over annotation comes
+    out stale. `BusMarker`'s key now includes the direction, so a flip remounts
+    them; see the comment at the render site.
+
+  **`TRACKING_ALWAYS` is falsified and removed.** With the flag gone the dots
+  draw on the first open with no gesture at all, so the blind 450 ms
+  `tracksViewChanges` timer was never implicated. `StopMarker` uses the same
+  450 ms and never had the fault, which should have been the clue.
+
+  **The structural lead was acted on**: `{buses.map(…)}` now renders *after*
+  `{pins.map(…)}`, so the live layer draws over the reference layer (a route-10
+  dot was photographed sitting behind a stop pin) and the bus array is last, so
+  draining it moves no sibling's index. Worth having on both counts. **It did
+  not by itself stop the crash** and must not be written up as though it did.
+
+  **Still open, and small**: `PendingMarker` is still mounted conditionally,
+  which the rule at the top of this entry forbids. Nothing has crashed from it —
+  long press is disabled in route mode, so it cannot appear during a swap.
 
   **If it returns, do not read native source.** Get the `.ips` off the phone
   (Settings → Privacy & Security → Analytics & Improvements → Analytics Data,
-  filed under `Expo Go-…`), and write down what was on screen and what was
-  pressed *before* forming any theory. What is missing from all three reports so
-  far is the state at the moment it went: which route, how many buses drawn,
-  which detent, whether a stop card was open.
+  filed under `Expo Go-…`), and write down what was on screen and *what was
+  pressed, in what order and how fast* before forming any theory. Every report
+  before 2026-08-09 recorded the state and not the gesture, which is exactly the
+  half that turned out to matter.
 
 - **Tapping a pin counts toward Apple Maps' double-tap-to-zoom**, and there is
   no supported way off. `zoomTapEnabled` is *iOS: Google Maps only* per

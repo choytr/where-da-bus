@@ -29,61 +29,52 @@ three deferred items are done, plus two bugs found by reading and one gesture
 Truman asked to have removed. The whole-diff review ran inline and its three
 findings are fixed (`aa83a6e`).
 
-**One bug is open and it is the only thing standing before the merge to `main`**
-— which needs Truman's explicit permission. A temporary instrument for it is
-committed and *must come out* before that merge; see below.
+**Nothing is now known to block the merge to `main`**, which still needs
+Truman's explicit permission every time. 707 Jest, 130 `node --test`, clean
+typecheck.
 
-### The open bug: buses undrawn, and the SIGABRT on the route view's X
+**The SIGABRT is fixed, and so is the undrawn-bus fault.** They were never one
+bug. Both were closed on the evening of 2026-08-09 across `6a04caf`, `4f5717c`
+and `18de45f`; the full write-up is in `docs/backlog.md` under the
+"Never mount, unmount or reorder a child" entry, which is the record. Every
+temporary instrument is out of the source.
 
-**These are one bug, not two.** Truman established the link on 2026-08-09, and
-it is the first hard fact this crash has produced:
+### What the crash actually was
 
-> it reliably crashes if I press the close button when the buses have been
-> fetched (specifically after it changes from "Looking for bus" to "1 bus") but
-> have not been rendered on the map yet. … the bus icons don't render until you
-> move/zoom the map a bit. But if it's visible and the button is pressed, it
-> doesn't crash.
+**Two wholesale marker swaps in flight at once.** Not a render window, not a
+timer, not `zIndex`. Truman reproduced it twice on purpose: **spamming the
+direction control**, and **a flip followed quickly by the X**. Slow flips and
+single presses never crashed, which is the whole reason four sessions read it as
+intermittent — everyone recorded what was *on screen* and nobody recorded the
+gesture.
 
-So the window is exactly: **marker mounted in React and handed to MapKit, but
-its view not realised.** Unmount inside that window and React's model of the
-map's subviews and the native array disagree, which is what the out-of-range
-`-[__NSArrayM insertObject:atIndex:]` in the four `.ips` files is. Once the dot
-is drawn, the X is safe.
+Fixed by `swapBusyUntil` in `MapScreen`: one window shared by the controls,
+sized at `CAMERA_MS`. A blocked flip is dropped, a blocked close is deferred and
+then honoured. Two Jest tests cover both.
 
-**Three hypotheses have already been falsified — do not re-run them.** `zIndex`
-(the backlog's old attribution, disproved by `.ips` files postdating its
-removal); duplicate stop keys from loop routes; duplicate bus keys from the live
-feed reporting a fleet number twice. The last two were *real bugs*, are fixed,
-and changed nothing about the crash.
+The undrawn buses were two unrelated things wearing one costume: a lone Route 10
+bus running the *opposite* direction to the line on screen (drawn correctly, just
+nowhere near where anyone was looking), and a real degradation where each
+direction flip knocked the bus dots down a z-level and then off the map
+entirely. The second is fixed by putting the direction in `BusMarker`'s key.
 
-**The current hypothesis, instrumented and awaiting one device reading.**
-`BusMarker` drops `tracksViewChanges` on a blind 450 ms timer, which can fire
-before MapKit has realised the annotation view, leaving it with an empty bitmap;
-panning forces MapKit to re-render annotation views, which is the "move the map
-and they appear" symptom. `StopMarker` runs the same timer but mounts *with* the
-map, whereas buses mount seconds later into a map already animating to fit the
-route — that difference in mount timing is the only thing separating the layer
-that works from the layer that does not.
+**`TRACKING_ALWAYS` was falsified, not vindicated.** With it removed the dots
+draw on the first open with no gesture, so the 450 ms timer was innocent all
+along — as `StopMarker` running the identical timer without the fault should
+have suggested.
 
-`TRACKING_ALWAYS` in `features/map/BusMarker.tsx` pins tracking on for the
-marker's whole life, and an `onLayout` logs `[busMarker] <fleet> laid out <n> ms
-after mount`. **It is a falsification test, not a fix.** One reading answers it:
-
-- dots draw with no gesture → the timer is the cause; replace the blind delay
-  with something anchored to a real event, then re-test the X.
-- dots still absent → **the timer is innocent**, and the next suspect is the
-  child ordering in `MapScreen`'s `MapView`: `buses` is a variable-length list
-  rendered *between* `RouteLine` and `pins`, so every appearance or removal of a
-  bus shifts every pin's index inside a container whose native subview list
-  `AIRMap.insertReactSubview:` deliberately never keeps in step. Moving the
-  volatile list last is the untried change.
-
-Then press the X inside the window and see whether it still aborts.
+**What made the difference** was hitting the live fleet endpoint from the dev
+machine, using the AppID still in `.env`, and telling Truman the coordinate to
+look at. That turned "the bus isn't drawn" into "the bus is at 21.33185,
+−157.85979 and you are looking at the other direction's line" in one round, with
+no build and no instrument. Reach for it before instrumenting anything about
+vehicles again.
 
 **Measure, never read.** Five wrong claims in this project came from reasoning
-about native source. Report any result as a candidate until Truman has failed to
-reproduce the crash over a sustained session — the `zIndex` precedent is exactly
-what "it stopped reproducing" is worth.
+about native source, and every theory in the backlog entry that came from
+reading was wrong. Both fixes here came from Truman's gestures on a device.
+Treat "it stopped reproducing" as provisional until he has abused it over a
+sustained session — the `zIndex` precedent is exactly what that phrase is worth.
 
 ### What the UX pass changed
 
