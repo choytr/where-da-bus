@@ -184,12 +184,28 @@ is what makes every failure in that chain degrade to stale data rather than
 none. Do not "helpfully" run `npm run build:gtfs` and commit the result — that
 is the thing the increment exists to stop.
 
-Two consequences worth knowing. **The pointer is read once per launch**, so a
+**The one exception is a schema change.** A v3 binary needs a v3 floor, so
+`SCHEMA_VERSION` and the committed asset move together, in the same commit. The
+rule above exists to stop *routine* rebuilds, not to freeze the floor at a shape
+the app can no longer read.
+
+Three consequences worth knowing. **The pointer is read once per launch**, so a
 build downloaded now is opened next launch — remounting `SQLiteProvider` would
 remount the router underneath it and throw a rider back to the home screen.
 And **`SCHEMA_VERSION` lives in `data/gtfs/sql.ts`**, imported by `emit.mjs` and
 `publish.mjs` rather than copied, because the version in the filename is what
-stops an old binary being handed a database it cannot read.
+keeps a binary and a database in step. **The risk it guards is a new binary
+reading old published data** — freshly installed, handed the generation
+published last week, which passes the hash and the floor and then fails on
+every query touching the table it lacks — and not, as this file said until
+Increment 9, an old binary reading new data.
+
+**Old generations no longer have to stay published forever.** That rule came
+from Increment 5, was retired in Increment 9 as premature while Truman is the
+only user, and its real requirement is now validated directly instead:
+`route_directions` is in `FLOOR_COUNTS`, so `files.ts` rejects a database of the
+wrong shape *structurally* rather than trusting its filename. Prune the `data`
+release freely; revisit if anyone else installs the app.
 
 ## How work gets done here
 

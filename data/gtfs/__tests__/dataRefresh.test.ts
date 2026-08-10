@@ -35,7 +35,7 @@ const published = {
 
 const wholeFeed: DatabaseFacts = {
   schemaVersion: SCHEMA_VERSION,
-  counts: { stops: 3830, routes: 118, stopRoutes: 8629, shapes: 532 },
+  counts: { stops: 3830, routes: 118, stopRoutes: 8629, shapes: 532, routeDirections: 333 },
 };
 
 const NOW = new Date('2026-08-11T09:00:00.000Z');
@@ -135,7 +135,7 @@ describe('refreshStopData', () => {
 
   it('leaves the pointer alone when the download is too small to be a whole feed', async () => {
     const { dependencies, contents } = deps({
-      facts: { schemaVersion: SCHEMA_VERSION, counts: { stops: 40, routes: 3, stopRoutes: 90, shapes: 2 } },
+      facts: { schemaVersion: SCHEMA_VERSION, counts: { stops: 40, routes: 3, stopRoutes: 90, shapes: 2, routeDirections: 4 } },
     });
 
     await expect(refreshStopData(dependencies)).rejects.toThrow(/too small/);

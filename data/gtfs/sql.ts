@@ -56,18 +56,28 @@ export const FEED_END_DATE = `
  *
  * Once the database can arrive over the network, the schema `emit.mjs` writes
  * and the schema these queries read stop being tied together by the build. The
- * version goes in the *filename* — the app asks for `gtfs-v1-….db` and can
+ * version goes in the *filename* — the app asks for `gtfs-v3-….db` and can
  * therefore never be handed a database it cannot read — and this constant is
- * what makes the request. Bumping the schema means bumping this, publishing
- * `gtfs-v2-….db`, and leaving the v1 assets up for as long as an old binary
- * might still be asking for them. There is no App Store here to push a fix
- * through, so an old binary has to keep working forever.
+ * what makes the request.
+ *
+ * **The risk it guards is a new binary reading old published data**, not an old
+ * binary reading new data. Without the number, a freshly installed build asks
+ * for the manifest, is handed whatever generation is currently published —
+ * built before the schema grew a table — passes the sha256 check, passes the
+ * floor, swaps onto it, and then fails at runtime on every query that touches
+ * the new table. That window opens the moment the `.ipa` is installed and
+ * closes only when the weekly Action next runs.
+ *
+ * **Keeping old generations published forever is no longer a rule.** It was
+ * retired in Increment 9 while Truman is the only user and no stale binary
+ * exists to serve; prune freely, and revisit if anyone else installs the app.
+ * What was not retired is this number.
  *
  * `emit.mjs` imports this rather than declaring its own copy: the two numbers
  * agreeing is the entire point, and two constants cannot drift when there is
  * only one.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * The version the *file* claims, as a second assertion after a download.
@@ -96,15 +106,30 @@ export const SCHEMA_VERSION_SQL = `
  * a build that produced none of them would draw no route lines at all while
  * every other count looked perfectly healthy — which is the precise shape of
  * failure this floor exists to catch.
+ *
+ * `routeDirections` joined with v3, and it does a second job the others do not.
+ * `files.ts` runs `FLOOR_COUNTS` against every download before the pointer
+ * moves, so a database built before this table existed does not merely score
+ * low — the query itself cannot run, and the file is rejected **structurally**
+ * rather than on the strength of its filename. That is what makes
+ * `SCHEMA_VERSION` belt-and-braces here instead of the only guard. The feed
+ * carries 333 triples.
  */
-export const FLOOR = { stops: 3000, routes: 100, stopRoutes: 5000, shapes: 400 } as const;
+export const FLOOR = {
+  stops: 3000,
+  routes: 100,
+  stopRoutes: 5000,
+  shapes: 400,
+  routeDirections: 300,
+} as const;
 
 export const FLOOR_COUNTS = `
   SELECT
-    (SELECT count(*) FROM stops)       AS stops,
-    (SELECT count(*) FROM routes)      AS routes,
-    (SELECT count(*) FROM stop_routes) AS stopRoutes,
-    (SELECT count(*) FROM shapes)      AS shapes
+    (SELECT count(*) FROM stops)            AS stops,
+    (SELECT count(*) FROM routes)           AS routes,
+    (SELECT count(*) FROM stop_routes)      AS stopRoutes,
+    (SELECT count(*) FROM shapes)           AS shapes,
+    (SELECT count(*) FROM route_directions) AS routeDirections
 `;
 
 export type TableCounts = {
@@ -112,6 +137,7 @@ export type TableCounts = {
   routes: number;
   stopRoutes: number;
   shapes: number;
+  routeDirections: number;
 };
 
 /** Whether counts from `FLOOR_COUNTS` describe a database worth switching onto. */
@@ -120,7 +146,8 @@ export function meetsFloor(counts: TableCounts): boolean {
     counts.stops > FLOOR.stops &&
     counts.routes > FLOOR.routes &&
     counts.stopRoutes > FLOOR.stopRoutes &&
-    counts.shapes > FLOOR.shapes
+    counts.shapes > FLOOR.shapes &&
+    counts.routeDirections > FLOOR.routeDirections
   );
 }
 
@@ -269,6 +296,28 @@ export const ROUTE_STOPS = `
  */
 export const ROUTE_SHAPES = `
   SELECT direction_id, shape_id FROM route_shapes WHERE route_id = ?
+`;
+
+/**
+ * The headsigns each of a route's directions is signed with. Parameters:
+ * (route_id).
+ *
+ * This is how the map tells which way a live bus is running. The vehicle feed
+ * gives a `headsign` and no direction at all, and geometry cannot stand in for
+ * it — both directions of most Oahu routes run the same streets, so a bus is
+ * on the line either way.
+ *
+ * **A direction has many headsigns.** Route 2's direction `1` has five,
+ * including `ALAPAI TRANSIT CENTER` and three Waikiki variants, so the caller
+ * matches against a set and never against one string.
+ *
+ * Twelve routes sign both directions alike — a short-turn or a first-of-shift
+ * trip gets a generic sign, and a street name has no direction. That is 4.00%
+ * of trips island-wide and it is accepted: a bus whose headsign matches nothing
+ * is drawn, not hidden.
+ */
+export const DIRECTION_HEADSIGNS = `
+  SELECT direction_id, headsign FROM route_directions WHERE route_id = ?
 `;
 
 /**

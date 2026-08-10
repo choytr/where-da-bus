@@ -12,6 +12,7 @@ import {
   SEARCH_ROUTES,
   ROUTE_SHAPES,
   SHAPE_BY_ID,
+  DIRECTION_HEADSIGNS,
   NEARBY_IN_BOX,
   boundingBox,
   routesForStopsSql,
@@ -231,7 +232,7 @@ describe('the floor', () => {
   });
 
   test('rejects a database short on any one table', () => {
-    const ample = { stops: 3800, routes: 120, stopRoutes: 18000, shapes: 532 };
+    const ample = { stops: 3800, routes: 120, stopRoutes: 18000, shapes: 532, routeDirections: 333 };
     assert.equal(meetsFloor(ample), true);
     // A truncated upstream zip is the case this exists for: a perfectly valid,
     // perfectly hashed database with forty stops in it.
@@ -241,6 +242,9 @@ describe('the floor', () => {
     // A build that derived no shapes draws no route lines at all, while every
     // other count still looks perfectly healthy.
     assert.equal(meetsFloor({ ...ample, shapes: 0 }), false);
+    // And one that derived no headsigns cannot tell the two directions of a
+    // route apart, so the map draws every bus on both.
+    assert.equal(meetsFloor({ ...ample, routeDirections: 0 }), false);
   });
 });
 
@@ -512,6 +516,68 @@ describe('route detail', () => {
       .map((p) => `${p.route_id}/${p.direction_id}: ${p.n} stops numbered ${p.lo}..${p.hi}`);
 
     assert.deepEqual(holed, [], 'a gap in seq means a stop was dropped after numbering');
+  });
+
+  /**
+   * The table the map filters buses with. The live vehicle feed carries a
+   * `headsign` and no direction at all, so these rows are the only thing that
+   * says which way a bus is running — and geometry cannot stand in, because
+   * both directions of most Oahu routes run the same streets.
+   */
+  test('DIRECTION_HEADSIGNS returns the signs one route is run under', () => {
+    const id = someRouteId();
+    const rows = db.prepare(DIRECTION_HEADSIGNS).all(id);
+    assert.ok(rows.length > 0, `route ${id} carries no headsigns`);
+    for (const row of rows) {
+      assert.equal(typeof row.direction_id, 'string');
+      assert.equal(typeof row.headsign, 'string');
+      assert.notEqual(row.headsign, '');
+    }
+  });
+
+  test('DIRECTION_HEADSIGNS returns nothing for a route that is not there', () => {
+    assert.deepEqual(db.prepare(DIRECTION_HEADSIGNS).all('no-such-route'), []);
+  });
+
+  test('a direction is signed with several headsigns, not one', () => {
+    // Route 2's direction 1 carries five on the current feed. A caller written
+    // as a single equality would attribute four fifths of its buses to nothing,
+    // which is why `RouteDirection.headsigns` is a list.
+    const many = db
+      .prepare(
+        'SELECT route_id, direction_id, COUNT(*) AS n FROM route_directions ' +
+          'GROUP BY route_id, direction_id HAVING n > 1 LIMIT 1',
+      )
+      .get();
+    assert.ok(many, 'expected at least one direction signed more than one way');
+  });
+
+  test('every direction the asset can draw is also signed', () => {
+    // A direction with stops and no headsign is a direction whose buses cannot
+    // be told from the other way's, so the filter would hide all of them or
+    // none. Not exhaustive — a `_merge` oddity or a feed quirk may leave one —
+    // but a wholesale mismatch means the two tables were built from different
+    // ideas of what a direction is.
+    const drawn = db
+      .prepare('SELECT COUNT(*) AS n FROM (SELECT DISTINCT route_id, direction_id FROM route_stops)')
+      .get().n;
+    const signed = db
+      .prepare(
+        'SELECT COUNT(*) AS n FROM (SELECT DISTINCT rs.route_id, rs.direction_id FROM route_stops rs ' +
+          'JOIN route_directions rd ON rd.route_id = rs.route_id AND rd.direction_id = rs.direction_id)',
+      )
+      .get().n;
+    assert.ok(signed > drawn * 0.9, `only ${signed} of ${drawn} drawable directions are signed`);
+  });
+
+  test('every route_directions row names a route the asset carries', () => {
+    const orphans = db
+      .prepare(
+        'SELECT COUNT(*) AS n FROM route_directions rd ' +
+          'LEFT JOIN routes r ON r.route_id = rd.route_id WHERE r.route_id IS NULL',
+      )
+      .get().n;
+    assert.equal(orphans, 0);
   });
 
   test('every route_stops row points at a stop that exists', () => {

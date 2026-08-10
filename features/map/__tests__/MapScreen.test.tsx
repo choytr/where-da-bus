@@ -240,6 +240,7 @@ const mockQueries = {
     {
       directionId: '0',
       shapeId: 's-out',
+      headsigns: ['WAIKIKI'],
       stops: [
         { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
         { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
@@ -248,6 +249,7 @@ const mockQueries = {
     {
       directionId: '1',
       shapeId: 's-back',
+      headsigns: ['KALIHI TRANSIT CENTER'],
       stops: [
         { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
         { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
@@ -1826,6 +1828,7 @@ describe('MapScreen', () => {
         {
           directionId: '0',
           shapeId: 's-out',
+          headsigns: ['WAIKIKI'],
           stops: [
             { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
             { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
@@ -2133,6 +2136,7 @@ describe('MapScreen', () => {
           {
             directionId: '0',
             shapeId: null,
+            headsigns: ['WAIKIKI'],
             stops: [
               { stop_id: 'r1', stop_code: '901', stop_name: 'NO SHAPE HERE', lat: 21.33, lon: -157.87 },
             ],
@@ -2158,6 +2162,7 @@ describe('MapScreen', () => {
         {
           directionId: '0',
           shapeId: 's-out',
+          headsigns: ['WAIKIKI'],
           stops: [
             { stop_id: 'r1', stop_code: '901', stop_name: 'ONE WAY ONLY', lat: 21.33, lon: -157.87 },
           ],

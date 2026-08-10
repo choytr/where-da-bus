@@ -145,7 +145,11 @@ function isTableCounts(value: unknown): value is TableCounts {
     'routes' in value &&
     typeof value.routes === 'number' &&
     'stopRoutes' in value &&
-    typeof value.stopRoutes === 'number'
+    typeof value.stopRoutes === 'number' &&
+    'shapes' in value &&
+    typeof value.shapes === 'number' &&
+    'routeDirections' in value &&
+    typeof value.routeDirections === 'number'
   );
 }
 

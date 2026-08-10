@@ -110,7 +110,7 @@ const DETENTS = detentsFor(INSET_SCENE, OVERLAP, TOP_INSET);
 /** A route the sheet can draw, in one direction with two stops. */
 const ROUTE_VIEW: RouteView = {
   route: { route_id: '25', short_name: '32', long_name: 'Mapunapuna-Airport' },
-  direction: { directionId: '0', shapeId: 's-out', stops: STOPS },
+  direction: { directionId: '0', shapeId: 's-out', headsigns: ['AIRPORT'], stops: STOPS },
   stops: STOPS,
   directionCount: 2,
   busLayer: { kind: 'running', count: 3, late: 0 },

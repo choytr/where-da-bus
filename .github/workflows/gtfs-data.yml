@@ -111,12 +111,14 @@ jobs:
       # than one command because a single `gh release upload a b` gives no
       # ordering guarantee.
       #
-      # **Two generations, and the older one is not optional.** `manifest.json`
-      # is compiled into every binary built before schema v2, and those binaries
-      # ignore a manifest that is not their own schema — so if this run stopped
-      # publishing v1, every one of them would silently stop updating forever.
-      # There is no App Store to push a fix through. See `manifestNameFor` in
-      # scripts/build-gtfs/publish.mjs.
+      # **Two generations.** `manifest.json` is compiled into every binary built
+      # before schema v2, and those binaries ignore a manifest that is not their
+      # own schema — so a run that stopped publishing v1 would switch their
+      # updates off silently, and there is no App Store to push a fix through.
+      # Increment 9 retired the rule that this must go on forever (Truman is the
+      # only user, and he installs each `.ipa` himself); dropping the older
+      # generation is now a decision someone may take, rather than one this
+      # workflow forbids. See `manifestNameFor` in scripts/build-gtfs/publish.mjs.
       - name: Upload the databases
         if: steps.decide.outputs.publish == 'true'
         env:

@@ -17,6 +17,7 @@ import {
   deriveStopRoutes,
   deriveRouteStops,
   deriveRouteShapes,
+  deriveRouteDirections,
   deriveShapes,
   representativeTrips,
 } from './derive.mjs';
@@ -103,9 +104,13 @@ async function main() {
     representativeTrips(feed.stopTimes, feed.trips),
   );
   const shapes = deriveShapes(feed.shapes, SHAPE_TOLERANCE_METERS);
+  // Straight off trips.txt — no stop_times join, so this costs nothing on top
+  // of a parse the build already pays for.
+  const routeDirections = deriveRouteDirections(feed.trips);
   console.log(
     `derived stop_routes=${stopRoutes.length} route_stops=${routeStops.length} ` +
-      `shapes=${shapes.length} route_shapes=${routeShapes.length}`,
+      `shapes=${shapes.length} route_shapes=${routeShapes.length} ` +
+      `route_directions=${routeDirections.length}`,
   );
 
   await mkdir(path.dirname(OUT), { recursive: true });
@@ -119,6 +124,7 @@ async function main() {
     routeStops,
     shapes,
     routeShapes,
+    routeDirections,
     feedStartDate: feed.feedInfo[0]?.feed_start_date,
     feedEndDate: feed.feedInfo[0]?.feed_end_date,
   });
@@ -159,6 +165,7 @@ async function main() {
   console.log(`route_stops  ${counts.routeStops} ${relationshipNote(counts.routeStopsOrphaned, 0)}`.trimEnd());
   console.log('shapes      ', counts.shapes);
   console.log(`route_shapes ${counts.routeShapes} ${relationshipNote(counts.routeShapesOrphaned, 0)}`.trimEnd());
+  console.log(`route_directions ${counts.routeDirections} ${relationshipNote(counts.routeDirectionsOrphaned, 0)}`.trimEnd());
   console.log('feed valid  ', feed.feedInfo[0]?.feed_start_date, '->', feed.feedInfo[0]?.feed_end_date);
   console.log(`wrote ${OUT}`);
 }

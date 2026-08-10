@@ -49,6 +49,7 @@ describe('emitDatabase', () => {
 
     assert.deepEqual(tableNames(db), [
       'meta',
+      'route_directions',
       'route_shapes',
       'route_stops',
       'routes',
@@ -76,10 +77,12 @@ describe('emitDatabase', () => {
       routeStops: 2,
       shapes: 0,
       routeShapes: 0,
+      routeDirections: 0,
       duplicateStopsDropped: 0,
       stopRoutesOrphaned: 0,
       routeStopsOrphaned: 0,
       routeShapesOrphaned: 0,
+      routeDirectionsOrphaned: 0,
       stopRoutesDeduplicated: 0,
     });
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM stops').get().n, 2);
@@ -649,6 +652,51 @@ describe('emitDatabase writes the route lines', () => {
 
     assert.equal(counts.routeShapes, 0);
     assert.equal(counts.routeShapesOrphaned, 1);
+    db.close();
+  });
+});
+
+describe('emitDatabase writes which way each direction is signed', () => {
+  const base = { stops, routes, stopRoutes, routeStops, feedStartDate: null, feedEndDate: null };
+
+  test('stores every headsign a direction is signed with', () => {
+    const db = new DatabaseSync(':memory:');
+    const counts = emitDatabase(db, {
+      ...base,
+      routeDirections: [
+        { route_id: '8', direction_id: '0', headsign: 'ALA MOANA CENTER' },
+        { route_id: '8', direction_id: '0', headsign: 'ALA MOANA - KAPIOLANI' },
+        { route_id: '8', direction_id: '1', headsign: 'WAIKIKI BEACH' },
+      ],
+    });
+
+    assert.equal(counts.routeDirections, 3);
+    const signs = db
+      .prepare("SELECT headsign FROM route_directions WHERE route_id = '8' AND direction_id = '0' ORDER BY headsign")
+      .all()
+      .map((row) => row.headsign);
+    assert.deepEqual(signs, ['ALA MOANA - KAPIOLANI', 'ALA MOANA CENTER']);
+    db.close();
+  });
+
+  test('counts a route_directions row naming a route this feed does not carry', () => {
+    const db = new DatabaseSync(':memory:');
+    const counts = emitDatabase(db, {
+      ...base,
+      routeDirections: [{ route_id: '999', direction_id: '0', headsign: 'NOWHERE' }],
+    });
+
+    assert.equal(counts.routeDirections, 0);
+    assert.equal(counts.routeDirectionsOrphaned, 1);
+    db.close();
+  });
+
+  test('leaves the table empty rather than absent when the feed signs nothing', () => {
+    // An empty table still answers `FLOOR_COUNTS`, so the app rejects the file
+    // on the floor with a number rather than on a query that will not run.
+    const db = new DatabaseSync(':memory:');
+    emitDatabase(db, base);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM route_directions').get().n, 0);
     db.close();
   });
 });

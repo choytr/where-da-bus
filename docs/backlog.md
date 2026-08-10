@@ -73,9 +73,10 @@ wrong, correct the entry rather than only the code.
   identical, so it cannot happen today. The guard, if wanted, is to refuse a
   database whose `meta.generated_at` predates the run.
 - **Old generations accumulate in the `data` release forever** — ~1.2 MB weekly,
-  ~62 MB a year, and nothing prunes. Pruning would have to keep every schema
-  version's newest build alive for as long as a binary might ask for it. Not
-  worth automating at this scale.
+  ~62 MB a year, and nothing prunes. Still unautomated, but no longer blocked on
+  anything: Increment 9 retired the rule that every schema version's newest
+  build had to stay alive indefinitely, so old files can simply be deleted by
+  hand. Not worth automating at this scale.
 - **`publish.mjs check` downloads the whole 12 MB feed to decide it has not
   changed.** A `HEAD` and `Last-Modified` would usually avoid it, but the spec
   rejected inferring anything from dates, and the download is what the build

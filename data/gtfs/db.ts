@@ -1,6 +1,7 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback } from 'react';
 import {
+  DIRECTION_HEADSIGNS,
   FEED_END_DATE,
   NEARBY_IN_BOX,
   ROUTE_BY_ID,
@@ -127,6 +128,20 @@ function isRouteShapeRow(value: unknown): value is { direction_id: string; shape
   );
 }
 
+/** A `route_directions` row: one sign a direction of a route is run under. */
+function isDirectionHeadsignRow(
+  value: unknown,
+): value is { direction_id: string; headsign: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'direction_id' in value &&
+    typeof value.direction_id === 'string' &&
+    'headsign' in value &&
+    typeof value.headsign === 'string'
+  );
+}
+
 function isShapeRow(value: unknown): value is { polyline: string } {
   return (
     typeof value === 'object' &&
@@ -144,10 +159,17 @@ function isShapeRow(value: unknown): value is { polyline: string } {
  * the map draws as no line rather than as a line joining the stops up: measured
  * across 236 route/directions, joining the stops is 1.3 km wrong at p90 and
  * 7.3 km at worst, drawing straight through Kāneʻohe Bay on the express runs.
+ *
+ * `headsigns` is every sign this direction's buses run under — the only signal
+ * that says which way a live vehicle is going, since the vehicle feed carries
+ * no direction and both directions of most routes share their streets. Many
+ * per direction, so a caller matches against the set. Empty when the feed
+ * signed none, which reads as "cannot tell" and must not hide any bus.
  */
 export type RouteDirection = {
   directionId: string;
   shapeId: string | null;
+  headsigns: string[];
   stops: Stop[];
 };
 
@@ -295,17 +317,26 @@ export function useStopQueries() {
    */
   const routeStops = useCallback(
     async (routeId: string): Promise<RouteDirection[]> => {
-      // Two queries rather than a join: `ROUTE_STOPS` returns one row per stop,
-      // and carrying the shape on every one of them would repeat one id up to a
-      // hundred times. See `ROUTE_SHAPES`.
-      const [rows, shapeRows] = await Promise.all([
+      // Three queries rather than a join: `ROUTE_STOPS` returns one row per
+      // stop, up to a hundred for a long route, and carrying the shape and the
+      // headsigns on every one of them would repeat both to deliver each once.
+      // See `ROUTE_SHAPES` and `DIRECTION_HEADSIGNS`.
+      const [rows, shapeRows, headsignRows] = await Promise.all([
         db.getAllAsync(ROUTE_STOPS, routeId),
         db.getAllAsync(ROUTE_SHAPES, routeId),
+        db.getAllAsync(DIRECTION_HEADSIGNS, routeId),
       ]);
 
       const shapeIds = new Map<string, string>();
       for (const row of shapeRows.filter(isRouteShapeRow)) {
         shapeIds.set(row.direction_id, row.shape_id);
+      }
+
+      const headsigns = new Map<string, string[]>();
+      for (const row of headsignRows.filter(isDirectionHeadsignRow)) {
+        const existing = headsigns.get(row.direction_id);
+        if (existing === undefined) headsigns.set(row.direction_id, [row.headsign]);
+        else existing.push(row.headsign);
       }
 
       const order: string[] = [];
@@ -324,6 +355,7 @@ export function useStopQueries() {
       return order.map((directionId) => ({
         directionId,
         shapeId: shapeIds.get(directionId) ?? null,
+        headsigns: headsigns.get(directionId) ?? [],
         stops: grouped.get(directionId) ?? [],
       }));
     },

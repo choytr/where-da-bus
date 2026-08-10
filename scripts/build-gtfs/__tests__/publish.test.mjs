@@ -13,7 +13,13 @@ import { SCHEMA_VERSION, FLOOR_COUNTS, meetsFloor } from '../../../data/gtfs/sql
  * The dual publish exists for one reason: a binary already on a phone has
  * `manifest.json` compiled into it and ignores a manifest of another schema, so
  * the day this stops publishing a v1 generation is the day every one of those
- * installs silently stops updating forever.
+ * installs silently stops updating.
+ *
+ * Increment 9 retired *forever* from that sentence — nobody but Truman installs
+ * this app, and he replaces the binary himself — so dropping the older
+ * generation became a decision rather than a prohibition. What these tests hold
+ * is the shape of the dual publish while it exists, and that the v1 file is a
+ * genuine v1 rather than a relabelled one.
  */
 
 const stops = Array.from({ length: 3801 }, (_, i) => ({
@@ -42,6 +48,12 @@ const shapes = Array.from({ length: 401 }, (_, i) => ({
 
 const routeShapes = [{ route_id: '1', direction_id: '0', shape_id: 's1' }];
 
+const routeDirections = Array.from({ length: 301 }, (_, i) => ({
+  route_id: String(i % 101),
+  direction_id: String(i % 2),
+  headsign: `HEADSIGN ${i}`,
+}));
+
 let work;
 let sourcePath;
 
@@ -57,6 +69,7 @@ before(async () => {
     routeStops: [{ route_id: '1', direction_id: '0', seq: 0, stop_id: '1' }],
     shapes,
     routeShapes,
+    routeDirections,
     feedStartDate: '20260701',
     feedEndDate: '20260822',
   });
@@ -78,7 +91,7 @@ describe('downgradeToV1', () => {
     source.close();
   });
 
-  test('has no shapes or route_shapes table', async () => {
+  test('has none of the tables the later schemas added', async () => {
     const dest = path.join(work, 'legacy-tables.db');
     await downgradeToV1(sourcePath, dest);
 
@@ -91,6 +104,7 @@ describe('downgradeToV1', () => {
 
     assert.equal(names.includes('shapes'), false);
     assert.equal(names.includes('route_shapes'), false);
+    assert.equal(names.includes('route_directions'), false);
   });
 
   /**

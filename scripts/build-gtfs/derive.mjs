@@ -144,6 +144,44 @@ export function deriveStopRoutes(stopTimesRows, tripsRows) {
 }
 
 /**
+ * Every headsign each route and direction is signed with — the sign on the
+ * front of the bus, which is the only signal that says which way a live vehicle
+ * is running.
+ *
+ * **Many-to-one, not one-to-one.** Route 2's direction `1` carries five
+ * headsigns; a lookup written as a single equality is wrong. 333 distinct
+ * triples across the 2026-06-29 feed's 37,678 trips.
+ *
+ * The join against the live feed is exact string equality: GTFS `trip_headsign`
+ * and the arrivals API's `headsign` are byte-identical, verified against both.
+ * So nothing is normalised here — trimming or upper-casing would silently break
+ * the only thing this table is for.
+ *
+ * A trip missing `direction_id` or `trip_headsign` is skipped rather than
+ * thrown on. Both are optional in GTFS, and a triple missing either half cannot
+ * attribute a bus to a direction, so it is not a row. A feed that lost them
+ * wholesale is caught by `FLOOR.routeDirections` at the end of the build, which
+ * is the right place for it: one absent field is not a reason to refuse to
+ * build every other table.
+ */
+export function deriveRouteDirections(tripsRows) {
+  const seen = new Set();
+
+  tripsRows.forEach((trip, index) => {
+    const routeId = requireField(trip, 'route_id', index, 'trips.txt');
+    const directionId = trip.direction_id ?? '';
+    const headsign = trip.trip_headsign ?? '';
+    if (directionId === '' || headsign === '') return;
+    seen.add(`${routeId}${KEY_SEP}${directionId}${KEY_SEP}${headsign}`);
+  });
+
+  return [...seen].sort().map((key) => {
+    const [route_id, direction_id, headsign] = key.split(KEY_SEP);
+    return { route_id, direction_id, headsign };
+  });
+}
+
+/**
  * The one trip that stands for each route and direction, keyed
  * `route_id\0direction_id`.
  *

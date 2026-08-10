@@ -1,6 +1,11 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCsv, deriveStopRoutes, deriveRouteStops } from '../derive.mjs';
+import {
+  parseCsv,
+  deriveStopRoutes,
+  deriveRouteStops,
+  deriveRouteDirections,
+} from '../derive.mjs';
 
 describe('parseCsv', () => {
   test('parses a header and rows into objects', () => {
@@ -110,6 +115,82 @@ describe('deriveRouteStops', () => {
     assert.deepEqual(deriveRouteStops(stopTimes, spacedTrips), [
       { route_id: 'RTE 8', direction_id: '0', seq: 0, stop_id: '5' },
     ]);
+  });
+});
+
+describe('deriveRouteDirections', () => {
+  test('collapses thousands of trips into distinct route/direction/headsign triples', () => {
+    const trips = [
+      { trip_id: 't1', route_id: '2', direction_id: '0', trip_headsign: 'WAIKIKI' },
+      { trip_id: 't2', route_id: '2', direction_id: '0', trip_headsign: 'WAIKIKI' },
+      { trip_id: 't3', route_id: '2', direction_id: '1', trip_headsign: 'KALIHI' },
+    ];
+    assert.deepEqual(deriveRouteDirections(trips), [
+      { route_id: '2', direction_id: '0', headsign: 'WAIKIKI' },
+      { route_id: '2', direction_id: '1', headsign: 'KALIHI' },
+    ]);
+  });
+
+  test('keeps every headsign a direction is signed with', () => {
+    // Route 2's direction 1 really carries five. A lookup written as a single
+    // equality would attribute four fifths of its buses to nothing.
+    const trips = [
+      { trip_id: 't1', route_id: '2', direction_id: '1', trip_headsign: 'ALAPAI TRANSIT CENTER' },
+      { trip_id: 't2', route_id: '2', direction_id: '1', trip_headsign: 'WAIKIKI - KAPIOLANI CC' },
+      { trip_id: 't3', route_id: '2', direction_id: '1', trip_headsign: 'WAIKIKI BEACH' },
+    ];
+    const rows = deriveRouteDirections(trips);
+    assert.equal(rows.length, 3);
+    assert.ok(rows.every((row) => row.direction_id === '1'));
+  });
+
+  test('keeps a headsign that both directions share, since the ambiguity is the fact', () => {
+    // Twelve routes do this — a short-turn signed with a street name has no
+    // direction. Collapsing it to one side would attribute those buses wrongly
+    // rather than leaving them unattributed.
+    const trips = [
+      { trip_id: 't1', route_id: '14', direction_id: '0', trip_headsign: 'WAIALAE AVENUE' },
+      { trip_id: 't2', route_id: '14', direction_id: '1', trip_headsign: 'WAIALAE AVENUE' },
+    ];
+    assert.deepEqual(deriveRouteDirections(trips), [
+      { route_id: '14', direction_id: '0', headsign: 'WAIALAE AVENUE' },
+      { route_id: '14', direction_id: '1', headsign: 'WAIALAE AVENUE' },
+    ]);
+  });
+
+  test('does not normalise the headsign, because the live join is exact equality', () => {
+    const trips = [
+      { trip_id: 't1', route_id: '2', direction_id: '0', trip_headsign: 'KAHAUIKI  KALIHI ' },
+    ];
+    assert.equal(deriveRouteDirections(trips)[0].headsign, 'KAHAUIKI  KALIHI ');
+  });
+
+  test('skips a trip carrying no direction or no headsign', () => {
+    // Both are optional in GTFS, and a triple missing either half cannot
+    // attribute a bus to a direction. A feed that lost them wholesale is caught
+    // by the floor, not by refusing to build every other table.
+    const trips = [
+      { trip_id: 't1', route_id: '2', direction_id: '', trip_headsign: 'WAIKIKI' },
+      { trip_id: 't2', route_id: '2', direction_id: '0', trip_headsign: '' },
+      { trip_id: 't3', route_id: '2' },
+    ];
+    assert.deepEqual(deriveRouteDirections(trips), []);
+  });
+
+  test('round-trips ids and headsigns containing spaces', () => {
+    const trips = [
+      { trip_id: 't1', route_id: 'RTE 8', direction_id: '0', trip_headsign: 'ALA MOANA CENTER' },
+    ];
+    assert.deepEqual(deriveRouteDirections(trips), [
+      { route_id: 'RTE 8', direction_id: '0', headsign: 'ALA MOANA CENTER' },
+    ]);
+  });
+
+  test('throws on a trips row missing route_id', () => {
+    assert.throws(
+      () => deriveRouteDirections([{ trip_id: 't1', route_id: '', direction_id: '0', trip_headsign: 'X' }]),
+      { message: /trips\.txt row 0: missing required field "route_id"/ },
+    );
   });
 });
 

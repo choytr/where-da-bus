@@ -32,11 +32,13 @@ const mockQueries = {
       // RouteScreen draws no line — the shape is the map's business. It is here
       // because the query returns it, not because this screen reads it.
       shapeId: 's-out',
+      headsigns: ['DILLINGHAM BLVD'],
       stops: [stop('3152', 'KALIHI TRANSIT CENTER'), stop('3223', 'DILLINGHAM BLVD')],
     },
     {
       directionId: '1',
       shapeId: 's-back',
+      headsigns: ['KALIHI TRANSIT CENTER'],
       stops: [stop('3223', 'DILLINGHAM BLVD'), stop('3152', 'KALIHI TRANSIT CENTER')],
     },
   ]),

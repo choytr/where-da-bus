@@ -358,12 +358,73 @@ describe('useStopQueries.routeStops', () => {
       .mockResolvedValueOnce([
         { direction_id: '0', shape_id: 's-out' },
         { direction_id: '1', shape_id: 's-back' },
-      ]);
+      ])
+      .mockResolvedValueOnce([]);
 
     const { result } = await renderHook(() => useStopQueries());
     const directions = await result.current.routeStops('1');
 
     expect(directions.map((d) => d.shapeId)).toEqual(['s-out', 's-back']);
+  });
+
+  /**
+   * The live vehicle feed carries a headsign and no direction, so this list is
+   * the only thing that says which way a bus is running. A direction is signed
+   * several ways — route 2's direction 1 has five — so the whole set comes
+   * back, not the first one.
+   */
+  it('carries every headsign each direction is signed with', async () => {
+    const db = makeDb();
+    db.getAllAsync
+      .mockResolvedValueOnce(runRows)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { direction_id: '0', headsign: 'KALIHI TRANSIT CENTER' },
+        { direction_id: '1', headsign: 'WAIKIKI - KAPIOLANI CC' },
+        { direction_id: '1', headsign: 'ALAPAI TRANSIT CENTER' },
+      ]);
+
+    const { result } = await renderHook(() => useStopQueries());
+    const directions = await result.current.routeStops('1');
+
+    expect(directions[0]?.headsigns).toEqual(['KALIHI TRANSIT CENTER']);
+    expect(directions[1]?.headsigns).toEqual([
+      'WAIKIKI - KAPIOLANI CC',
+      'ALAPAI TRANSIT CENTER',
+    ]);
+  });
+
+  /**
+   * Empty reads as "cannot tell which way this bus is going", which the map
+   * must render as showing every bus rather than none.
+   */
+  it('reports no headsigns rather than failing when the feed signed none', async () => {
+    const db = makeDb();
+    db.getAllAsync
+      .mockResolvedValueOnce(runRows)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const { result } = await renderHook(() => useStopQueries());
+    const directions = await result.current.routeStops('1');
+
+    expect(directions[0]?.headsigns).toEqual([]);
+  });
+
+  it('drops a headsign row whose columns are the wrong type', async () => {
+    const db = makeDb();
+    db.getAllAsync
+      .mockResolvedValueOnce(runRows)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { direction_id: '0', headsign: 12345 },
+        { direction_id: '0', headsign: 'WAIKIKI' },
+      ]);
+
+    const { result } = await renderHook(() => useStopQueries());
+    const directions = await result.current.routeStops('1');
+
+    expect(directions[0]?.headsigns).toEqual(['WAIKIKI']);
   });
 
   /**
@@ -375,7 +436,8 @@ describe('useStopQueries.routeStops', () => {
     const db = makeDb();
     db.getAllAsync
       .mockResolvedValueOnce(runRows)
-      .mockResolvedValueOnce([{ direction_id: '0', shape_id: 's-out' }]);
+      .mockResolvedValueOnce([{ direction_id: '0', shape_id: 's-out' }])
+      .mockResolvedValueOnce([]);
 
     const { result } = await renderHook(() => useStopQueries());
     const directions = await result.current.routeStops('1');
@@ -385,7 +447,10 @@ describe('useStopQueries.routeStops', () => {
 
   it('keeps each direction in the order the feed serves it', async () => {
     const db = makeDb();
-    db.getAllAsync.mockResolvedValueOnce(runRows).mockResolvedValueOnce([]);
+    db.getAllAsync
+      .mockResolvedValueOnce(runRows)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const { result } = await renderHook(() => useStopQueries());
     const directions = await result.current.routeStops('1');
@@ -398,7 +463,8 @@ describe('useStopQueries.routeStops', () => {
     const db = makeDb();
     db.getAllAsync
       .mockResolvedValueOnce(runRows)
-      .mockResolvedValueOnce([{ direction_id: '0', shape_id: 12345 }]);
+      .mockResolvedValueOnce([{ direction_id: '0', shape_id: 12345 }])
+      .mockResolvedValueOnce([]);
 
     const { result } = await renderHook(() => useStopQueries());
     const directions = await result.current.routeStops('1');

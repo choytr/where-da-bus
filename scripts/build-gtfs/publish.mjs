@@ -130,19 +130,26 @@ async function check() {
 }
 
 /**
- * A **genuine** v1 database, built by taking v2's tables away again.
+ * A **genuine** v1 database, built by taking the later schemas' tables away
+ * again.
  *
- * Not a v2 file relabelled: `installUpdate` reads `schema_version` out of the
- * downloaded file and refuses a mismatch, so a lie here would fail on the phone
- * rather than in CI, which is the worst place to find it.
+ * Not a current file relabelled: `installUpdate` reads `schema_version` out of
+ * the downloaded file and refuses a mismatch, so a lie here would fail on the
+ * phone rather than in CI, which is the worst place to find it.
  *
- * Derived from the v2 build rather than emitted separately so the two
+ * Derived from the current build rather than emitted separately so the two
  * generations are the same feed by construction, and so the 73 MB
  * `stop_times.txt` is parsed once.
+ *
+ * **Every table a later schema adds has to be dropped here too.** Leaving one
+ * in would not break a v1 binary — it queries only what it knows about — but
+ * the file would carry pages of data that install downloads and never reads,
+ * which is the whole thing the `VACUUM` below exists to avoid.
  */
 export async function downgradeToV1(sourcePath, destPath) {
   await copyFile(sourcePath, destPath);
   const db = new DatabaseSync(destPath);
+  db.exec('DROP TABLE route_directions');
   db.exec('DROP TABLE route_shapes');
   db.exec('DROP TABLE shapes');
   db.exec('UPDATE meta SET schema_version = 1');

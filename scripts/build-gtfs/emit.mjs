@@ -49,6 +49,12 @@ const SCHEMA_SQL = `
     shape_id     TEXT NOT NULL,
     PRIMARY KEY (route_id, direction_id)
   );
+  CREATE TABLE route_directions (
+    route_id     TEXT NOT NULL,
+    direction_id TEXT NOT NULL,
+    headsign     TEXT NOT NULL,
+    PRIMARY KEY (route_id, direction_id, headsign)
+  );
   CREATE TABLE meta (
     feed_start_date TEXT,
     feed_end_date   TEXT,
@@ -196,7 +202,17 @@ function survivingIdForCode(plainRows, code) {
  */
 export function emitDatabase(
   db,
-  { stops, routes, stopRoutes, routeStops, shapes = [], routeShapes = [], feedStartDate, feedEndDate },
+  {
+    stops,
+    routes,
+    stopRoutes,
+    routeStops,
+    shapes = [],
+    routeShapes = [],
+    routeDirections = [],
+    feedStartDate,
+    feedEndDate,
+  },
 ) {
   db.exec(SCHEMA_SQL);
 
@@ -226,6 +242,9 @@ export function emitDatabase(
   const insertShape = db.prepare('INSERT INTO shapes (shape_id, polyline) VALUES (?, ?)');
   const insertRouteShape = db.prepare(
     'INSERT INTO route_shapes (route_id, direction_id, shape_id) VALUES (?, ?, ?)',
+  );
+  const insertRouteDirection = db.prepare(
+    'INSERT INTO route_directions (route_id, direction_id, headsign) VALUES (?, ?, ?)',
   );
   const insertMeta = db.prepare(
     'INSERT INTO meta (feed_start_date, feed_end_date, generated_at, schema_version) VALUES (?, ?, ?, ?)',
@@ -330,6 +349,20 @@ export function emitDatabase(
     routeShapesInserted += 1;
   }
 
+  // Counted apart for the same reason every other relationship table is: this
+  // is what the map filters buses with, and a feed that renamed its route ids
+  // would empty it while `routes` itself still looked full.
+  let routeDirectionsInserted = 0;
+  let routeDirectionsOrphaned = 0;
+  for (const rd of routeDirections) {
+    if (!knownRoutes.has(rd.route_id)) {
+      routeDirectionsOrphaned += 1;
+      continue;
+    }
+    insertRouteDirection.run(rd.route_id, rd.direction_id, rd.headsign);
+    routeDirectionsInserted += 1;
+  }
+
   insertMeta.run(feedStartDate ?? null, feedEndDate ?? null, new Date().toISOString(), SCHEMA_VERSION);
 
   db.exec("INSERT INTO stops_fts(stops_fts) VALUES('rebuild')");
@@ -343,10 +376,12 @@ export function emitDatabase(
     routeStops: routeStopsInserted,
     shapes: knownShapes.size,
     routeShapes: routeShapesInserted,
+    routeDirections: routeDirectionsInserted,
     duplicateStopsDropped: droppedStops.length,
     stopRoutesOrphaned,
     routeStopsOrphaned,
     routeShapesOrphaned,
+    routeDirectionsOrphaned,
     stopRoutesDeduplicated,
   };
 }

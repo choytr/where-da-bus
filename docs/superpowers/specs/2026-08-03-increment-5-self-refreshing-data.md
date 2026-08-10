@@ -113,6 +113,20 @@ is never handed a database it cannot read. Changing the schema means bumping to
 `gtfs-v2.db` and publishing both for as long as an old binary might be running.
 The dead end stops existing rather than being handled.
 
+> **Corrected 2026-08-09, in Increment 9.** The publish-both-forever half of
+> that rule is retired. It was reasoning from a premise this project never had:
+> there is no App Store, so *nobody* has an old binary except Truman, and he
+> installs each `.ipa` himself. Prune the `data` release freely; revisit if
+> anyone else ever installs the app.
+>
+> Two things survive it. The version number itself stays — it is one line, and
+> the risk it covers is the opposite of the one described above: **a new binary
+> handed old published data**, which passes the hash and the floor and then
+> fails at runtime on the table it lacks. And the real requirement is now
+> checked rather than proxied — `route_directions` joined `FLOOR_COUNTS` in
+> schema v3, so `files.ts` refuses a database of the wrong shape outright
+> instead of trusting what its filename claims.
+
 A `schema_version` row goes in the existing `meta` table as a second assertion
 after download, and **a test asserts that the version the app expects matches
 the version the build emits**. `sql.ts` and `emit.mjs` already have
@@ -267,7 +281,8 @@ having no fallback, not of adding refresh.**
 - No fallback → a truncated download destroys the only database → `sha256`
   becomes load-bearing rather than hygiene.
 - No fallback → an old binary handed an unreadable schema has *nothing* →
-  hence the publish-both-forever discipline.
+  hence the publish-both-forever discipline. (Retired 2026-08-09; see the
+  correction above.)
 - No fallback → first launch is dead until a download succeeds → hence the
   download step in onboarding.
 - No fallback → "the versioned asset was deleted" needed an answer.
