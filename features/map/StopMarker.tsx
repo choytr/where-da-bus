@@ -4,7 +4,7 @@ import { Marker, type MarkerPressEvent } from 'react-native-maps';
 import { schedule } from '../../lib/schedule';
 import { useTheme } from '../../lib/theme';
 import type { StopWithDistance } from '../../data/gtfs/types';
-import type { LabelPlacement } from './labels';
+import type { LabelPlacement, MapScale } from './labels';
 
 /**
  * One stop on the map: a tile, and the stop's name written under it.
@@ -37,6 +37,22 @@ const SLOT = 34;
 const TILE = 24;
 const TILE_SELECTED = 32;
 const GAP = 3;
+
+/**
+ * What a stop shrinks to once the whole route is on screen.
+ *
+ * At route scale a 24-point tile is not a pin, it is a link in a chain: the
+ * 2026-08-09 screenshots show about forty of them fused end to end along Route
+ * 2, with the red line invisible beneath and no gap anywhere. A dot this size
+ * leaves the line readable between the stops and lets the bus dots — the thing
+ * a rider is actually looking for at that zoom — be the largest objects on the
+ * map.
+ *
+ * The selected stop keeps a bigger one, because `labels.ts` still writes its
+ * name at any zoom and a name needs something to belong to.
+ */
+const DOT = 8;
+const DOT_SELECTED = 14;
 /**
  * Two lines' worth, fixed. It no longer decides the anchor — the label is out
  * of the layout entirely — but `labels.ts` measures collisions against this
@@ -91,6 +107,14 @@ export type StopMarkerProps = {
    */
   placement: LabelPlacement | null;
   /**
+   * How much of the island is on screen. At `'route'` the tile collapses to a
+   * dot and the glyph goes; at `'street'` this draws exactly what it always
+   * has. Decided for the whole set at once by `scaleOf`, off a *settled*
+   * camera — crossing the threshold re-snapshots every marker, which is
+   * affordable once per crossing and not once per frame.
+   */
+  scale: MapScale;
+  /**
    * Takes the stop rather than closing over it, so this component can be
    * memoised: a fresh arrow per stop per render would defeat `memo` entirely,
    * and re-rendering markers is the cost this component is shaped to avoid.
@@ -102,24 +126,37 @@ export const StopMarker = memo(function StopMarker({
   stop,
   selected,
   placement,
+  scale,
   onPress,
 }: StopMarkerProps) {
   const { palette } = useTheme();
   const [tracking, setTracking] = useState(true);
 
-  // The two things that change how this draws. Mount included: the first bitmap
-  // has to be captured too.
+  // The three things that change how this draws. Mount included: the first
+  // bitmap has to be captured too. `scale` belongs here for the same reason the
+  // other two do — a changed tile that is never re-snapshotted is a tile that
+  // does not change on screen.
   useEffect(() => {
     setTracking(true);
     return schedule(() => setTracking(false), TRACK_MS);
-  }, [selected, placement]);
+  }, [selected, placement, scale]);
 
   const handlePress = useCallback(
     (event: MarkerPressEvent) => onPress(stop, event),
     [onPress, stop],
   );
 
-  const size = selected ? TILE_SELECTED : TILE;
+  const street = scale === 'street';
+  const size = street
+    ? selected
+      ? TILE_SELECTED
+      : TILE
+    : selected
+      ? DOT_SELECTED
+      : DOT;
+  // Rounded square at street scale, circle at route scale: a dot that small
+  // reads as a smudge with square corners.
+  const radius = street ? size / 4 : size / 2;
 
   return (
     <Marker
@@ -156,6 +193,14 @@ export const StopMarker = memo(function StopMarker({
       accessibilityLabel={stop.stop_name}
       onPress={handlePress}
     >
+      {/*
+        `SLOT` at both scales, and that is load-bearing twice over — see
+        `ANCHOR`. MapKit hit-tests annotation views by frame, so a wrapper that
+        shrank with the dot would make forty stops untappable at exactly the
+        zoom where they are hardest to hit; and `reactSetFrame:` shifts the
+        marker's centre whenever the view's height changes, so it would move
+        every pin as well. The tile inside it shrinks; this box never does.
+      */}
       <View style={styles.wrap} pointerEvents="none">
         <View
             style={[
@@ -163,13 +208,27 @@ export const StopMarker = memo(function StopMarker({
               {
                 width: size,
                 height: size,
-                borderRadius: size / 4,
+                borderRadius: radius,
                 backgroundColor: palette.pin,
                 borderColor: palette.background,
+                borderWidth: street ? 1.5 : 1,
               },
             ]}
           >
-            <Bus scale={size / TILE} tint={palette.pinGlyph} cut={palette.pin} />
+            {/*
+              **Always mounted, hidden with opacity**, exactly like the label
+              below and for exactly the same reason: mounting and unmounting a
+              child inside a `react-native-maps` marker is a mount instruction
+              against a view whose subviews belong to MapKit. Rendering this
+              conditionally at the scale threshold would put that instruction on
+              every marker at once, every time a rider crossed it.
+            */}
+            <Bus
+              scale={street ? size / TILE : 0}
+              opacity={street ? 1 : 0}
+              tint={palette.pinGlyph}
+              cut={palette.pin}
+            />
         </View>
 
         {/*
@@ -221,9 +280,20 @@ export const StopMarker = memo(function StopMarker({
  * dependency policy is about protecting the Expo Go loop. Five views, snapshot
  * once by `tracksViewChanges`, cost nothing after the first frame.
  */
-function Bus({ scale, tint, cut }: { scale: number; tint: string; cut: string }) {
+function Bus({
+  scale,
+  opacity,
+  tint,
+  cut,
+}: {
+  scale: number;
+  /** Zero at route scale. Never unmounted — see the call site. */
+  opacity: number;
+  tint: string;
+  cut: string;
+}) {
   return (
-    <View style={[styles.bus, { transform: [{ scale }] }]}>
+    <View style={[styles.bus, { opacity, transform: [{ scale }] }]}>
       <View style={[styles.busBody, { backgroundColor: tint }]}>
         {/* The windscreen is the tile showing through, not a third colour. */}
         <View style={[styles.busWindow, { backgroundColor: cut }]} />
@@ -239,10 +309,11 @@ function Bus({ scale, tint, cut }: { scale: number; tint: string; cut: string })
 const styles = StyleSheet.create({
   // Tile-sized: the label below is absolute and adds nothing to it.
   wrap: { width: SLOT, height: SLOT, alignItems: 'center', justifyContent: 'center' },
+  // `borderWidth` is set at the call site: 1.5 reads as a ring around a 24pt
+  // tile and as most of an 8pt dot.
   tile: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1.5,
   },
   label: {
     position: 'absolute',

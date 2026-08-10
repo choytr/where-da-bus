@@ -2,7 +2,14 @@ import type { Region } from './region';
 import type { StopWithDistance } from '../../data/gtfs/types';
 
 /**
- * Which stops get their name written on the map, and which are a bare tile.
+ * Which things on the map get a name written against them, and which are a bare
+ * tile: stop names and bus fleet numbers, decided together against one screen.
+ *
+ * **Together is the point.** Buses had no part in this until 2026-08-09 and
+ * always drew their label, so at the zoom where stop names were correctly
+ * suppressed as hopeless, twelve fleet numbers were drawn over each other and
+ * over the pins. `labelledMapIds` is the entry point; `labelledStopIds` is the
+ * stop half of it, kept for the screens that have no bus layer.
  *
  * **Labelling every stop does not work**, which took one device round to
  * establish: `IMG_4479`, 2026-08-08, is twenty overlapping names in a heap over
@@ -14,27 +21,31 @@ import type { StopWithDistance } from '../../data/gtfs/types';
  *
  * The rules, in order:
  *
- * 1. **Zoomed far enough out, nothing is labelled but the selection.** Past
- *    `MAX_SPAN_FOR_LABELS` the tiles are already touching and no amount of
- *    culling produces a readable map.
- * 2. **Otherwise, greedily, in priority order** — the selected stop first, then
- *    nearest first — a stop keeps its label if the box clears everything
- *    claimed so far. Greedy because the alternative is an optimisation problem
- *    to place text on a map, and nearest-first is the order a rider cares about
- *    anyway.
- * 3. **Every tile is an obstacle, not just every label.** The first version
- *    only checked labels against other labels, and `IMG_4527` is the result:
- *    names running underneath other stops' icons, half-legible. A tile is
- *    opaque and cannot move, so it is claimed up front — all of them, including
- *    stops that will never get a label.
+ * 1. **Zoomed far enough out, nothing is labelled but what the rider just
+ *    tapped.** Past `MAX_SPAN_FOR_LABELS` — which is `scaleOf`'s `'route'` — the
+ *    tiles are already touching and no amount of culling produces a readable
+ *    map.
+ * 2. **Otherwise, greedily, in priority order** — buses before stops, the
+ *    tapped one of each first, then stops nearest first — a thing keeps its
+ *    label if the box clears everything claimed so far. Greedy because the
+ *    alternative is an optimisation problem to place text on a map, and
+ *    nearest-first is the order a rider cares about anyway. Buses lead because
+ *    a stop's name can be had by tapping its pin and a fleet number cannot.
+ * 3. **Every tile is an obstacle, not just every label** — and every tile of
+ *    *both* layers. The first version only checked labels against other labels,
+ *    and `IMG_4527` is the result: names running underneath other stops' icons,
+ *    half-legible. A tile is opaque and cannot move, so it is claimed up front —
+ *    all of them, including the ones that will never get a label.
  * 4. **A label may sit above its tile if it cannot sit below.** Doubles the
  *    chances of placing one in a crowd, which is what both reference apps do,
  *    and costs one style branch in `StopMarker`.
- * 5. **At most `MAX_LABELS`.** Collision rules alone still allowed a dozen
- *    names on a busy screen; Truman's word was "dense". A cap is a blunter
- *    instrument than the geometry and it is the one that makes the map calm.
+ * 5. **At most `MAX_LABELS` names and `MAX_BUS_LABELS` fleet numbers**, counted
+ *    separately so one layer cannot starve the other. Collision rules alone
+ *    still allowed a dozen names on a busy screen; Truman's word was "dense". A
+ *    cap is a blunter instrument than the geometry and it is the one that makes
+ *    the map calm.
  *
- * It is a pure function of the stop set, the camera and the viewport, so it is
+ * It is a pure function of the two sets, the camera and the viewport, so it is
  * tested as arithmetic rather than through a map that Jest cannot render. It is
  * recomputed only when the camera **settles**, never during a pan: a marker
  * whose view changes has to be re-snapshotted by iOS, and doing that to twenty
@@ -47,6 +58,39 @@ import type { StopWithDistance } from '../../data/gtfs/types';
  * and the tiles start touching.
  */
 const MAX_SPAN_FOR_LABELS = 0.022;
+
+/**
+ * The two things the map draws differently, named once.
+ *
+ * `'street'` is a few blocks across: tiles are separate objects, names fit
+ * between them, and the route line runs visibly through the gaps. `'route'` is
+ * the whole route on screen, where none of that is true.
+ */
+export type MapScale = 'route' | 'street';
+
+/**
+ * Which of the two the camera is showing.
+ *
+ * **It reads `MAX_SPAN_FOR_LABELS` rather than declaring a threshold of its
+ * own, and that is the point.** That constant already marks the span past which
+ * the tiles are touching and no amount of culling produces a readable map — and
+ * "the tiles are touching" is the whole reason the pins tier too. The span at
+ * which names become hopeless and the span at which pins fuse are one fact
+ * about one set of 34-point boxes, so they get one number. Two would drift the
+ * first time either was tuned.
+ *
+ * This is the thing the 2026-08-09 screenshots showed: route mode at street
+ * scale is legible and useful, and the same code at route scale is forty tiles
+ * fused into a chain with the line invisible underneath it. Not two bugs — one
+ * missing distinction.
+ *
+ * A null region — before the map has reported a camera — is `'route'`. Being
+ * briefly too calm is a better first frame than being briefly fused.
+ */
+export function scaleOf(region: Region | null): MapScale {
+  if (region === null) return 'route';
+  return region.longitudeDelta > MAX_SPAN_FOR_LABELS ? 'route' : 'street';
+}
 
 /** The label's box, matching `StopMarker`'s own geometry. */
 const LABEL_WIDTH = 124;
@@ -112,65 +156,85 @@ export type Viewport = {
 export type LabelPlacement = 'below' | 'above';
 
 /**
- * Where each stop's label goes, keyed by stop id. A stop absent from the map
- * renders as a tile alone.
+ * How many bus labels the map will carry at once.
  *
- * `region` is the camera as last settled, or null before the map has reported
- * one — in which case only the selection is labelled, since there is no way to
- * know yet what would collide.
+ * Smaller than `MAX_LABELS` because it is a smaller question. Route mode draws
+ * about seven buses island-wide and rarely more than three or four in one
+ * street-scale window, so this bites only on a depot or a bunched pair — which
+ * is exactly where twelve overlapping strings came from on 2026-08-09.
  */
-export function labelledStopIds(
-  stops: readonly StopWithDistance[],
-  region: Region | null,
-  viewport: Viewport,
-  selectedId: string | null,
-): Map<string, LabelPlacement> {
-  const placement = new Map<string, LabelPlacement>();
-  // The selected stop is labelled first and unconditionally: a rider who just
-  // tapped a pin must see which one they tapped, even in a crowd.
-  if (selectedId !== null) placement.set(selectedId, 'below');
+const MAX_BUS_LABELS = 4;
 
-  if (region === null || viewport.width <= 0 || viewport.height <= 0) return placement;
-  if (region.longitudeDelta > MAX_SPAN_FOR_LABELS) return placement;
+/** The geometry of one layer's boxes, so the placer does not know which layer it is. */
+type Geometry = {
+  /** The opaque square drawn at the coordinate — the marker's own wrapper view. */
+  tile: number;
+  labelWidth: number;
+  labelHeight: number;
+  /** Coordinate to the near edge of the label, either way up. */
+  offset: number;
+};
 
+/** Both marker components wrap themselves in a 34-point box; see their `ANCHOR`s. */
+const STOP_GEOMETRY: Geometry = {
+  tile: TILE_SIZE,
+  labelWidth: LABEL_WIDTH,
+  labelHeight: LABEL_HEIGHT,
+  offset: LABEL_OFFSET,
+};
+
+/** Wider and shorter than a stop's: one line of `252 · here 30 s ago`. */
+const BUS_GEOMETRY: Geometry = {
+  tile: TILE_SIZE,
+  labelWidth: 150,
+  labelHeight: 14,
+  offset: LABEL_OFFSET,
+};
+
+/** Anything with a place on the map. The projection needs no more than this. */
+type Positioned = { lat: number; lon: number };
+
+/** Anything the map can write a name against. */
+type Placeable = Positioned & { id: string };
+
+/**
+ * Screen geometry for one camera against one viewport, so the two layers cannot
+ * project differently.
+ */
+function projectionFor(region: Region, viewport: Viewport) {
   const pointsPerDegreeX = viewport.width / region.longitudeDelta;
   const pointsPerDegreeY = viewport.height / region.latitudeDelta;
 
-  // Screen position of the stop itself. Latitude grows upward and y grows
-  // downward, hence the flip.
-  const pointFor = (stop: StopWithDistance) => ({
-    x: viewport.width / 2 + (stop.lon - region.longitude) * pointsPerDegreeX,
-    y: viewport.height / 2 - (stop.lat - region.latitude) * pointsPerDegreeY,
+  // Latitude grows upward and y grows downward, hence the flip.
+  const pointFor = (at: Positioned) => ({
+    x: viewport.width / 2 + (at.lon - region.longitude) * pointsPerDegreeX,
+    y: viewport.height / 2 - (at.lat - region.latitude) * pointsPerDegreeY,
   });
 
-  const tileBox = (stop: StopWithDistance): Box => {
-    const { x, y } = pointFor(stop);
+  const tileBox = (at: Positioned, geometry: Geometry): Box => {
+    const { x, y } = pointFor(at);
     return {
-      left: x - TILE_SIZE / 2,
-      right: x + TILE_SIZE / 2,
-      top: y - TILE_SIZE / 2,
-      bottom: y + TILE_SIZE / 2,
+      left: x - geometry.tile / 2,
+      right: x + geometry.tile / 2,
+      top: y - geometry.tile / 2,
+      bottom: y + geometry.tile / 2,
     };
   };
 
-  const labelBox = (stop: StopWithDistance, side: LabelPlacement): Box => {
-    const { x, y } = pointFor(stop);
-    const top = side === 'below' ? y + LABEL_OFFSET : y - LABEL_OFFSET - LABEL_HEIGHT;
+  const labelBox = (at: Positioned, geometry: Geometry, side: LabelPlacement): Box => {
+    const { x, y } = pointFor(at);
+    const top =
+      side === 'below'
+        ? y + geometry.offset
+        : y - geometry.offset - geometry.labelHeight;
     return {
-      left: x - LABEL_WIDTH / 2 - MARGIN,
-      right: x + LABEL_WIDTH / 2 + MARGIN,
+      left: x - geometry.labelWidth / 2 - MARGIN,
+      right: x + geometry.labelWidth / 2 + MARGIN,
       top: top - MARGIN,
-      bottom: top + LABEL_HEIGHT + MARGIN,
+      bottom: top + geometry.labelHeight + MARGIN,
     };
   };
 
-  // Tiles are claimed before any label is placed. They are opaque, they cannot
-  // move, and every one of them is drawn whether or not it is named — including
-  // the ones behind the sheet, which a label above them could still run into.
-  const claimed: Box[] = stops.map(tileBox);
-
-  // Each stop paired with *the very box* in `claimed`, so the loop below can
-  // exclude a stop's own tile by identity and never has to look one up.
   /** Overlaps the rectangle the rider can see, on both axes. */
   const onScreen = (box: Box) =>
     box.right > 0 &&
@@ -178,39 +242,185 @@ export function labelledStopIds(
     box.bottom > 0 &&
     box.top < viewport.visibleHeight;
 
-  const candidates = stops
-    .map((stop, index) => ({ stop, tile: claimed[index] ?? tileBox(stop) }))
-    // A stop off the edge of the screen or behind the sheet is a stop nobody is
-    // reading, and it must not spend the budget on a name that cannot be seen.
-    .filter(({ tile }) => onScreen(tile));
+  return { tileBox, labelBox, onScreen };
+}
 
-  const ordered = [...candidates].sort((a, b) => {
-    if (a.stop.stop_id === selectedId) return -1;
-    if (b.stop.stop_id === selectedId) return 1;
-    return a.stop.meters - b.stop.meters;
-  });
+type Projection = ReturnType<typeof projectionFor>;
 
-  // A label always overlaps its *own* tile — it is drawn hard against it — so
-  // that one box is excluded by identity rather than by geometry.
+/**
+ * Place one layer's labels into a collision map shared with every other layer.
+ *
+ * `items` arrive in priority order and `claimed` is **mutated**: obstacles go in
+ * before the call, accepted label boxes come out of it. That is what lets two
+ * layers compete for one screen rather than each pretending it is alone — which
+ * is what buses did until 2026-08-09, when `875 · here now` was seen printed
+ * straight through `KUHIO AVE + LILIU…`.
+ *
+ * `tiles[i]` is the very box `claimed` holds for `items[i]`, so a label can
+ * exclude its own tile by identity rather than by geometry — a label always
+ * overlaps the thing it names.
+ */
+function placeInto(
+  items: readonly Placeable[],
+  tiles: readonly Box[],
+  geometry: Geometry,
+  projection: Projection,
+  claimed: Box[],
+  max: number,
+  placement: Map<string, LabelPlacement>,
+): void {
   const free = (box: Box, own: Box) =>
     !claimed.some((other) => other !== own && overlaps(box, other));
 
-  for (const { stop, tile } of ordered) {
-    const forced = placement.get(stop.stop_id);
-    if (forced === undefined && placement.size >= MAX_LABELS) continue;
+  for (const [index, item] of items.entries()) {
+    const tile = tiles[index];
+    if (tile === undefined) continue;
+
+    const forced = placement.get(item.id);
+    // Off the edge or behind the sheet is nobody reading it. The forced entry
+    // is exempt: a rider who just tapped something must see which.
+    if (forced === undefined && !projection.onScreen(tile)) continue;
+    if (forced === undefined && placement.size >= max) continue;
 
     const side = (['below', 'above'] as const).find((candidate) =>
-      free(labelBox(stop, candidate), tile),
+      free(projection.labelBox(item, geometry, candidate), tile),
     );
 
-    // The selection keeps its label whatever collides, but still takes the
+    // A forced entry keeps its label whatever collides, but still takes the
     // better side, and still reserves the space so later labels avoid it.
     const chosen = side ?? forced;
     if (chosen === undefined) continue;
 
-    placement.set(stop.stop_id, chosen);
-    claimed.push(labelBox(stop, chosen));
+    placement.set(item.id, chosen);
+    claimed.push(projection.labelBox(item, geometry, chosen));
   }
+}
 
-  return placement;
+/** A bus, reduced to what the labeller needs of it. */
+export type LabelledBus = { number: string; lat: number; lon: number };
+
+export type MapLabels = {
+  /** Keyed by `stop_id`. */
+  readonly stops: Map<string, LabelPlacement>;
+  /** Keyed by fleet number, which is what `BusMarker` is keyed on. */
+  readonly buses: Map<string, LabelPlacement>;
+};
+
+/**
+ * Every name the map writes, decided in one pass over one collision map.
+ *
+ * **Buses claim before stops, and that ordering is the decision.** A bus label
+ * never loses a collision to a stop name, because the live information is the
+ * reason route mode exists — and because a stop's name can be had by tapping
+ * its pin, while a bus's fleet number cannot be had at all. Both layers' tiles
+ * are claimed as obstacles before either places anything, so a name never lands
+ * under a marker of either kind.
+ *
+ * **At route scale the buses go quiet with the stops.** Past
+ * `MAX_SPAN_FOR_LABELS` neither layer is labelled at all: that span is where
+ * the boxes are already touching, and a label the rider cannot read is a label
+ * that costs a marker re-snapshot for nothing. What is left is green dots on a
+ * red line, which is the question that scale is asking. The two forced entries
+ * survive it — see below.
+ *
+ * `selectedStopId` and `highlightedBusNumber` are labelled unconditionally, at
+ * any zoom: each marks a thing the rider has just this moment tapped, and both
+ * would otherwise be lost in exactly the crowd that made them tap it.
+ */
+export function labelledMapIds(
+  stops: readonly StopWithDistance[],
+  buses: readonly LabelledBus[],
+  region: Region | null,
+  viewport: Viewport,
+  selectedStopId: string | null,
+  highlightedBusNumber: string | null,
+): MapLabels {
+  const stopPlacement = new Map<string, LabelPlacement>();
+  const busPlacement = new Map<string, LabelPlacement>();
+  if (selectedStopId !== null) stopPlacement.set(selectedStopId, 'below');
+  if (highlightedBusNumber !== null) busPlacement.set(highlightedBusNumber, 'below');
+
+  const labels: MapLabels = { stops: stopPlacement, buses: busPlacement };
+
+  if (region === null || viewport.width <= 0 || viewport.height <= 0) return labels;
+  if (scaleOf(region) === 'route') return labels;
+
+  const projection = projectionFor(region, viewport);
+
+  // Every tile of both layers, claimed before any label is placed. They are
+  // opaque, they cannot move, and every one is drawn whether or not it is
+  // named — including the ones behind the sheet, which a label above them could
+  // still run into.
+  const busTiles = buses.map((bus) => projection.tileBox(bus, BUS_GEOMETRY));
+  const stopTiles = stops.map((stop) => projection.tileBox(stop, STOP_GEOMETRY));
+  const claimed: Box[] = [...busTiles, ...stopTiles];
+
+  // Each item paired with *the very box* already in `claimed`, so `placeInto`
+  // can exclude its own tile by identity and never has to look one up. Paired
+  // before sorting, because sorting is what would otherwise lose the pairing.
+  const busOrder = buses
+    .map((bus, index) => ({
+      item: { id: bus.number, lat: bus.lat, lon: bus.lon },
+      tile: busTiles[index] ?? projection.tileBox(bus, BUS_GEOMETRY),
+    }))
+    // The highlighted bus first; the rest in the order they arrived, which
+    // `useVehicles` has already sorted freshest first.
+    .sort((a, b) => {
+      if (a.item.id === highlightedBusNumber) return -1;
+      if (b.item.id === highlightedBusNumber) return 1;
+      return 0;
+    });
+
+  placeInto(
+    busOrder.map(({ item }) => item),
+    busOrder.map(({ tile }) => tile),
+    BUS_GEOMETRY,
+    projection,
+    claimed,
+    MAX_BUS_LABELS,
+    busPlacement,
+  );
+
+  const stopOrder = stops
+    .map((stop, index) => ({
+      item: { id: stop.stop_id, lat: stop.lat, lon: stop.lon },
+      tile: stopTiles[index] ?? projection.tileBox(stop, STOP_GEOMETRY),
+      meters: stop.meters,
+    }))
+    // The selection first, then nearest first — the order a rider cares about.
+    .sort((a, b) => {
+      if (a.item.id === selectedStopId) return -1;
+      if (b.item.id === selectedStopId) return 1;
+      return a.meters - b.meters;
+    });
+
+  placeInto(
+    stopOrder.map(({ item }) => item),
+    stopOrder.map(({ tile }) => tile),
+    STOP_GEOMETRY,
+    projection,
+    claimed,
+    MAX_LABELS,
+    stopPlacement,
+  );
+
+  return labels;
+}
+
+/**
+ * Where each stop's label goes, keyed by stop id. A stop absent from the map
+ * renders as a tile alone.
+ *
+ * The stop half of `labelledMapIds`, kept as its own name because plenty of the
+ * app has no bus layer at all. `region` is the camera as last settled, or null
+ * before the map has reported one — in which case only the selection is
+ * labelled, since there is no way to know yet what would collide.
+ */
+export function labelledStopIds(
+  stops: readonly StopWithDistance[],
+  region: Region | null,
+  viewport: Viewport,
+  selectedId: string | null,
+): Map<string, LabelPlacement> {
+  return labelledMapIds(stops, [], region, viewport, selectedId, null).stops;
 }

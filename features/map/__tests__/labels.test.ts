@@ -1,4 +1,4 @@
-import { labelledStopIds } from '../labels';
+import { labelledMapIds, labelledStopIds, scaleOf, type LabelledBus } from '../labels';
 import type { Region } from '../region';
 import type { StopWithDistance } from '../../../data/gtfs/types';
 
@@ -251,5 +251,131 @@ describe('labelledStopIds', () => {
     // The selected stop is placed before the cap is counted, so tapping the
     // furthest pin on a busy screen still shows which one was tapped.
     expect(labelledStopIds(grid(), CLOSE, VIEWPORT, 's11').has('s11')).toBe(true);
+  });
+});
+
+describe('scaleOf', () => {
+  /**
+   * The reframing behind the whole UX pass. Route mode at street scale is
+   * legible and useful; the same code at route scale is forty tiles fused into
+   * a chain with the route line invisible under it. One distinction, not two
+   * separate defects.
+   */
+  it('is street scale inside the span where names still fit', () => {
+    expect(scaleOf(CLOSE)).toBe('street');
+  });
+
+  it('is route scale once the tiles are touching', () => {
+    expect(scaleOf({ ...CLOSE, longitudeDelta: 0.09 })).toBe('route');
+  });
+
+  /**
+   * It reads the labeller's own threshold rather than declaring a second one:
+   * "names are hopeless" and "tiles have fused" are one fact about one set of
+   * 34-point boxes. This is what would fail if someone gave it a number of its
+   * own and then tuned only the other.
+   */
+  it('changes over at exactly the span the labeller gives up at', () => {
+    const justInside = { ...CLOSE, longitudeDelta: 0.0219 };
+    const justOutside = { ...CLOSE, longitudeDelta: 0.0221 };
+
+    expect(scaleOf(justInside)).toBe('street');
+    expect(scaleOf(justOutside)).toBe('route');
+    expect(labelledStopIds(spreadOut(), justOutside, VIEWPORT, null).size).toBe(0);
+  });
+
+  /** Being briefly too calm beats being briefly fused. */
+  it('is route scale before the map has reported a camera', () => {
+    expect(scaleOf(null)).toBe('route');
+  });
+});
+
+/**
+ * A bus at the centre of `CLOSE`. At this zoom 0.0001° of latitude is 7 points
+ * and 0.0001° of longitude is 4, which is what the offsets below are counted in.
+ */
+function bus(number: string, lat = 21.3069, lon = -157.8583): LabelledBus {
+  return { number, lat, lon };
+}
+
+describe('labelledMapIds', () => {
+  /**
+   * The ordering decision, and the one that fixes what was seen on a device on
+   * 2026-08-09: `875 · here now` printed straight through `KUHIO AVE + LILIU…`,
+   * because buses took part in no collision map at all.
+   *
+   * Side by side, 100 points apart: the two tiles clear each other, so neither
+   * name is blocked outright, but the two *labels* want overlapping space
+   * beneath. Whoever places first keeps the preferred side.
+   *
+   * The bus does. A stop's name can be had by tapping its pin, and a fleet
+   * number cannot be had at all.
+   */
+  it('gives a bus the side it wants and makes the stop name yield', () => {
+    const beside = stop('a', 21.3069, -157.8583 + 0.0025, 10);
+
+    const alone = labelledMapIds([beside], [], CLOSE, VIEWPORT, null, null);
+    const shared = labelledMapIds([beside], [bus('875')], CLOSE, VIEWPORT, null, null);
+
+    // On its own the stop takes the side every label prefers.
+    expect(alone.stops.get('a')).toBe('below');
+    // With a bus contending for it, the bus has it and the stop is flipped.
+    expect(shared.buses.get('875')).toBe('below');
+    expect(shared.stops.get('a')).toBe('above');
+  });
+
+  /** Rule 3 of the labeller, now running in both directions across two layers. */
+  it('will not write a fleet number underneath a stop’s tile', () => {
+    // 27 points below the bus, which is inside the box its label wants.
+    const inTheWay = stop('below', 21.3069 - 0.00039, -157.8583, 10);
+
+    const labels = labelledMapIds([inTheWay], [bus('875')], CLOSE, VIEWPORT, null, null);
+
+    expect(labels.buses.get('875')).toBe('above');
+  });
+
+  /**
+   * Past this span the boxes are already touching, and a label nobody can read
+   * still costs a marker re-snapshot. What is left is green dots on a red line.
+   */
+  it('labels no buses at route scale', () => {
+    const wide = { ...CLOSE, longitudeDelta: 0.09 };
+
+    const labels = labelledMapIds([], [bus('875'), bus('171')], wide, VIEWPORT, null, null);
+
+    expect(labels.buses.size).toBe(0);
+  });
+
+  /** The one exception: a rider who just tapped an arrival must see which bus it was. */
+  it('keeps the highlighted bus labelled at route scale', () => {
+    const wide = { ...CLOSE, longitudeDelta: 0.09 };
+
+    const labels = labelledMapIds([], [bus('875'), bus('171')], wide, VIEWPORT, null, '171');
+
+    expect(labels.buses.get('171')).toBe('below');
+    expect(labels.buses.has('875')).toBe(false);
+  });
+
+  it('caps how many fleet numbers the map carries at once', () => {
+    // Six, spread 84 points apart vertically so every one of them could be
+    // placed. The cap is what stops them.
+    const many = [0, 1, 2, 3, 4, 5].map((i) => bus(`b${i}`, 21.3069 + (2 - i) * 0.0012));
+
+    expect(labelledMapIds([], many, CLOSE, VIEWPORT, null, null).buses.size).toBe(4);
+  });
+
+  /** Both budgets are spent independently: buses claiming first must not starve the stops. */
+  it('still labels stops once the buses have taken their space', () => {
+    const labels = labelledMapIds(
+      spreadOut(),
+      [bus('875', 21.3069 + 0.004)],
+      CLOSE,
+      VIEWPORT,
+      null,
+      null,
+    );
+
+    expect(labels.buses.size).toBe(1);
+    expect(labels.stops.size).toBe(3);
   });
 });

@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { schedule } from '../../lib/schedule';
 import { useTheme } from '../../lib/theme';
+import type { LabelPlacement } from './labels';
 import type { BusOnMap } from './useVehicles';
 
 /**
@@ -16,6 +17,10 @@ import type { BusOnMap } from './useVehicles';
  *
  * - **The label is always mounted** and hidden with `opacity`. Rendering it
  *   conditionally once made markers jump bodily to the screen's top-left corner.
+ *   It used to be always *visible* as well, on the reasoning that the age is why
+ *   the bus is drawn at all; a device round on 2026-08-09 showed twelve of them
+ *   overprinting each other and the stop pins, so it now takes a `placement`
+ *   from the same collision map the stop names go through.
  * - **It is `position: 'absolute'`**, outside the marker's layout box, because
  *   `AIRMapMarker.reactSetFrame:` sizes the annotation view from the React
  *   layout and MapKit hit-tests by frame — a label counted in the layout eats
@@ -61,26 +66,82 @@ export function busLabel(bus: BusOnMap): string {
   return `${bus.vehicle.number} · ${ageWords(bus.ageMs)}`;
 }
 
+/** How far off schedule a bus is, reduced to the four things the ring can say. */
+export type Adherence = 'late' | 'early' | 'onTime' | 'unknown';
+
+/**
+ * The band around zero that counts as on time, in minutes.
+ *
+ * **Asymmetric, and deliberately so.** Running late is ordinary and riders
+ * absorb a few minutes of it without noticing; running *early* is the failure
+ * that strands someone who arrived on time, so it earns a ring sooner. The
+ * shape matches how agencies define on-time performance — a minute or two early
+ * at most, several minutes late tolerated.
+ *
+ * Both are tuning knobs. Nothing here is measured, and the right band is a
+ * judgement only a device can settle.
+ */
+const LATE_MINUTES = 5;
+const EARLY_MINUTES = 2;
+
+/**
+ * **Positive minutes mean EARLY.** The vendor's sign convention, recorded in
+ * `docs/backlog.md` and easy to get backwards — it is the whole reason this is
+ * a named function with a test rather than a comparison inline in a style prop.
+ *
+ * Nothing bounds the input: thirty live values sampled on 2026-08-02 spanned
+ * −19 to +4 minutes, and there is no documented ceiling.
+ */
+export function adherenceOf(minutes: number | null): Adherence {
+  if (minutes === null) return 'unknown';
+  if (minutes <= -LATE_MINUTES) return 'late';
+  if (minutes >= EARLY_MINUTES) return 'early';
+  return 'onTime';
+}
+
 export type BusMarkerProps = {
   bus: BusOnMap;
   /** Drawn larger, for the bus behind the arrival a rider just tapped. */
   highlighted: boolean;
+  /**
+   * Which side of the dot the fleet number sits on, or null for a bare dot.
+   *
+   * **This used to be unconditional**, and on a device that was twelve labels
+   * overprinting each other and the stop pins at route scale — 2026-08-09,
+   * screenshot 2. Buses now go through the same collision map as stop names,
+   * and are suppressed entirely at route scale, where the dot alone is the
+   * answer. Null means *invisible*, never absent; see the render.
+   */
+  placement: LabelPlacement | null;
 };
 
 export const BusMarker = memo(
-  function BusMarker({ bus, highlighted }: BusMarkerProps) {
+  function BusMarker({ bus, highlighted, placement }: BusMarkerProps) {
     const { palette } = useTheme();
     const [tracking, setTracking] = useState(true);
 
     const label = busLabel(bus);
+    const adherence = adherenceOf(bus.vehicle.adherence);
 
     // Mount included: the first bitmap has to be captured too.
     useEffect(() => {
       setTracking(true);
       return schedule(() => setTracking(false), TRACK_MS);
-    }, [label, highlighted]);
+    }, [label, highlighted, placement, adherence]);
 
     const size = highlighted ? DOT + 6 : DOT;
+
+    /**
+     * The ring. On time and unreported both keep the plain contrast border —
+     * absence means fine, which is what stops route scale reading as a wall of
+     * traffic lights when most of a fleet is a couple of minutes behind.
+     */
+    const ring =
+      adherence === 'late'
+        ? palette.late
+        : adherence === 'early'
+          ? palette.early
+          : palette.background;
 
     return (
       <Marker
@@ -101,7 +162,10 @@ export const BusMarker = memo(
                 height: size,
                 borderRadius: size / 2,
                 backgroundColor: palette.live,
-                borderColor: palette.background,
+                borderColor: ring,
+                // Wider when it is saying something, so the hue has enough
+                // pixels to be a colour rather than an edge.
+                borderWidth: adherence === 'late' || adherence === 'early' ? 3 : 2,
               },
             ]}
           />
@@ -111,8 +175,10 @@ export const BusMarker = memo(
             numberOfLines={1}
             style={[
               styles.label,
+              placement === 'above' ? styles.labelAbove : styles.labelBelow,
               highlighted && styles.labelHighlighted,
               {
+                opacity: placement === null ? 0 : 1,
                 color: palette.text,
                 // A halo rather than a plate: map tiles run from pale sand to
                 // dark green under the same label.
@@ -131,19 +197,22 @@ export const BusMarker = memo(
   (before, after) =>
     busLabel(before.bus) === busLabel(after.bus) &&
     before.highlighted === after.highlighted &&
+    before.placement === after.placement &&
+    adherenceOf(before.bus.vehicle.adherence) === adherenceOf(after.bus.vehicle.adherence) &&
     before.bus.vehicle.position.lat === after.bus.vehicle.position.lat &&
     before.bus.vehicle.position.lon === after.bus.vehicle.position.lon,
 );
 
 const styles = StyleSheet.create({
   wrap: { width: SLOT, height: SLOT, alignItems: 'center', justifyContent: 'center' },
-  dot: { borderWidth: 2 },
+  // `borderWidth` and `borderColor` are set at the call site — they carry the
+  // adherence ring.
+  dot: {},
   label: {
     position: 'absolute',
     left: (SLOT - WIDTH) / 2,
     width: WIDTH,
     height: LABEL_HEIGHT,
-    top: SLOT + GAP,
     fontSize: 11,
     lineHeight: 14,
     fontWeight: '600',
@@ -151,5 +220,10 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,
   },
+  labelBelow: { top: SLOT + GAP },
+  // Same gap, off the other edge. `labels.ts` places a number here when there
+  // is no room beneath — which on a route is often, buses being strung along
+  // one line rather than scattered.
+  labelAbove: { top: -(LABEL_HEIGHT + GAP) },
   labelHighlighted: { fontWeight: '800' },
 });

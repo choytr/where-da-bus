@@ -15,7 +15,7 @@ import type BottomSheet from '@gorhom/bottom-sheet';
 import { schedule } from '../../lib/schedule';
 import { useAnchoredStops } from './useAnchoredStops';
 import { StopMarker } from './StopMarker';
-import { labelledStopIds } from './labels';
+import { labelledMapIds, scaleOf } from './labels';
 import { PendingMarker } from './PendingMarker';
 import { RouteLine } from './RouteLine';
 import { BusMarker } from './BusMarker';
@@ -549,6 +549,23 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   }, [selectedStop?.stop_id, routeMode?.routeId, routeMode?.directionIndex]);
 
   /**
+   * The drawn bus behind the selected arrival, joined on trip id, or null.
+   *
+   * Hoisted out of the render so the labeller and the markers cannot disagree
+   * about which bus is highlighted — one keeps its fleet number at any zoom and
+   * the other draws larger, and a rider seeing one without the other would read
+   * it as the tap having half worked.
+   *
+   * Null far more often than not: only about one arrival in ten has a bus
+   * reporting against it. That is why the *line* switches on the arrival's own
+   * shape instead, which every arrival carries.
+   */
+  const highlightedBus = useMemo(() => {
+    if (selectedArrival === null) return null;
+    return buses.find((bus) => bus.vehicle.tripId === selectedArrival.tripId) ?? null;
+  }, [buses, selectedArrival]);
+
+  /**
    * The line the map draws, decoded from the direction's representative shape.
    *
    * Empty rather than null: `RouteLine` is always mounted and only its
@@ -891,8 +908,15 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    */
   const labelled = useMemo(
     () =>
-      labelledStopIds(
+      labelledMapIds(
         pins,
+        // Reduced to what the labeller needs, so `labels.ts` does not have to
+        // know what a `Vehicle` is.
+        buses.map((bus) => ({
+          number: bus.vehicle.number,
+          lat: bus.vehicle.position.lat,
+          lon: bus.vehicle.position.lon,
+        })),
         camera ?? region,
         {
           width: windowWidth,
@@ -902,9 +926,20 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
           visibleHeight: Math.round(mapHeight * visibleAbove(detents, detent, mapHeight)),
         },
         selectedStop?.stop_id ?? null,
+        // The bus behind a tapped arrival keeps its number at any zoom. The
+        // join may simply not land — only about one arrival in ten has a bus
+        // reporting against it — in which case nothing is forced.
+        highlightedBus?.vehicle.number ?? null,
       ),
-    [pins, camera, region, windowWidth, mapHeight, detent, detents, selectedStop],
+    [pins, buses, highlightedBus, camera, region, windowWidth, mapHeight, detent, detents, selectedStop],
   );
+
+  /**
+   * Route scale or street scale, off the same settled camera the labeller
+   * reads — so the pins and the names tier together rather than one lagging the
+   * other by a frame.
+   */
+  const scale = useMemo(() => scaleOf(camera ?? region), [camera, region]);
 
   const banner = locationStatus === 'denied' ? LOCATION_DENIED : LOCATION_ERROR;
 
@@ -949,9 +984,8 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
             <BusMarker
               key={bus.vehicle.number}
               bus={bus}
-              highlighted={
-                selectedArrival !== null && bus.vehicle.tripId === selectedArrival.tripId
-              }
+              highlighted={bus === highlightedBus}
+              placement={labelled.buses.get(bus.vehicle.number) ?? null}
             />
           ))}
 
@@ -960,7 +994,8 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
               key={stop.stop_id}
               stop={stop}
               selected={selectedStop?.stop_id === stop.stop_id}
-              placement={labelled.get(stop.stop_id) ?? null}
+              placement={labelled.stops.get(stop.stop_id) ?? null}
+              scale={scale}
               onPress={onPinPress}
             />
           ))}
