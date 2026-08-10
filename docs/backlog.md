@@ -230,8 +230,44 @@ but that'll come later. Functionality first."
   the map" — short of proof, and recorded as such, which is why this entry
   stays.
 
-  **If it returns, do not read native source.** Get another `.ips` off the
-  phone, then look for whatever started mounting children again.
+  **THE CRASH RETURNED ON 2026-08-09, WITH `zIndex` ABSENT THROUGHOUT.** Two
+  more `.ips` files, four minutes apart, both while pressing the route view's
+  **X**: `Expo Go-2026-08-09-142634.ips` and `Expo Go-2026-08-09-143034.ips`.
+  Both are the same stack as the first, frame for frame —
+  `-[__NSArrayM insertObject:atIndex:]` raised on the main thread inside
+  `facebook::react::TelemetryController::pullTransaction`.
+
+  So **the `zIndex` attribution above is disproved.** Removing it correlated
+  with the crash going quiet and nothing more; the entry always said the causal
+  link was unproven, and it is now known to be wrong. The seam is real — that
+  part is `AIRMap.m` and is not in doubt — but *what* provokes it is still open.
+
+  **What is known, and what is not.** Pressing the X makes the largest tree
+  change this app ever makes across that seam: `leaveRouteMode()` unmounts every
+  route stop marker (68 on Route 2), unmounts every bus marker, and mounts the
+  anchor's nearby set — over a cascade of renders, since `routeDetail`,
+  `buses` and `linePoints` each clear in their own effect. That is a candidate
+  and **not** a finding.
+
+  **Duplicate React keys were investigated and are not it.** Eight
+  route/directions serve one stop twice, and both markers took
+  `key={stop.stop_id}`; Truman reproduced React's own "Encountered two children
+  with the same key" warning on routes 60, 83, 40, 521 and 421. It is fixed
+  (`routePins` dedupes, `RouteList` keys by call). But **those routes warn and
+  do not crash**, so this was a real bug found on the way rather than the cause.
+
+  **The crash is not currently reproducible** — Truman, 2026-08-09: *"Now I
+  can't reproduce the crash and don't remember what I did to trigger it."* So it
+  is recorded, not chased. Do not guess at it, and do not attribute it to
+  whatever was most recently changed; that is exactly how `zIndex` got written
+  down as the cause.
+
+  **If it returns, do not read native source.** Get the `.ips` off the phone
+  (Settings → Privacy & Security → Analytics & Improvements → Analytics Data,
+  filed under `Expo Go-…`), and write down what was on screen and what was
+  pressed *before* forming any theory. What is missing from all three reports so
+  far is the state at the moment it went: which route, how many buses drawn,
+  which detent, whether a stop card was open.
 
 - **Tapping a pin counts toward Apple Maps' double-tap-to-zoom**, and there is
   no supported way off. `zoomTapEnabled` is *iOS: Google Maps only* per

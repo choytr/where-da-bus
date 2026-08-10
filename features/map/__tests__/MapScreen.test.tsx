@@ -1749,6 +1749,46 @@ describe('MapScreen', () => {
       await waitFor(() => screen.getByLabelText('Search this area'));
     });
 
+    /**
+     * Eight of Oahu's route/directions call at the same stop twice — 60 and 83
+     * at stop 2190, 40 at 4416/4417, plus 521 and 421 — verified against the
+     * built asset on 2026-08-09. Both markers took `key={stop.stop_id}`, so
+     * React rendered two children with the same key and MapKit was handed two
+     * annotations with the same `identifier`. Truman saw the warning by name.
+     *
+     * The row and the pin disagree on purpose: the bus really does come back,
+     * so the list says so, and the map has nowhere to put a second marker at a
+     * coordinate it has already marked.
+     */
+    describe('a route that calls at the same stop twice', () => {
+      const loop: RouteDirection[] = [
+        {
+          directionId: '0',
+          shapeId: 's-out',
+          stops: [
+            { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+            { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
+            // The same stop again, on the way back round.
+            { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+          ],
+        },
+      ];
+
+      it('draws one pin for it, not two with the same key', async () => {
+        mockQueries.routeStops.mockResolvedValueOnce(loop);
+        await showRoute();
+
+        expect(screen.getAllByLabelText('pin r1')).toHaveLength(1);
+      });
+
+      it('still lists it twice, because the bus really does come back', async () => {
+        mockQueries.routeStops.mockResolvedValueOnce(loop);
+        await showRoute();
+
+        expect(screen.getAllByLabelText(/KALIHI TRANSIT CENTER/)).toHaveLength(2);
+      });
+    });
+
     it('opens a route stop’s card, with a back control naming the route', async () => {
       await showRoute();
 

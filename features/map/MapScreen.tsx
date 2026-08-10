@@ -514,7 +514,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * one opens the card, which shows how far away it is. Measuring from the
    * anchor is the same thing every other distance on this screen means.
    */
-  const routePins = useMemo(
+  const routeStopsInOrder = useMemo(
     () =>
       (direction?.stops ?? []).map((stop) => ({
         ...stop,
@@ -522,6 +522,31 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
       })),
     [direction, anchor],
   );
+
+  /**
+   * One marker per *stop*, where the list above is one row per *call*.
+   *
+   * **Eight of Oahu's route/directions serve the same stop twice** — 60 and 83
+   * at stop 2190, 40 at 4416/4417, 521, 421 — verified against the asset on
+   * 2026-08-09. The list should show both, because the bus really does come
+   * back; the map must not, because the second marker is drawn at the same
+   * coordinate as the first and adds nothing but a duplicate.
+   *
+   * And a duplicate is not merely wasteful here. Both markers took
+   * `key={stop.stop_id}`, so React rendered two children with the same key —
+   * Truman saw the warning by name on 2026-08-09 — and both were handed to
+   * MapKit under the same `identifier`. Degraded reconciliation across the one
+   * seam this project knows corrupts is not a thing to leave lying around, and
+   * `RouteScreen` had already dealt with its half of it.
+   */
+  const routePins = useMemo(() => {
+    const seen = new Set<string>();
+    return routeStopsInOrder.filter((stop) => {
+      if (seen.has(stop.stop_id)) return false;
+      seen.add(stop.stop_id);
+      return true;
+    });
+  }, [routeStopsInOrder]);
 
   /**
    * The buses on this route, right now.
@@ -1116,7 +1141,9 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
             : {
                 route: loadedRoute?.route ?? null,
                 direction,
-                stops: routePins,
+                // The full sequence, not the deduped pins: a route that calls
+                // at a stop twice has two rows and one marker.
+                stops: routeStopsInOrder,
                 directionCount: loadedRoute?.directions.length ?? 0,
                 busLayer,
                 onFlip: flipDirection,

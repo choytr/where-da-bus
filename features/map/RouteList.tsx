@@ -50,7 +50,10 @@ export function RouteList({ stops, selectedStopId, onSelect }: RouteListProps) {
       // `StopSheet`'s `maxContentHeight` is about.
       style={styles.fill}
       data={stops}
-      keyExtractor={(stop) => stop.stop_id}
+      // Not `stop.stop_id` alone: eight route/directions serve the same stop
+      // twice, and this list shows one row per call rather than one per stop.
+      // `RouteScreen` keys its own copy of this list the same way.
+      keyExtractor={(stop, index) => `${stop.stop_id}-${index}`}
       renderItem={renderItem}
       contentContainerStyle={styles.content}
       ListEmptyComponent={
