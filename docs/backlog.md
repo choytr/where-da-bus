@@ -292,17 +292,36 @@ but that'll come later. Functionality first."
   with it. Anything that works has to survive outside the JS runtime — the
   `.ips` files, or a native breakpoint, neither of which this machine can drive.
 
-  **Truman stopped the chase on 2026-08-09**: *"Screw this. Give up, and let's
-  just move on."* It is intermittent, it is recoverable by relaunching, and
-  route mode is otherwise working. Four `.ips` files are the record.
+  **Truman stopped the chase on 2026-08-09** — *"Screw this. Give up, and let's
+  just move on."* — and then reopened it the same day with the first hard fact
+  the crash has produced. **It is not intermittent. The trigger is a window:**
+
+  > it reliably crashes if I press the close button when the buses have been
+  > fetched (specifically after it changes from "Looking for bus" to "1 bus")
+  > but have not been rendered on the map yet. … the bus icons don't render
+  > until you move/zoom the map a bit. But if it's visible and the button is
+  > pressed, it doesn't crash.
+
+  **That makes the undrawn-buses bug and this crash one defect.** The window is
+  precisely: marker mounted in React and handed to MapKit, view not yet
+  realised. Unmounting inside it is what leaves React's model and the native
+  array disagreeing, and an out-of-range `insertObject:atIndex:` is what that
+  disagreement raises. Everything earlier that called this "intermittent" was
+  describing an unrecognised precondition.
 
   **What is actually known**, stripped of theory: the abort is an out-of-range
   `insertObject:atIndex:` inside Fabric's mounting transaction; it happens while
   leaving route mode, which is the largest change this app makes to `MapView`'s
   children (61 stop markers out and 25 in on Route 10, 190 out on Route 60); it
-  is intermittent; and it survived the removal of `zIndex`, of duplicate stop
-  keys and of duplicate bus keys. Everything else written about it has been
-  wrong at least once.
+  fires only in the window above; and it survived the removal of `zIndex`, of
+  duplicate stop keys and of duplicate bus keys. Everything else written about
+  it has been wrong at least once.
+
+  **Under test now**, and tracked in `docs/handoff.md` rather than here:
+  `TRACKING_ALWAYS` in `features/map/BusMarker.tsx`, a falsification test for
+  whether the blind 450 ms `tracksViewChanges` timer fires before MapKit has
+  realised the view. **That flag and its `onLayout` logging must be removed
+  before the merge to `main`.**
 
   **The one untried structural lead**, for whoever picks this up: `MapView`'s
   children are still *two* separate array slots — `{buses.map(…)}` and
@@ -333,19 +352,15 @@ but that'll come later. Functionality first."
 
 ## Tests
 
-- **Test files are not typechecked at all.** `tsconfig.json` excludes
-  `**/__tests__/**/*`, so `npm run typecheck` never compiles a single test. A
-  fixture typed `const ROUTE_VIEW: RouteView` that is missing a required field
-  passes `tsc` and then fails at runtime with `Cannot read properties of
-  undefined` from inside the component — which is how adding one field to
-  `RouteView` broke seven `StopSheet` tests on 2026-08-09 with a clean
-  typecheck.
-
-  The exclusion is not obviously wrong: the comment above it is about subagent
-  worktrees under `.claude/`, and that part is load-bearing. Whether the
-  `__tests__` half was deliberate or collateral is unread. Including them would
-  need `@types/jest` to resolve everywhere and would surface whatever has drifted
-  since — do it as its own change, not folded into something else.
+- ~~**Test files are not typechecked at all.**~~ **Fixed on 2026-08-09.**
+  `tsconfig.json` excluded `**/__tests__/**/*`, so `npm run typecheck` never
+  compiled a single test — which is how adding one field to `RouteView` broke
+  seven `StopSheet` tests that day with a perfectly clean typecheck. Truman:
+  *"I just excluded it so it would work when I ran the typecheck script."* The
+  exclude is now `["node_modules", ".claude"]`; the `.claude` half is
+  load-bearing (subagent worktrees) and stays. Including the tests surfaced 67
+  accumulated errors, all fixed in the same change. **The entries below are what
+  is still weak in the tests, and `tsc` now covers none of them by accident.**
 
 - **`testTimeout: 20000` in `package.json` is load-bearing.** Three tests
   legitimately take 6–8 s on a cold cache and blew Jest's 5 s default. Raising

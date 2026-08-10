@@ -24,28 +24,66 @@ increments without anyone noticing.
 
 ## Start here
 
-**Increment 8 is built and device-verified, and the UX pass over it is built and
-unverified on a device.** All three items it had deferred are now done, plus
-two bugs found by reading and one gesture Truman asked to have removed.
+**Increment 8 and the UX pass over it are both built, reviewed and pushed.** All
+three deferred items are done, plus two bugs found by reading and one gesture
+Truman asked to have removed. The whole-diff review ran inline and its three
+findings are fixed (`aa83a6e`).
 
-**The next action is one device reading, then the review pass over the whole
-diff, then the merge to `main`** — which needs his explicit permission.
+**One bug is open and it is the only thing standing before the merge to `main`**
+— which needs Truman's explicit permission. A temporary instrument for it is
+committed and *must come out* before that merge; see below.
 
-**The one reading owed, and it is a glance rather than a checklist.** Open a
-route, *do not touch the map*, and watch the second line of the route band:
+### The open bug: buses undrawn, and the SIGABRT on the route view's X
 
-- `Looking for buses…` → `7 buses running`, dots appearing, no gesture → the
-  bug Truman reported was **fetch latency**, the zoom was coincidental, and the
-  line is already the fix.
-- a count sitting there over an empty map → it is **native**, and it gets
-  `superpowers:systematic-debugging` rather than another theory.
+**These are one bug, not two.** Truman established the link on 2026-08-09, and
+it is the first hard fact this crash has produced:
 
-That bug — *"on first render of the route view, the bus icons don't show
-automatically. If I zoom in and then out they show"* — is the only thing in the
-pass that is not settled. **Do not guess at it.** React cannot be the cause of
-the redraw: `BusMarker` is memoised on label, highlight, placement, adherence
-and position, and a zoom changes none of them, so the elements React hands the
-map across a zoom are identical.
+> it reliably crashes if I press the close button when the buses have been
+> fetched (specifically after it changes from "Looking for bus" to "1 bus") but
+> have not been rendered on the map yet. … the bus icons don't render until you
+> move/zoom the map a bit. But if it's visible and the button is pressed, it
+> doesn't crash.
+
+So the window is exactly: **marker mounted in React and handed to MapKit, but
+its view not realised.** Unmount inside that window and React's model of the
+map's subviews and the native array disagree, which is what the out-of-range
+`-[__NSArrayM insertObject:atIndex:]` in the four `.ips` files is. Once the dot
+is drawn, the X is safe.
+
+**Three hypotheses have already been falsified — do not re-run them.** `zIndex`
+(the backlog's old attribution, disproved by `.ips` files postdating its
+removal); duplicate stop keys from loop routes; duplicate bus keys from the live
+feed reporting a fleet number twice. The last two were *real bugs*, are fixed,
+and changed nothing about the crash.
+
+**The current hypothesis, instrumented and awaiting one device reading.**
+`BusMarker` drops `tracksViewChanges` on a blind 450 ms timer, which can fire
+before MapKit has realised the annotation view, leaving it with an empty bitmap;
+panning forces MapKit to re-render annotation views, which is the "move the map
+and they appear" symptom. `StopMarker` runs the same timer but mounts *with* the
+map, whereas buses mount seconds later into a map already animating to fit the
+route — that difference in mount timing is the only thing separating the layer
+that works from the layer that does not.
+
+`TRACKING_ALWAYS` in `features/map/BusMarker.tsx` pins tracking on for the
+marker's whole life, and an `onLayout` logs `[busMarker] <fleet> laid out <n> ms
+after mount`. **It is a falsification test, not a fix.** One reading answers it:
+
+- dots draw with no gesture → the timer is the cause; replace the blind delay
+  with something anchored to a real event, then re-test the X.
+- dots still absent → **the timer is innocent**, and the next suspect is the
+  child ordering in `MapScreen`'s `MapView`: `buses` is a variable-length list
+  rendered *between* `RouteLine` and `pins`, so every appearance or removal of a
+  bus shifts every pin's index inside a container whose native subview list
+  `AIRMap.insertReactSubview:` deliberately never keeps in step. Moving the
+  volatile list last is the untried change.
+
+Then press the X inside the window and see whether it still aborts.
+
+**Measure, never read.** Five wrong claims in this project came from reasoning
+about native source. Report any result as a candidate until Truman has failed to
+reproduce the crash over a sustained session — the `zIndex` precedent is exactly
+what "it stopped reproducing" is worth.
 
 ### What the UX pass changed
 
