@@ -369,9 +369,46 @@ but that'll come later. Functionality first."
   which the rule at the top of this entry forbids. Nothing has crashed from it —
   long press is disabled in route mode, so it cannot appear during a swap.
 
+  ### IT RETURNED IN THE .ipa, 2026-08-09 EVENING — open, and deliberately not chased
+
+  **`swapBusyUntil` narrowed this crash; it did not close it.** Two more aborts
+  on the Increment 8 `.ipa` (build 31362863297), on iPhone 11,8 / iOS 18.7.9:
+  `WhereDaBus-2026-08-09-205341.ips` and `WhereDaBus-2026-08-09-205901.ips`, in
+  `~/wheredabus-device/crashes/2026-08-09/`.
+
+  **They are the same crash, frame for frame**, and the two new files are
+  identical to each other: `EXC_CRASH` / `SIGABRT` on the main thread, an
+  Objective-C exception out of `-[__NSArrayM insertObject:atIndex:]`, raised
+  under `-[AIRMap insertReactSubview:atIndex:]` inside
+  `-[RCTLegacyViewManagerInteropComponentView finalizeUpdates:]` →
+  `TelemetryController::pullTransaction`. That is this entry's seam, unchanged.
+  **Do not open a second entry for it, and do not write it up as a new bug** —
+  Truman's first read on the phone was that it looked like a different crash,
+  and the stacks say otherwise.
+
+  **What was pressed is unknown, and is recorded as unknown.** Truman was using
+  the app rather than testing it and did not see either one land. What the files
+  do carry: both hit roughly four minutes into a session (launch 20:49:16 →
+  abort 20:53:39; relaunch 20:53:40 → abort 20:59:00), so this is not a launch
+  fault and not a first-gesture fault. **Do not infer the gesture from the
+  timing.** The whole history of this entry is people reasoning past the
+  evidence they actually had.
+
+  **Why it is open rather than being worked:** *"I don't think they're the same
+  crashes as the one we just fixed, so let's just log it and not spend another
+  evening tracking another stupid crash."* The premise turned out to be wrong
+  and the decision stands anyway — the app is usable, the core features are
+  proven, and polish comes next. This is the record so the next occurrence has
+  something to join to.
+
+  **What would actually move it**, whenever it is picked up: a session where the
+  gesture is written down as it happens. Three data points and this entry has a
+  precondition instead of a seam. Everything else here is already known.
+
   **If it returns, do not read native source.** Get the `.ips` off the phone
   (Settings → Privacy & Security → Analytics & Improvements → Analytics Data,
-  filed under `Expo Go-…`), and write down what was on screen and *what was
+  filed under `Expo Go-…` in the dev loop and `WhereDaBus-…` from an `.ipa`),
+  and write down what was on screen and *what was
   pressed, in what order and how fast* before forming any theory. Every report
   before 2026-08-09 recorded the state and not the gesture, which is exactly the
   half that turned out to matter.
