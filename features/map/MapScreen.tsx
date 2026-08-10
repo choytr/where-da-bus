@@ -828,66 +828,13 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   }, []);
 
   /**
-   * **TEMPORARY DIAGNOSTIC — remove before merging to `main`.**
-   *
-   * Three `.ips` files on 2026-08-09 recorded a SIGABRT while pressing the X:
-   * an out-of-range `-[__NSArrayM insertObject:atIndex:]` inside Fabric's
-   * mounting transaction. It is intermittent, it is native, and it cannot be
-   * reasoned about from here — the last attempt put `zIndex` in the docs as a
-   * cause it was not. See the map section of `docs/backlog.md`.
-   *
-   * What every report so far is missing is the *state at the moment it went*.
-   * This logs it, at press time rather than after the swap, so the line has a
-   * whole frame to reach Metro before the process aborts. A press that is
-   * followed by no `done` line is the fatal one, and everything on it is what
-   * the crash was handed.
-   */
-  const exitCount = useRef(0);
-  const logRouteExit = () => {
-    if (!__DEV__) return;
-    exitCount.current += 1;
-    console.log(
-      `[routeExit #${exitCount.current}] ` +
-        `route=${loadedRoute?.route?.short_name ?? '?'} ` +
-        `dir=${routeMode?.directionIndex ?? '?'} ` +
-        `pins=${pins.length}->${stops.length} ` +
-        `buses=${buses.length} ` +
-        // Truman's hypothesis, 2026-08-09: "some sort of race between the close
-        // and the api fetch kicking in". If he is right, the fatal presses will
-        // cluster at a small age here — a fleet response landing in the same
-        // frame as the swap — while the survivors scatter across the 60 s poll.
-        // That is a distribution, so it needs several crashes to say anything.
-        `sinceFleet=${busesFetchedAt === null ? 'never' : `${Date.now() - busesFetchedAt.getTime()}ms`} ` +
-        `line=${linePoints.length} ` +
-        `detent=${detent} ` +
-        `scale=${scale} ` +
-        `card=${selectedStop?.stop_code ?? 'none'} ` +
-        `arrival=${selectedArrival === null ? 'none' : selectedArrival.tripId}`,
-    );
-  };
-
-  useEffect(() => {
-    if (!__DEV__) return;
-    if (routeMode === null && exitCount.current > 0) {
-      console.log(`[routeExit #${exitCount.current}] done — pins now ${pins.length}`);
-    }
-    // Deliberately keyed on the mode alone: this says the swap survived, and
-    // re-firing it on every later pin change would bury the one that did not.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeMode]);
-
-  /**
    * The X, and the only thing that leaves route mode. Panning does not, and
    * changing tab does not — both were put to Truman explicitly.
    */
-  // Not `useCallback` while the diagnostic is here: it reads a dozen values
-  // that change most renders, and the object it is handed to (`routeView`) is
-  // rebuilt every render anyway, so memoising it bought nothing to begin with.
-  const leaveRoute = () => {
-    logRouteExit();
+  const leaveRoute = useCallback(() => {
     setSelectedStop(null);
     leaveRouteMode();
-  };
+  }, []);
 
   /**
    * A stop picked out of the search, which is the only thing this search does

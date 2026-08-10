@@ -277,11 +277,41 @@ but that'll come later. Functionality first."
   instrumented run shows it directly — presses #1–#6 had `buses=0` and
   `sinceFleet=never` and all survived; the crash came once buses arrived.
 
-  **This is a candidate with a mechanism, not a proven cause**, and it is
-  written down that way on purpose. The evidence is much stronger than `zIndex`
-  ever had — React itself reporting corrupted reconciliation on the exact child
-  list the crashing transaction was mounting — but the only proof is Truman
-  failing to reproduce it over a long session. Until then this entry stays.
+  **Both dedupes are in, both warnings are gone, and IT STILL CRASHES.**
+  Confirmed 2026-08-09: Truman reproduced it again with no `same key` error
+  anywhere in the log, and route 40 — one of the eight — clean. So duplicate
+  keys were two real bugs found on the way and **not** the cause. The paragraphs
+  above are kept because the reasoning was sound and the next person will
+  otherwise re-derive it; they are not a lead.
+
+  **Do not rebuild the `[routeExit]` instrument. It cannot catch this.** It
+  logged the state at press time on the theory that the line had a frame to
+  reach Metro before the abort. It does not: across the whole session every
+  logged press has its `done`, and the fatal ones show up only as the counter
+  resetting to `#1` on relaunch. Whatever kills the process takes the log line
+  with it. Anything that works has to survive outside the JS runtime — the
+  `.ips` files, or a native breakpoint, neither of which this machine can drive.
+
+  **Truman stopped the chase on 2026-08-09**: *"Screw this. Give up, and let's
+  just move on."* It is intermittent, it is recoverable by relaunching, and
+  route mode is otherwise working. Four `.ips` files are the record.
+
+  **What is actually known**, stripped of theory: the abort is an out-of-range
+  `insertObject:atIndex:` inside Fabric's mounting transaction; it happens while
+  leaving route mode, which is the largest change this app makes to `MapView`'s
+  children (61 stop markers out and 25 in on Route 10, 190 out on Route 60); it
+  is intermittent; and it survived the removal of `zIndex`, of duplicate stop
+  keys and of duplicate bus keys. Everything else written about it has been
+  wrong at least once.
+
+  **The one untried structural lead**, for whoever picks this up: `MapView`'s
+  children are still *two* separate array slots — `{buses.map(…)}` and
+  `{pins.map(…)}` — whose lengths both change in the same commit, plus a
+  conditionally mounted `PendingMarker`, which is a direct violation of this
+  section's own rule and which `RouteLine` was deliberately written to avoid.
+  Merging the markers into one keyed array and mounting `PendingMarker`
+  unconditionally is defensible on its own terms. It is untested against the
+  crash, and must not be written up as a fix if it is done.
 
   **If it returns, do not read native source.** Get the `.ips` off the phone
   (Settings → Privacy & Security → Analytics & Improvements → Analytics Data,
