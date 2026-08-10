@@ -1061,15 +1061,6 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
           */}
           <RouteLine points={linePoints} />
 
-          {buses.map((bus) => (
-            <BusMarker
-              key={bus.vehicle.number}
-              bus={bus}
-              highlighted={bus === highlightedBus}
-              placement={labelled.buses.get(bus.vehicle.number) ?? null}
-            />
-          ))}
-
           {pins.map((stop) => (
             <StopMarker
               key={stop.stop_id}
@@ -1078,6 +1069,31 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
               placement={labelled.stops.get(stop.stop_id) ?? null}
               scale={scale}
               onPress={onPinPress}
+            />
+          ))}
+
+          {/*
+            After the pins, for two reasons that happen to want the same thing.
+
+            **Buses draw on top.** Later children win on MapKit, and on 2026-08-09
+            a route-10 dot was photographed sitting *behind* the JUDD ST +
+            IHOLENA ST pin — the live layer losing to the reference layer, which
+            is backwards. `zIndex` is not available to fix it; removing it is
+            what made the SIGABRT stop reproducing, and it is not going back in.
+
+            **And it is the last variable-length array in the list.** Leaving
+            route mode empties `buses` and rebuilds `pins` in one commit. While
+            `buses` sat between `RouteLine` and `pins`, every index below it
+            shifted as it drained, which is the shape of the out-of-range
+            `-[__NSArrayM insertObject:atIndex:]` in `docs/backlog.md`. Last
+            means draining it moves no sibling's index.
+          */}
+          {buses.map((bus) => (
+            <BusMarker
+              key={bus.vehicle.number}
+              bus={bus}
+              highlighted={bus === highlightedBus}
+              placement={labelled.buses.get(bus.vehicle.number) ?? null}
             />
           ))}
 
