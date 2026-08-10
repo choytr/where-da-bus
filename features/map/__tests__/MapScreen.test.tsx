@@ -1640,11 +1640,27 @@ describe('MapScreen', () => {
       await waitFor(() => screen.getByTestId('route-band'));
     }
 
+    /**
+     * Two things carry the route's name now — the sheet's band and the map's
+     * own pill — so both of these read the band specifically.
+     */
+    function band() {
+      return within(screen.getByTestId('route-band'));
+    }
+
+    /**
+     * The band's X. The pill carries the same control under the same label,
+     * because it is the same action; a test has to say which one it pressed.
+     */
+    function bandClose() {
+      return band().getByLabelText('Stop showing this route');
+    }
+
     it('names the route and where the direction ends up', async () => {
       await showRoute();
 
-      expect(screen.getByText('Route 32')).toBeTruthy();
-      expect(screen.getByText('Toward WAIKIKI')).toBeTruthy();
+      expect(band().getByText('Route 32')).toBeTruthy();
+      expect(band().getByText('Toward WAIKIKI')).toBeTruthy();
     });
 
     it('lists the route’s stops in the order it serves them', async () => {
@@ -1658,6 +1674,33 @@ describe('MapScreen', () => {
      * One set of pins, never two. Two overlapping stop sets on one map is how a
      * rider stops being able to tell what they are looking at.
      */
+    /**
+     * The map's own answer to "what am I looking at". The sheet's band says it
+     * too, and is out of sight the moment a rider raises the sheet over it.
+     */
+    it('names the route on the map while route mode is on', async () => {
+      await showRoute();
+
+      // The sheet's band names it too; this is the one drawn on the map.
+      expect(within(screen.getByTestId('route-pill')).getByText('Route 32')).toBeTruthy();
+    });
+
+    it('shows no pill before a route is picked', async () => {
+      await show();
+
+      expect(screen.queryByTestId('route-pill')).toBeNull();
+    });
+
+    it('leaves route mode from the pill\u2019s X as well as the band\u2019s', async () => {
+      await showRoute();
+
+      // Two controls carry this label \u2014 the pill's and the band's \u2014 and either
+      // has to work.
+      const [pillClose] = screen.getAllByLabelText('Stop showing this route');
+      await fireEvent.press(pillClose!);
+
+      await waitFor(() => expect(screen.queryByTestId('route-pill')).toBeNull());
+    });
     it('draws the route’s stops as the pins, and not the nearby ones', async () => {
       mockNearby.mockResolvedValue([stop('7', 'SOMEWHERE ELSE', 40)]);
       await showRoute();
@@ -1732,7 +1775,7 @@ describe('MapScreen', () => {
       await showRoute();
 
       await fireEvent.press(screen.getByLabelText('Show the other direction'));
-      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+      await fireEvent.press(bandClose());
 
       await waitFor(() => screen.getByTestId('nearby-band'));
       expect(screen.queryByTestId('route-band')).toBeNull();
@@ -1742,7 +1785,7 @@ describe('MapScreen', () => {
       mockNearby.mockResolvedValue([stop('7', 'SOMEWHERE ELSE', 40)]);
       await showRoute();
 
-      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+      await fireEvent.press(bandClose());
 
       await waitFor(() => screen.getByTestId('nearby-band'));
       expect(screen.queryByTestId('route-band')).toBeNull();
@@ -1796,7 +1839,7 @@ describe('MapScreen', () => {
 
     it('takes a long press again once the route is dismissed', async () => {
       await showRoute();
-      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+      await fireEvent.press(bandClose());
 
       await fireEvent.press(screen.getByLabelText('long press the map'));
 
@@ -1805,7 +1848,7 @@ describe('MapScreen', () => {
 
     it('offers to search this area again once the route is dismissed', async () => {
       await showRoute();
-      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+      await fireEvent.press(bandClose());
 
       await fireEvent.press(screen.getByLabelText('pan the camera away'));
 
@@ -1990,7 +2033,7 @@ describe('MapScreen', () => {
         await showRoute();
         await waitFor(() => screen.getByLabelText('pin bus-252'));
 
-        await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+        await fireEvent.press(bandClose());
 
         await waitFor(() => expect(screen.queryByLabelText('pin bus-252')).toBeNull());
       });
@@ -2280,7 +2323,7 @@ describe('MapScreen', () => {
         await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
         expect(arrows()).toHaveLength(8);
 
-        await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+        await fireEvent.press(bandClose());
         await waitFor(() => expect(screen.queryByTestId('route-band')).toBeNull());
         expect(arrows()).toHaveLength(8);
       });
@@ -2298,7 +2341,7 @@ describe('MapScreen', () => {
         await showRoute();
         await waitFor(() => screen.getByText('polyline points: 3'));
 
-        await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+        await fireEvent.press(bandClose());
 
         await waitFor(() => screen.getByText('polyline points: 0'));
         expect(screen.getByTestId('route-line')).toBeTruthy();

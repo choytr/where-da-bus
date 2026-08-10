@@ -39,6 +39,7 @@ import {
   visibleAbove,
 } from './StopSheet';
 import { SearchBar, SEARCH_BAR_ALLOWANCE } from './SearchBar';
+import { RoutePill, ROUTE_PILL_ALLOWANCE } from './RoutePill';
 import { SearchOverlay } from './SearchOverlay';
 import { enterRouteMode, flipDirection, leaveRouteMode, useRouteMode } from './routeMode';
 import { useStopQueries, NEARBY_RADIUS_METERS, type RouteDirection } from '../../data/gtfs/db';
@@ -334,7 +335,18 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    */
   const bannerShowing = locationStatus === 'denied' || locationStatus === 'error';
   const barTop = insets.top + CONTROL_INSET;
-  const bannerTop = barTop + SEARCH_BAR_ALLOWANCE;
+  /**
+   * Directly under the bar, because it names what the map is currently showing
+   * and the bar is what a rider used to change that. Everything below it — the
+   * location banner, ⌖, the compass — moves down only while it is on screen.
+   *
+   * Present for as long as route mode is, not for as long as the route's row
+   * has loaded: the two are a query apart, and letting the name's arrival move
+   * ⌖ and the compass down would be a visible shudder every time a route is
+   * opened.
+   */
+  const pillTop = barTop + SEARCH_BAR_ALLOWANCE;
+  const bannerTop = pillTop + (routeMode === null ? 0 : ROUTE_PILL_ALLOWANCE);
   const controlsTop = bannerTop + (bannerShowing ? BANNER_ALLOWANCE : 0);
 
   /**
@@ -1361,6 +1373,19 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         `docs/backlog.md` exists for.
       */}
       <SearchBar top={barTop} onPress={() => setSearching(true)} />
+
+      {/*
+        What the map is showing, said on the map. The sheet's band says it too
+        and is out of sight the moment a rider raises the sheet or simply looks
+        at the map — which is exactly when the question is being asked.
+      */}
+      {routeMode === null ? null : (
+        <RoutePill
+          routeName={loadedRoute?.route?.short_name ?? null}
+          top={pillTop}
+          onClose={leaveRoute}
+        />
+      )}
 
       {bannerShowing ? (
         <View
