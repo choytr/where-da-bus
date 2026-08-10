@@ -192,6 +192,26 @@ export const ROUTE_BY_ID = `
 `;
 
 /**
+ * One route by the number on the bus. Parameters: (short_name).
+ *
+ * The inverse of the rule `SEARCH_ROUTES` exists for: the live API speaks in
+ * `short_name` — an `Arrival` carries `route: "40"` and never a `route_id` —
+ * while `routeMode` and every other query here key on `route_id`, and the two
+ * disagree (`route_id: '40'` is route **C**). This is the one translation
+ * between them, so *show this bus on the map* can start from an arrival.
+ *
+ * Unique in the current feed: all 117 named routes carry a distinct
+ * `short_name`, verified against the asset. `LIMIT 1` says so rather than
+ * trusting it, and the blank name — one route has none — matches nothing,
+ * which is right: there is no number for a rider to have come from.
+ */
+export const ROUTE_BY_SHORT_NAME = `
+  SELECT route_id, short_name, long_name FROM routes
+  WHERE short_name = ? AND short_name <> ''
+  LIMIT 1
+`;
+
+/**
  * Routes matching what a rider typed. Parameters:
  * (anywhere, anywhere, exact, prefix, limit), all but the last from
  * `toLikeQuery` — never bind a raw user string to a `LIKE` here.

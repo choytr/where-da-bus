@@ -80,6 +80,25 @@ permanently greyed row reads as broken rather than as informative. The test is
 local — an `Arrival` carries its own `vehicle` and `estimate` — so no request is
 needed to decide.
 
+> **Re-measured 2026-08-10, and the two figures never disagreed.** 300 live
+> arrivals across the twelve busiest stops, at **00:40 HST**: 19 carried a
+> vehicle, 19 were `estimated="1"`, and 19 carried a non-zero position — the
+> *same* 19. So 6.3% live, which is a night number, and the 96% it agrees with
+> is a night number too: `docs/api/README.md` records it as a 22:00 HST sample
+> and says in as many words that the window inflates the schedule-only share.
+> Daytime fleet freshness is about **five times** the night's — 235 of 1,204
+> vehicles fresh at 11:43 HST against 46 at 01:07 — which puts the daytime share
+> nearer `MapScreen`'s one-in-ten than the 96% claim.
+>
+> **A daytime re-measurement was not possible from this side**, Honolulu being
+> eleven hours from daylight, and it would not change the design: a minority
+> either way, so absent rather than disabled stands.
+>
+> What the sample does settle is the mechanism. `vehicle`, `estimated` and
+> `position` were not merely correlated but identical, so "has a reporting bus"
+> is one fact with three spellings, and the menu can decide it from the
+> `Arrival` alone with no request.
+
 **Most of this is routing, not new map machinery.** `MapScreen` already holds
 `selectedArrival` and `highlightedBus`, joins them on `tripId`, draws that bus
 larger, keeps its fleet number at any zoom, and switches the drawn line to that

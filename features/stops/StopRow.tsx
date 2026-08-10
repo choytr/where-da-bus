@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
 import { useTheme } from '../../lib/theme';
+import { showRowMenu } from '../../lib/rowMenu';
+import { showOnMap } from '../map/showOnMap';
 
 export type StopRowProps = {
   stop: Stop;
@@ -12,6 +14,14 @@ export type StopRowProps = {
   onPress?: (stop: Stop) => void;
   /** Opens a route's ordered stop list. Optional for the same reason. */
   onPressRoute?: (route: RouteSummary) => void;
+  /**
+   * Whether the long-press menu offers *Show stop on map*.
+   *
+   * False on the map's own list, where the answer is already on screen. There
+   * is no wider "should this row have a menu" switch: the favorite entry is
+   * always worth offering, so the menu is never empty.
+   */
+  canShowOnMap?: boolean;
 };
 
 /**
@@ -37,12 +47,32 @@ export function StopRow({
   onToggleFavorite,
   onPress,
   onPressRoute,
+  canShowOnMap = true,
 }: StopRowProps) {
   const { palette } = useTheme();
 
   const label = isFavorite
     ? `Remove ${stop.stop_name} from favorites`
     : `Add ${stop.stop_name} to favorites`;
+
+  /**
+   * The long press, which every list of stops gets for free by rendering this
+   * row — favorites, search results, the nearby list.
+   *
+   * It is deliberately not a prop. The actions are the same wherever the row
+   * appears, and threading two callbacks through four screens to say so would
+   * be four chances to leave one out.
+   */
+  const openMenu = () =>
+    void showRowMenu([
+      ...(canShowOnMap
+        ? [{ label: 'Show stop on map', run: () => showOnMap({ kind: 'stop', stopId: stop.stop_id }) }]
+        : []),
+      {
+        label: isFavorite ? 'Remove from favorites' : 'Add to favorites',
+        run: () => onToggleFavorite(stop.stop_id),
+      },
+    ]);
 
   return (
     <View style={[styles.row, { borderBottomColor: palette.border }]}>
@@ -52,8 +82,13 @@ export function StopRow({
       <Pressable
         accessibilityRole={onPress === undefined ? undefined : 'button'}
         accessibilityLabel={onPress === undefined ? undefined : `Arrivals at ${stop.stop_name}`}
-        disabled={onPress === undefined}
+        // **Not `disabled` when there is no `onPress`**, which it was until
+        // Increment 9: a disabled `Pressable` ignores a long press too, so the
+        // menu would have been dead on any host that renders this row without
+        // a tap handler. The role and label above already keep VoiceOver from
+        // announcing a tap that leads nowhere.
         onPress={() => onPress?.(stop)}
+        onLongPress={openMenu}
         style={styles.main}
       >
         <Text style={[styles.name, { color: palette.text }]}>{stop.stop_name}</Text>

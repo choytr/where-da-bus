@@ -31,7 +31,7 @@ describe('ArrivalRow', () => {
   it('leads with the countdown, which is the question being asked', async () => {
     await render(
       <TestTheme>
-        <ArrivalRow arrival={live} now={NOW} />
+        <ArrivalRow stopId="1" arrival={live} now={NOW} />
       </TestTheme>,
     );
 
@@ -41,7 +41,7 @@ describe('ArrivalRow', () => {
   it('says in words whether the time is measured or guessed', async () => {
     await render(
       <TestTheme>
-        <ArrivalRow arrival={live} now={NOW} />
+        <ArrivalRow stopId="1" arrival={live} now={NOW} />
       </TestTheme>,
     );
 
@@ -58,7 +58,7 @@ describe('ArrivalRow', () => {
   it('is not a button when nothing can be done with it', async () => {
     await render(
       <TestTheme>
-        <ArrivalRow arrival={live} now={NOW} />
+        <ArrivalRow stopId="1" arrival={live} now={NOW} />
       </TestTheme>,
     );
 
@@ -68,7 +68,7 @@ describe('ArrivalRow', () => {
   it('is a button when the map can highlight its bus', async () => {
     await render(
       <TestTheme>
-        <ArrivalRow arrival={live} now={NOW} onPress={jest.fn()} />
+        <ArrivalRow stopId="1" arrival={live} now={NOW} onPress={jest.fn()} />
       </TestTheme>,
     );
 
@@ -79,7 +79,7 @@ describe('ArrivalRow', () => {
     const onPress = jest.fn();
     await render(
       <TestTheme>
-        <ArrivalRow arrival={live} now={NOW} onPress={onPress} />
+        <ArrivalRow stopId="1" arrival={live} now={NOW} onPress={onPress} />
       </TestTheme>,
     );
 
@@ -91,7 +91,7 @@ describe('ArrivalRow', () => {
   it('reports its selected state to VoiceOver', async () => {
     await render(
       <TestTheme>
-        <ArrivalRow arrival={live} now={NOW} onPress={jest.fn()} selected />
+        <ArrivalRow stopId="1" arrival={live} now={NOW} onPress={jest.fn()} selected />
       </TestTheme>,
     );
 

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomSheetSectionList } from '@gorhom/bottom-sheet';
 import { ArrivalRow } from '../arrivals/ArrivalRow';
@@ -53,6 +54,21 @@ export type StopCardProps = {
    */
   onSelectArrival?: (arrival: Arrival) => void;
   selectedTripId?: string | null;
+  /**
+   * An arrival to select as soon as the board carries it, named by trip id.
+   *
+   * This is how *show live bus on map* arrives in the state a rider would
+   * otherwise have to reach by tapping the row themselves. It lives here rather
+   * than in `MapScreen` because the board does — `MapScreen` holds the selected
+   * `Arrival` but never sees the list it came from, and having it fetch the
+   * same board a second time to find one row would be a duplicate request.
+   *
+   * Fired once per board load. A trip the board does not carry — the bus has
+   * gone, or the arrival aged out between the long press and the fetch — simply
+   * never fires, which leaves the route drawn and the card open. That is a
+   * reasonable place to land, and it is why this is not an error.
+   */
+  preselectTripId?: string | null;
 };
 
 export function StopCard({
@@ -67,6 +83,7 @@ export function StopCard({
   client,
   onSelectArrival,
   selectedTripId = null,
+  preselectTripId = null,
 }: StopCardProps) {
   const { palette } = useTheme();
   const code = stop.stop_code || stop.stop_id;
@@ -74,6 +91,17 @@ export function StopCard({
     code,
     client,
   );
+
+  /**
+   * Keyed on the board's identity as well as the trip, so a refresh does not
+   * re-select a row the rider has since tapped away from — and so a board that
+   * arrives *after* the request still honours it.
+   */
+  useEffect(() => {
+    if (preselectTripId === null || board === null || onSelectArrival === undefined) return;
+    const wanted = board.arrivals.find((arrival) => arrival.tripId === preselectTripId);
+    if (wanted !== undefined) onSelectArrival(wanted);
+  }, [preselectTripId, board, onSelectArrival]);
 
   const favoriteLabel = isFavorite
     ? `Remove ${stop.stop_name} from favorites`
@@ -184,6 +212,7 @@ export function StopCard({
           <ArrivalRow
             arrival={item}
             now={now}
+            stopId={stop.stop_id}
             onPress={onSelectArrival}
             selected={selectedTripId !== null && item.tripId === selectedTripId}
           />

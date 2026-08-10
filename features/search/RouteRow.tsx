@@ -1,5 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../lib/theme';
+import { showRowMenu } from '../../lib/rowMenu';
+import { showOnMap } from '../map/showOnMap';
 import type { RouteSummary } from '../../data/gtfs/types';
 
 /**
@@ -28,6 +30,17 @@ export function RouteRow({ route, onPress }: RouteRowProps) {
       accessibilityRole="button"
       accessibilityLabel={numbered ? `Route ${route.short_name}` : route.long_name}
       onPress={() => onPress(route)}
+      // A tap opens the route's stop list; a long press draws it on the map.
+      // Two different questions about the same route, and the second one is
+      // what the increment is named after.
+      onLongPress={() =>
+        void showRowMenu([
+          {
+            label: 'Show route on map',
+            run: () => showOnMap({ kind: 'route', routeId: route.route_id }),
+          },
+        ])
+      }
       style={[styles.row, { borderBottomColor: palette.border }]}
     >
       {numbered ? (

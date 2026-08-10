@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { useTheme } from '../../lib/theme';
+import { showRowMenu } from '../../lib/rowMenu';
 import { LEGEND_GAP } from '../../lib/Attribution';
 import type { Stop, StopWithDistance } from '../../data/gtfs/types';
 
@@ -24,9 +25,18 @@ export type RouteListProps = {
   /** Highlighted, so a rider can see where the card they just closed came from. */
   selectedStopId: string | null;
   onSelect: (stop: StopWithDistance) => void;
+  /** The favorited stop ids, as the sheet already holds them. */
+  favorites: readonly string[];
+  onToggleFavorite: (stopId: string) => void;
 };
 
-export function RouteList({ stops, selectedStopId, onSelect }: RouteListProps) {
+export function RouteList({
+  stops,
+  selectedStopId,
+  onSelect,
+  favorites,
+  onToggleFavorite,
+}: RouteListProps) {
   const { palette } = useTheme();
 
   const renderItem = useCallback(
@@ -35,10 +45,12 @@ export function RouteList({ stops, selectedStopId, onSelect }: RouteListProps) {
         stop={item}
         seq={index + 1}
         selected={item.stop_id === selectedStopId}
+        favorite={favorites.includes(item.stop_id)}
         onPress={onSelect}
+        onToggleFavorite={onToggleFavorite}
       />
     ),
-    [selectedStopId, onSelect],
+    [selectedStopId, onSelect, favorites, onToggleFavorite],
   );
 
   return (
@@ -69,14 +81,33 @@ function RouteStopRow({
   stop,
   seq,
   selected,
+  favorite,
   onPress,
+  onToggleFavorite,
 }: {
   stop: StopWithDistance;
   seq: number;
   selected: boolean;
+  favorite: boolean;
   onPress: (stop: StopWithDistance) => void;
+  onToggleFavorite: (stopId: string) => void;
 }) {
   const { palette } = useTheme();
+
+  /**
+   * **No *show stop on map* here** — the rider is already looking at the map,
+   * and the pin for this stop is on it. What the sheet's route list cannot do
+   * with a tap is open the arrivals *screen*, since a tap opens the card, and
+   * it cannot favorite at all.
+   */
+  const openMenu = () =>
+    void showRowMenu([
+      { label: 'Open arrivals', run: () => onPress(stop) },
+      {
+        label: favorite ? 'Remove from favorites' : 'Add to favorites',
+        run: () => onToggleFavorite(stop.stop_id),
+      },
+    ]);
 
   return (
     <Pressable
@@ -84,6 +115,7 @@ function RouteStopRow({
       accessibilityLabel={`Stop ${seq}, ${stop.stop_name}`}
       accessibilityState={{ selected }}
       onPress={() => onPress(stop)}
+      onLongPress={openMenu}
       style={[
         styles.row,
         { borderBottomColor: palette.border },

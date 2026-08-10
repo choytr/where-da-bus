@@ -195,6 +195,8 @@ export type StopSheetProps = {
    */
   onSelectArrival?: (arrival: Arrival) => void;
   selectedTripId?: string | null;
+  /** Threaded to `StopCard` — see its own `preselectTripId`. */
+  preselectTripId?: string | null;
 };
 
 /**
@@ -303,6 +305,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     routeView = null,
     onSelectArrival,
     selectedTripId = null,
+    preselectTripId = null,
   },
   ref,
 ) {
@@ -405,6 +408,9 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
         // and the card needs the distance that came with it.
         onPress={() => onSelect(item)}
         onPressRoute={onOpenRoute}
+        // The rider is looking at the map this row's pin is on, so the long
+        // press offers the favorite and nothing else.
+        canShowOnMap={false}
       />
     ),
     [routesByStop, favoriteIds, onSelect, onToggleFavorite, onOpenRoute],
@@ -523,6 +529,8 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
               stops={routeView.stops}
               selectedStopId={null}
               onSelect={onSelect}
+              favorites={favoriteIds}
+              onToggleFavorite={onToggleFavorite}
             />
           </>
         ) : (
@@ -594,6 +602,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
             client={client}
             onSelectArrival={onSelectArrival}
             selectedTripId={selectedTripId}
+            preselectTripId={preselectTripId}
           />
         )}
 

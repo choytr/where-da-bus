@@ -5,6 +5,7 @@ import {
   FEED_END_DATE,
   NEARBY_IN_BOX,
   ROUTE_BY_ID,
+  ROUTE_BY_SHORT_NAME,
   ROUTE_SHAPES,
   ROUTE_STOPS,
   SEARCH_BY_CODE,
@@ -309,6 +310,21 @@ export function useStopQueries() {
   );
 
   /**
+   * One route by the number on the bus, or null.
+   *
+   * The live API speaks `short_name` and everything here keys on `route_id`,
+   * and the two disagree — see `ROUTE_BY_SHORT_NAME`. This is how *show this
+   * bus on the map* gets from an arrival to a route the map can draw.
+   */
+  const routeByShortName = useCallback(
+    async (shortName: string): Promise<RouteSummary | null> => {
+      const row = await db.getFirstAsync(ROUTE_BY_SHORT_NAME, shortName.trim());
+      return isRouteSummary(row) ? row : null;
+    },
+    [db],
+  );
+
+  /**
    * Every stop a route serves, split by direction and in order within each.
    *
    * Grouping happens here rather than in the screen so the ordering guarantee
@@ -386,6 +402,7 @@ export function useStopQueries() {
     stopsByIds,
     feedEndDate,
     routeById,
+    routeByShortName,
     routeStops,
     shapeById,
   };

@@ -2,6 +2,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Arrival } from '../../data/thebus';
 import { countdown, hawaiiClock } from './format';
 import { useTheme } from '../../lib/theme';
+import { showRowMenu } from '../../lib/rowMenu';
+import { showOnMap } from '../map/showOnMap';
 
 export type ArrivalRowProps = {
   arrival: Arrival;
@@ -15,7 +17,31 @@ export type ArrivalRowProps = {
    */
   onPress?: (arrival: Arrival) => void;
   selected?: boolean;
+  /**
+   * The stop this board belongs to, so the map can anchor where the rider is
+   * and open the board they came from. Null only while `/stop/[code]` is still
+   * resolving the code it was given.
+   */
+  stopId: string | null;
 };
+
+/**
+ * Whether *Show live bus on map* is worth offering for this arrival.
+ *
+ * **One fact with three spellings.** Sampled live on 2026-08-10 across 300
+ * arrivals: the arrivals carrying a `vehicle`, the ones marked `estimated="1"`,
+ * and the ones carrying a real position were the *same* 19. So this needs no
+ * request — an `Arrival` already knows — and testing two of the three is belt
+ * and braces rather than two conditions.
+ *
+ * It is a minority: 6.3% at 00:40 HST, and nearer one in ten by day. That is
+ * exactly why the entry is **absent** rather than greyed out. A row that is
+ * permanently disabled reads as broken; a row that is not there reads as this
+ * bus not being tracked, which the status line already says in words.
+ */
+export function hasReportingBus(arrival: Arrival): boolean {
+  return arrival.estimate === 'live' && arrival.vehicle !== null;
+}
 
 /**
  * One bus, on one row.
@@ -31,9 +57,46 @@ export type ArrivalRowProps = {
  * deciding whether to leave the house deserves to know which one they are
  * reading.
  */
-export function ArrivalRow({ arrival, now, onPress, selected = false }: ArrivalRowProps) {
+export function ArrivalRow({
+  arrival,
+  now,
+  onPress,
+  selected = false,
+  stopId,
+}: ArrivalRowProps) {
   const { palette } = useTheme();
   const isLive = arrival.estimate === 'live';
+
+  /**
+   * The long press, on both hosts. Unlike the tap — which the arrival board has
+   * no map to answer with, so it is a plain row there — this works from either,
+   * because it *takes* the rider to the map rather than pointing at one behind
+   * the sheet.
+   */
+  const openMenu = () =>
+    void showRowMenu([
+      ...(hasReportingBus(arrival) && stopId !== null
+        ? [
+            {
+              label: 'Show live bus on map',
+              run: () =>
+                showOnMap({
+                  kind: 'arrival',
+                  routeName: arrival.route,
+                  tripId: arrival.tripId,
+                  stopId,
+                }),
+            },
+          ]
+        : []),
+      {
+        // Null trip: the route, without singling out a bus. Every arrival can
+        // answer this one, which is why it is the entry that is always here.
+        label: 'Show route on map',
+        run: () =>
+          showOnMap({ kind: 'arrival', routeName: arrival.route, tripId: null, stopId }),
+      },
+    ]);
 
   /**
    * Deliberately short and parallel with the live case, because this is the
@@ -48,11 +111,10 @@ export function ArrivalRow({ arrival, now, onPress, selected = false }: ArrivalR
       : `Live · Bus ${arrival.vehicle}`
     : 'Scheduled · no GPS';
 
-  // A plain `View` where nothing can be done with the row, a `Pressable` where
-  // something can. Rendering a Pressable that does nothing would announce an
-  // affordance to VoiceOver that leads nowhere — and `/stop/[code]` has no map
-  // behind it to point at.
-  const Row = onPress === undefined ? View : Pressable;
+  // Always a `Pressable` now: even where a tap does nothing — `/stop/[code]`
+  // has no map behind it to point at — a long press does. The role below still
+  // says which, so VoiceOver is not told a tap leads somewhere it does not.
+  const Row = Pressable;
 
   return (
     <Row
@@ -63,6 +125,7 @@ export function ArrivalRow({ arrival, now, onPress, selected = false }: ArrivalR
       accessibilityRole={onPress === undefined ? 'text' : 'button'}
       accessibilityState={onPress === undefined ? undefined : { selected }}
       onPress={onPress === undefined ? undefined : () => onPress(arrival)}
+      onLongPress={openMenu}
       accessibilityLabel={
         `Route ${arrival.route} to ${arrival.headsign}, ` +
         `${countdown(arrival.arrivesAt, now)}, at ${hawaiiClock(arrival.arrivesAt)}, ` +

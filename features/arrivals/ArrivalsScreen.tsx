@@ -121,7 +121,9 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
             </Text>
           )
         }
-        renderItem={({ item }) => <ArrivalRow arrival={item} now={now} />}
+        renderItem={({ item }) => (
+          <ArrivalRow arrival={item} now={now} stopId={stop?.stop_id ?? null} />
+        )}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={[styles.emptyText, { color: palette.text }]}>{NOTICES.empty}</Text>

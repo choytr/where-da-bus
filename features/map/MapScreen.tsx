@@ -42,6 +42,7 @@ import { SearchBar, SEARCH_BAR_ALLOWANCE } from './SearchBar';
 import { RoutePill, ROUTE_PILL_ALLOWANCE } from './RoutePill';
 import { SearchOverlay } from './SearchOverlay';
 import { enterRouteMode, flipDirection, leaveRouteMode, useRouteMode } from './routeMode';
+import { clearMapRequest, useMapRequest, type MapRequest } from './showOnMap';
 import { useStopQueries, NEARBY_RADIUS_METERS, type RouteDirection } from '../../data/gtfs/db';
 import {
   addFavorite,
@@ -244,7 +245,8 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     requestLocation,
     locationStatus,
   } = useAnchoredStops();
-  const { routesForStops, routeById, routeStops, shapeById } = useStopQueries();
+  const { routesForStops, routeById, routeByShortName, routeStops, shapeById, stopsByIds } =
+    useStopQueries();
 
   const map = useRef<MapView | null>(null);
   const sheet = useRef<BottomSheet | null>(null);
@@ -1137,6 +1139,80 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     [openRoute],
   );
 
+  /**
+   * *Show me that on the map*, arriving from a long press somewhere else.
+   *
+   * Four rows across the app can ask for this — a stop, a route, an arrival's
+   * route, an arrival's bus — and every one of them lands here. The request is
+   * **cleared as soon as it is read**, before any of the work it asks for has
+   * finished, because acting on one twice is worse than not acting: a rider who
+   * comes back to the Map tab an hour later must not be thrown to a stop they
+   * looked up once.
+   *
+   * `selectFromSearch` is reused for the stop, deliberately. Arriving from a
+   * long press and arriving from the search field are the same event as far as
+   * the map is concerned — the map being *opened somewhere* — so both anchor,
+   * frame the camera and open the card, rather than one of them growing a
+   * subtly different version of it.
+   */
+  const [preselect, setPreselect] = useState<{ stopId: string; tripId: string } | null>(null);
+  const request = useMapRequest();
+  const applyRequest = useRef<(request: MapRequest) => void>(() => {});
+  applyRequest.current = (asked) => {
+    if (asked.kind === 'route') {
+      // `showOnMap` already entered route mode, so the map was drawing it
+      // before this screen even rendered. Nothing left to do.
+      return;
+    }
+
+    if (asked.kind === 'stop') {
+      void stopsByIds([asked.stopId]).then(([stop]) => {
+        if (stop !== undefined) selectFromSearchRef.current(stop);
+      });
+      return;
+    }
+
+    void (async () => {
+      // `short_name` is all an arrival has, and `routeMode` keys on `route_id`.
+      // A route the asset does not carry leaves the map where it was rather
+      // than half-entering route mode.
+      const route = await routeByShortName(asked.routeName);
+      if (route !== null) enterRouteMode(route.route_id);
+      if (asked.stopId === null) return;
+      if (asked.tripId !== null) setPreselect({ stopId: asked.stopId, tripId: asked.tripId });
+      const [stop] = await stopsByIds([asked.stopId]);
+      if (stop !== undefined) selectFromSearchRef.current(stop);
+    })();
+  };
+
+  /**
+   * Through a ref, like every other handler on this screen: `selectFromSearch`
+   * changes identity whenever the camera or the detent does, and an effect
+   * depending on it would re-run — re-applying a request that has already been
+   * cleared, or worse, one that has not.
+   */
+  const selectFromSearchRef = useRef(selectFromSearch);
+  selectFromSearchRef.current = selectFromSearch;
+
+  useEffect(() => {
+    if (request === null) return;
+    clearMapRequest();
+    applyRequest.current(request);
+  }, [request]);
+
+  /**
+   * The trip to preselect, but only while the card showing is the one it was
+   * asked for.
+   *
+   * **Derived rather than cleared in an effect**, which is not a style
+   * preference: the request selects the stop, so an effect keyed on the
+   * selection would fire *after* the trip was recorded and wipe it in the same
+   * commit. A different stop is a different board, and this simply stops
+   * matching.
+   */
+  const preselectTripId =
+    preselect !== null && preselect.stopId === selectedStop?.stop_id ? preselect.tripId : null;
+
   const toggleFavorite = useCallback(
     async (stopId: string) => {
       try {
@@ -1452,6 +1528,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         tabBarOverlap={tabBarOverlap}
         onSelectArrival={routeMode === null ? undefined : setSelectedArrival}
         selectedTripId={selectedArrival?.tripId ?? null}
+        preselectTripId={preselectTripId}
         routeView={
           routeMode === null
             ? null

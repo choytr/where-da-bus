@@ -6,6 +6,7 @@ import { MEDIUM_DETENT, PEEK_DETENT, detentsFor, tabBarOverlapOf, visibleAbove }
 import { centeredOn } from '../region';
 import { SEARCH_PLACEHOLDER } from '../SearchBar';
 import { leaveRouteMode } from '../routeMode';
+import { clearMapRequest, showOnMap } from '../showOnMap';
 import type { Place } from '../address';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
@@ -231,6 +232,16 @@ const mockQueries = {
     short_name: '1',
     long_name: 'Kalihi - Waikiki',
   })),
+  /**
+   * The one translation between what the live API speaks and what the map
+   * keys on: an `Arrival` carries `route: "32"` and `routeMode` wants a
+   * `route_id`, and the two disagree in the real feed.
+   */
+  routeByShortName: jest.fn(async (shortName: string): Promise<RouteSummary | null> => ({
+    route_id: `id-for-${shortName}`,
+    short_name: shortName,
+    long_name: 'Mapunapuna-Airport',
+  })),
   shapeById: jest.fn(async (): Promise<Coords[] | null> => [
     { lat: 21.33, lon: -157.87 },
     { lat: 21.31, lon: -157.85 },
@@ -269,9 +280,14 @@ jest.mock('../../../data/gtfs/db', () => ({
  * is the one thing here that *does* navigate.
  */
 const mockPush = jest.fn();
+/** `showOnMap` navigates rather than pushes: the Map tab is one screen. */
+const mockNavigate = jest.fn();
 
 jest.mock('expo-router', () => ({
-  router: { push: (href: string) => mockPush(href) },
+  router: {
+    push: (href: string) => mockPush(href),
+    navigate: (href: string) => mockNavigate(href),
+  },
 }));
 
 /**
@@ -496,6 +512,8 @@ describe('MapScreen', () => {
     // the next rendering the route's pins instead of the anchor's is the price,
     // and this is the whole of it.
     leaveRouteMode();
+    clearMapRequest();
+    mockNavigate.mockClear();
     jest.clearAllMocks();
     mockArrivalCalls.length = 0;
     mockSnapCalls.length = 0;
@@ -2393,5 +2411,101 @@ describe('MapScreen', () => {
 
       expect(screen.queryByLabelText('Show the other direction')).toBeNull();
     });
+
+  /**
+   * *Show me that on the map*, asked from a long press on another screen.
+   *
+   * The rows' own half is `features/map/__tests__/showOnMap.test.tsx`; this is
+   * the map actually answering. The request is set before the screen renders,
+   * which is what really happens — `showOnMap` sets it and *then* navigates, so
+   * the map reads it on its first frame rather than after a frame in its
+   * default state.
+   */
+  describe('a request from somewhere else', () => {
+    const stop = (id: string, name: string) => ({
+      stop_id: id,
+      stop_code: id,
+      stop_name: name,
+      lat: 21.33,
+      lon: -157.87,
+    });
+
+    it('goes to the Map tab rather than pushing a screen', async () => {
+      showOnMap({ kind: 'stop', stopId: '5' });
+
+      expect(mockNavigate).toHaveBeenCalledWith('/');
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('opens the card on a stop asked for from another screen', async () => {
+      mockQueries.stopsByIds.mockResolvedValue([stop('5', 'LAGOON DR + IOLANA PL')]);
+      showOnMap({ kind: 'stop', stopId: '5' });
+
+      await show();
+
+      await waitFor(() => screen.getByTestId('stop-card-band'));
+      expect(screen.getByText('LAGOON DR + IOLANA PL')).toBeTruthy();
+    });
+
+    /**
+     * Route mode is entered by `showOnMap` itself, before this screen renders,
+     * so the map is drawing the route on its very first frame rather than
+     * flashing the nearby stops first.
+     */
+    it('draws a route asked for from another screen', async () => {
+      showOnMap({ kind: 'route', routeId: '31' });
+
+      await show();
+
+      await waitFor(() => screen.getByTestId('route-band'));
+      expect(screen.getByTestId('route-pill')).toBeTruthy();
+    });
+
+    it('draws the route an arrival was for, from its number on the bus', async () => {
+      showOnMap({ kind: 'arrival', routeName: '32', tripId: null, stopId: null });
+
+      await show();
+
+      await waitFor(() => screen.getByTestId('route-band'));
+      expect(mockQueries.routeByShortName).toHaveBeenCalledWith('32');
+    });
+
+    /**
+     * The state a rider would otherwise reach by opening the card themselves
+     * and tapping the row: the bus drawn larger, keeping its number at any zoom.
+     */
+    it('selects the arrival behind a live bus asked for', async () => {
+      mockQueries.stopsByIds.mockResolvedValue([stop('r1', 'KALIHI TRANSIT CENTER')]);
+      mockArrivalsResult = boardOf(arrival('trip-252', 's-out'));
+      mockFleetResult = fleetOf(bus('252', '32'));
+
+      showOnMap({ kind: 'arrival', routeName: '32', tripId: 'trip-252', stopId: 'r1' });
+      await show();
+
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText(/Route 32 to WAIKIKI/).props.accessibilityState.selected,
+        ).toBe(true),
+      );
+    });
+
+    /**
+     * Cleared as it is read. A rider who leaves the Map tab and comes back an
+     * hour later must not be thrown to a stop they looked up once.
+     */
+    it('acts on a request once and then forgets it', async () => {
+      mockQueries.stopsByIds.mockResolvedValue([stop('5', 'LAGOON DR + IOLANA PL')]);
+      showOnMap({ kind: 'stop', stopId: '5' });
+
+      const first = await show();
+      await waitFor(() => screen.getByTestId('stop-card-band'));
+      await first.unmount();
+
+      mockQueries.stopsByIds.mockClear();
+      await show();
+
+      expect(mockQueries.stopsByIds).not.toHaveBeenCalled();
+    });
+  });
   });
 });
