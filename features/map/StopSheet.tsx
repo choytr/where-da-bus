@@ -14,7 +14,7 @@ import { useTheme } from '../../lib/theme';
 import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
 import type { RouteSummary, StopWithDistance } from '../../data/gtfs/types';
 import type { RouteDirection } from '../../data/gtfs/db';
-import type { Arrival, TheBusClient } from '../../data/thebus';
+import type { ApiFailure, Arrival, TheBusClient } from '../../data/thebus';
 import type { AnchoredStatus } from './useAnchoredStops';
 
 /**
@@ -212,6 +212,41 @@ export type BusLayerState =
   | { kind: 'running'; count: number; late: number }
   | { kind: 'none' }
   | { kind: 'unreachable' };
+
+/**
+ * Which of the four the layer is in, from what `useVehicles` returns.
+ *
+ * **A pure function, because the order of these tests is the whole correctness
+ * and the order is not obvious.** Driving it through `MapScreen` would need a
+ * poll and an age-out, which means fake timers in a real-timer suite — the
+ * hazard `CLAUDE.md` describes, and one that breaks the *next* test rather than
+ * this one. Tested as arithmetic instead, the way `labels.ts` is.
+ *
+ * Buses in hand come first: a fetch that fails after a good one deliberately
+ * leaves the previous fleet drawn and counting up, and the band should describe
+ * what the map is showing. Their labels carry the age.
+ *
+ * **A failure then beats `fetchedAt`, and the other order was a bug.**
+ * `fetchedAt` records the last *success* and survives an outage, so testing it
+ * first made the band say "No buses running" once the drawn buses aged out — a
+ * confident, wrong sentence about a route that may be perfectly busy, and
+ * exactly the pair `CLAUDE.md` says must never render alike. `useVehicles`
+ * clears `failure` on the next success, so this heals itself.
+ *
+ * `fetchedAt` then separates a route with genuinely nothing running from a
+ * first request still in flight, which an empty list means equally.
+ */
+export function busLayerFor(
+  busCount: number,
+  lateCount: number,
+  failure: ApiFailure | null,
+  fetchedAt: Date | null,
+): BusLayerState {
+  if (busCount > 0) return { kind: 'running', count: busCount, late: lateCount };
+  if (failure !== null) return { kind: 'unreachable' };
+  if (fetchedAt !== null) return { kind: 'none' };
+  return { kind: 'loading' };
+}
 
 /**
  * The line, in as few characters as it can be said in — it shares one line with

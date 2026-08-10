@@ -221,7 +221,17 @@ export async function pkg(sourceSha256, { built = BUILT, dist = DIST } = {}) {
   await rm(legacyPath, { force: true });
 
   console.log(JSON.stringify({ current, legacy, counts }, null, 2));
-  await emitOutput({ file: current.file, legacy_file: legacy.file });
+  // The manifest names are emitted rather than spelled out in the workflow.
+  // `manifest-v2.json` was written there as a literal, which meant the day
+  // `SCHEMA_VERSION` became 3 the upload step would go looking for a file this
+  // script had stopped producing. Loud rather than silent — but this is the
+  // subsystem where a mistake is unrecoverable, so it should not be possible.
+  await emitOutput({
+    file: current.file,
+    legacy_file: legacy.file,
+    manifest: manifestNameFor(SCHEMA_VERSION),
+    legacy_manifest: manifestNameFor(1),
+  });
   return { current, legacy };
 }
 

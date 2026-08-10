@@ -29,7 +29,7 @@ import {
 } from './region';
 import {
   StopSheet,
-  type BusLayerState,
+  busLayerFor,
   detentsFor,
   tabBarOverlapOf,
   FULL_DETENT,
@@ -568,18 +568,14 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * as the same empty map — the ambiguity `CLAUDE.md` names as the thing that
    * makes a transit app untrustworthy.
    *
-   * Order matters: buses in hand beat a failure, because a fetch that failed
-   * after a good one leaves the previous fleet on screen counting up rather
-   * than clearing it, and the map should describe what it is drawing.
-   * `fetchedAt` is what separates "no buses on this route" from "nothing has
-   * come back yet" — an empty list means both until the first response lands.
+   * The four-way decision and the reason its order matters live in
+   * `busLayerFor`, which is a pure function so that order can be tested without
+   * a poll, an age-out, and fake timers in a real-timer suite.
    */
-  const busLayer = useMemo((): BusLayerState => {
-    if (buses.length > 0) return { kind: 'running', count: buses.length, late: lateCount };
-    if (busesFetchedAt !== null) return { kind: 'none' };
-    if (busFailure !== null) return { kind: 'unreachable' };
-    return { kind: 'loading' };
-  }, [buses.length, lateCount, busesFetchedAt, busFailure]);
+  const busLayer = useMemo(
+    () => busLayerFor(buses.length, lateCount, busFailure, busesFetchedAt),
+    [buses.length, lateCount, busFailure, busesFetchedAt],
+  );
 
   /**
    * The arrival a rider tapped in the card, or null.
@@ -799,17 +795,42 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
 
   useEffect(() => () => releaseZoom.current?.(), []);
 
+  /**
+   * The latest `select`, held in a ref so `onPinPress` can be handed to every
+   * marker without changing identity.
+   *
+   * **`select` changes identity constantly, and that used to reach the markers.**
+   * It depends on `panTo`, which depends on `camera` — a fresh object out of
+   * `onRegionChangeComplete` on every pan and every zoom. So `onPinPress` was a
+   * new function each time the camera settled, and since `StopMarker` is
+   * memoised with a shallow compare, *every marker on the map re-rendered*: 61
+   * of them on Route 10, on every settle, each one a props update across the
+   * `react-native-maps` seam.
+   *
+   * `StopMarker`'s own header asks for exactly this not to happen — "a fresh
+   * arrow per stop per render would defeat `memo` entirely, and re-rendering
+   * markers is the cost this component is shaped to avoid". Passing the stop
+   * rather than closing over it achieved that for the *stop*, and then the
+   * handler's own identity gave it straight back.
+   *
+   * Updated on every render rather than in an effect, so a press can never read
+   * a `select` from before the last commit — which is what the note below was
+   * guarding against.
+   */
+  const selectRef = useRef(select);
+  selectRef.current = select;
+
   const onPinPress = useCallback(
     (stop: StopWithDistance, event: MarkerPressEvent) => {
       // Without this the press also reaches `MapView`'s `onPress`, and the tap
       // that selected a stop dismisses it again in the same gesture.
       event.stopPropagation();
       holdZoomOff();
-      select(stop, { pan: false });
+      // Through the ref: `select` reads the settled detent, so a captured copy
+      // would be one that thinks the sheet is still at peek — and would lower it.
+      selectRef.current(stop, { pan: false });
     },
-    // `select` reads the settled detent, so a stale copy here would be a copy
-    // that thinks the sheet is still at peek — and would lower it.
-    [select, holdZoomOff],
+    [holdZoomOff],
   );
 
   /**

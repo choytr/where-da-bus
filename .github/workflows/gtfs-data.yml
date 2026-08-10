@@ -129,6 +129,9 @@ jobs:
         if: steps.decide.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+        # Both names come from the packaging step. They used to be literals
+        # here, and `manifest-v2.json` would have gone looking for a file the
+        # script had stopped producing the day SCHEMA_VERSION became 3.
         run: |
-          gh release upload data dist/manifest.json --clobber
-          gh release upload data dist/manifest-v2.json --clobber
+          gh release upload data "dist/${{ steps.package.outputs.legacy_manifest }}" --clobber
+          gh release upload data "dist/${{ steps.package.outputs.manifest }}" --clobber

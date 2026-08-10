@@ -8,6 +8,7 @@ import {
   PEEK_DETENT,
   MEDIUM_DETENT,
   FULL_DETENT,
+  busLayerFor,
   type BusLayerState,
   type RouteView,
 } from '../StopSheet';
@@ -514,5 +515,50 @@ describe('StopSheet', () => {
     await waitFor(() => {
       expect(onBack).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('busLayerFor', () => {
+  const FETCHED = new Date('2026-08-09T22:00:00Z');
+
+  it('describes what the map is drawing when there are buses', () => {
+    expect(busLayerFor(7, 2, null, FETCHED)).toEqual({ kind: 'running', count: 7, late: 2 });
+  });
+
+  /**
+   * A failed poll deliberately leaves the previous fleet drawn and counting up
+   * rather than clearing it, so the band should still describe the dots on
+   * screen. Their labels carry the age.
+   */
+  it('still counts the buses it is drawing through a failed poll', () => {
+    expect(busLayerFor(3, 0, { kind: 'unreachable' }, FETCHED)).toEqual({
+      kind: 'running',
+      count: 3,
+      late: 0,
+    });
+  });
+
+  /**
+   * **The ordering bug.** `fetchedAt` records the last *success* and survives an
+   * outage, so testing it before `failure` made this say "No buses running"
+   * once the drawn buses aged out — a confident, wrong sentence about a route
+   * that may be perfectly busy, and exactly the pair CLAUDE.md says must never
+   * render alike. Reached by: one good fetch, signal lost, buses age past
+   * FRESH_MS.
+   */
+  it('calls an outage an outage even after a successful fetch', () => {
+    expect(busLayerFor(0, 0, { kind: 'unreachable' }, FETCHED)).toEqual({ kind: 'unreachable' });
+  });
+
+  it('treats a rejected key as unreachable too, having nothing else to offer here', () => {
+    expect(busLayerFor(0, 0, { kind: 'unauthorized' }, FETCHED)).toEqual({ kind: 'unreachable' });
+  });
+
+  it('says a route has nothing running only when a fetch actually came back', () => {
+    expect(busLayerFor(0, 0, null, FETCHED)).toEqual({ kind: 'none' });
+  });
+
+  it('is still looking before the first response lands', () => {
+    expect(busLayerFor(0, 0, null, null)).toEqual({ kind: 'loading' });
   });
 });
