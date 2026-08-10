@@ -2261,6 +2261,30 @@ describe('MapScreen', () => {
         expect(mockQueries.shapeById).toHaveBeenCalledWith('s-out');
       });
 
+      /**
+       * `MapPolylineProps` has no arrow support, so these are markers — and
+       * markers inside `MapView` is the seam with the open SIGABRT behind it.
+       * The pool being *fixed* is what keeps them out of it: eight exist before
+       * a route is picked, during it, across a flip, and after the X.
+       */
+      it('mounts the same eight arrows whatever the map is showing', async () => {
+        const arrows = () => screen.getAllByLabelText(/^pin arrow-/);
+
+        await show();
+        expect(arrows()).toHaveLength(8);
+
+        await showRoute();
+        expect(arrows()).toHaveLength(8);
+
+        await fireEvent.press(screen.getByLabelText('Show the other direction'));
+        await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
+        expect(arrows()).toHaveLength(8);
+
+        await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+        await waitFor(() => expect(screen.queryByTestId('route-band')).toBeNull());
+        expect(arrows()).toHaveLength(8);
+      });
+
       it('draws the other direction’s shape after a flip', async () => {
         await showRoute();
         await waitFor(() => screen.getByText('polyline points: 3'));

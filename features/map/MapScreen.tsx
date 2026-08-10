@@ -18,6 +18,7 @@ import { StopMarker } from './StopMarker';
 import { labelledMapIds, scaleOf, stopUnderBus } from './labels';
 import { PendingMarker } from './PendingMarker';
 import { RouteLine } from './RouteLine';
+import { RouteArrows } from './RouteArrows';
 import { BusMarker } from './BusMarker';
 import { useVehicles, type BusOnMap } from './useVehicles';
 import {
@@ -1279,6 +1280,15 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
             "always" is load-bearing rather than stylistic; see `RouteLine`.
           */}
           <RouteLine points={linePoints} />
+
+          {/*
+            A **fixed** pool of eight, mounted for the life of the map and
+            redistributed along whatever of the line is on screen. Before the
+            pins, so an arrowhead never sits over one; never a marker per
+            segment, which would be a wholesale swap on every direction flip.
+            See `RouteArrows`.
+          */}
+          <RouteArrows points={linePoints} region={camera ?? region} />
 
           {pins.map((stop) => (
             <StopMarker
