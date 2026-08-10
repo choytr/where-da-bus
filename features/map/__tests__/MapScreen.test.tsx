@@ -33,6 +33,9 @@ import type { Coords } from '../../../lib/distance';
  *  this stays empty — the camera moves on ⌖ and the first fix, and nowhere. */
 const mockCameraMoves: unknown[] = [];
 
+/** The map's own rotation, as `getCamera` would report it. */
+let mockHeading = 0;
+
 jest.mock('react-native-maps', () => {
   const React = require('react');
   const { View, Text, Pressable } = require('react-native');
@@ -42,6 +45,10 @@ jest.mock('react-native-maps', () => {
     const { children, onPress, onLongPress, onRegionChangeComplete } = props;
     React.useImperativeHandle(ref, () => ({
       animateToRegion: (region: unknown) => mockCameraMoves.push(region),
+      // Where the map's rotation comes from: `Region` carries no heading, so
+      // the screen asks for a camera. Custom marker views are screen-aligned,
+      // so the arrows subtract this.
+      getCamera: async () => ({ center: { latitude: 21.3, longitude: -157.8 }, heading: mockHeading, pitch: 0 }),
     }));
 
     return (
@@ -81,6 +88,24 @@ jest.mock('react-native-maps', () => {
         />
         {/* A camera settling a long way from the fallback anchor: about 16 km
               north, on a window roughly 3 km wide. */}
+        {/*
+          A rotate-only gesture. The region it settles at is identical every
+          time and wide enough to hold the whole fixture route, so the *only*
+          thing that changes between two presses is the heading — which is what
+          makes "the arrows turned back" separable from "the arrows moved".
+        */}
+        <Pressable
+          accessibilityLabel="rotate the map"
+          onPress={() => {
+            mockHeading = mockHeading === 0 ? 90 : 0;
+            onRegionChangeComplete?.({
+              latitude: 21.305,
+              longitude: -157.85,
+              latitudeDelta: 0.09,
+              longitudeDelta: 0.09,
+            });
+          }}
+        />
         <Pressable
           accessibilityLabel="pan the camera away"
           onPress={() =>
@@ -514,6 +539,7 @@ describe('MapScreen', () => {
     // and this is the whole of it.
     leaveRouteMode();
     clearMapRequest();
+    mockHeading = 0;
     mockNavigate.mockClear();
     jest.clearAllMocks();
     mockArrivalCalls.length = 0;
@@ -2345,6 +2371,36 @@ describe('MapScreen', () => {
         await fireEvent.press(bandClose());
         await waitFor(() => expect(screen.queryByTestId('route-band')).toBeNull());
         expect(arrows()).toHaveLength(8);
+      });
+
+      /**
+       * **Custom marker views are screen-aligned.** MapKit turns the map under
+       * the annotations and leaves them upright, so an arrowhead rotated to a
+       * compass bearing is right only while the map faces north — which is
+       * exactly what Truman saw on 2026-08-10: *"rotated correctly only when
+       * the user is facing north."* The heading has to come back out again.
+       */
+      it('turns the arrows back as the map itself turns', async () => {
+        await showRoute();
+
+        const angleOf = () => {
+          const style = StyleSheet.flatten(screen.getByTestId('arrow-head-0').props.style);
+          const rotate = style.transform?.[0]?.rotate ?? '0deg';
+          return Number(String(rotate).replace('deg', ''));
+        };
+
+        // Settle once at the rotated heading, and once at the same camera
+        // facing north. Same region both times, so the heading is the only
+        // difference between the two readings.
+        await fireEvent.press(screen.getByLabelText('rotate the map'));
+        await waitFor(() => expect(angleOf()).not.toBe(0));
+        const turned = angleOf();
+
+        await fireEvent.press(screen.getByLabelText('rotate the map'));
+
+        // The map turned 90° back to north, so the arrow turns 90° the other
+        // way and keeps pointing along the same stretch of road.
+        await waitFor(() => expect(angleOf()).toBeCloseTo(turned + 90, 5));
       });
 
       it('draws the other direction’s shape after a flip', async () => {

@@ -2,7 +2,6 @@ import { memo, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { schedule } from '../../lib/schedule';
-import { useTheme } from '../../lib/theme';
 import { arrowPlacements } from './arrows';
 import type { Region } from './region';
 import type { Coords } from '../../lib/distance';
@@ -36,11 +35,16 @@ import type { Coords } from '../../lib/distance';
  * `react-native-maps` prop on this project.** A transform on the child is
  * captured into the annotation's bitmap and so works on Apple Maps.
  *
- * **The arrowhead is the *background* colour, not the line's.** Drawn in
- * `palette.route` it was the same red as the line underneath and vanished into
- * it — Truman, same round: *"not the most readable"*. Background-coloured, it
- * reads as a notch cut out of the line, which is what every transit map does,
- * and it contrasts in both themes by construction.
+ * **The arrowhead is white in both themes, and that is not an oversight.**
+ * Two earlier tries were wrong for opposite reasons. `palette.route` made it
+ * the same red as the line and it vanished — *"not the most readable"*.
+ * `palette.background` then made it near-black in dark mode, which reads as a
+ * hole punched in the line — *"they look weird just black"*. The thing an
+ * arrowhead is seen against is **the line**, not the map, and the line is a
+ * saturated red in both themes (`#d92b2b` light, `#ff5a52` dark). So the
+ * contrast that matters does not change with the theme, and neither should
+ * this. It is the same white chevron every transit map draws on a coloured
+ * route.
  */
 
 /**
@@ -59,6 +63,12 @@ const SLOT = 20;
 const ARROW_WIDTH = 11;
 const ARROW_HEIGHT = 12;
 
+/**
+ * Chosen against the route line it sits on, which is red in both themes — so
+ * this is a constant rather than a palette entry. See the header.
+ */
+const ARROW_COLOR = '#ffffff';
+
 /** The view is the glyph, so the coordinate sits at its center. */
 const ANCHOR = { x: 0.5, y: 0.5 };
 
@@ -70,6 +80,15 @@ export type RouteArrowsProps = {
   points: readonly Coords[];
   /** The settled camera, or null before the map has reported one. */
   region: Region | null;
+  /**
+   * Which way the map is turned, degrees clockwise from north.
+   *
+   * Subtracted from every arrow's bearing, because a marker's view is
+   * screen-aligned: MapKit turns the map underneath the annotations and leaves
+   * them upright. Without it the arrows are correct only while the map faces
+   * north.
+   */
+  heading: number;
 };
 
 /**
@@ -111,6 +130,7 @@ const Arrow = memo(function Arrow({
     >
       <View style={[styles.slot, { opacity: visible ? 1 : 0 }]} pointerEvents="none">
         <View
+          testID={`arrow-head-${slot}`}
           style={[
             styles.arrow,
             { borderBottomColor: color },
@@ -123,9 +143,11 @@ const Arrow = memo(function Arrow({
   );
 });
 
-export const RouteArrows = memo(function RouteArrows({ points, region }: RouteArrowsProps) {
-  const { palette } = useTheme();
-
+export const RouteArrows = memo(function RouteArrows({
+  points,
+  region,
+  heading,
+}: RouteArrowsProps) {
   // Recomputed when the camera settles, never during a pan: re-snapshotting
   // eight markers per frame is how a map with custom markers becomes unusable.
   const placements =
@@ -142,11 +164,10 @@ export const RouteArrows = memo(function RouteArrows({ points, region }: RouteAr
             key={index}
             slot={index}
             at={placement?.at ?? FALLBACK}
-            bearingDeg={placement?.bearingDeg ?? 0}
+            // Compass bearing minus the map's own rotation: a screen angle.
+            bearingDeg={(placement?.bearingDeg ?? 0) - heading}
             visible={placement?.visible ?? false}
-            // The background, not the route's red: an arrowhead the same
-            // colour as the line it sits on is invisible.
-            color={palette.background}
+            color={ARROW_COLOR}
           />
         );
       })}

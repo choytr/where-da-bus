@@ -257,6 +257,21 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const [pending, setPending] = useState<Coords | null>(null);
   /** Where the camera settled last. `null` until it has moved at all. */
   const [camera, setCamera] = useState<Region | null>(null);
+
+  /**
+   * Which way the map itself is turned, in degrees clockwise from north.
+   *
+   * **Custom marker views do not rotate with the map.** MapKit turns the map
+   * under them and leaves the annotation views screen-aligned, so an arrowhead
+   * rotated to a *geographic* bearing is right only while the map is facing
+   * north — which is what Truman saw on 2026-08-10: *"rotated correctly only
+   * when the user is facing north."* Subtracting the heading turns a compass
+   * bearing into a screen angle.
+   *
+   * `Region` carries no heading, so it comes from `getCamera()` — one native
+   * round trip per settle, the same cadence the labeller already runs at.
+   */
+  const [heading, setHeading] = useState(0);
   /**
    * The anchor the drift offer belongs to, or null. Storing *which* anchor
    * rather than a bare flag is what makes the offer sticky without making it
@@ -302,6 +317,16 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const onCameraSettled = useCallback(
     (region: Region) => {
       setCamera(region);
+      // Asked for rather than read off `region`, which describes an
+      // axis-aligned box and says nothing about rotation.
+      void map.current
+        ?.getCamera()
+        .then((view) => {
+          if (typeof view?.heading === 'number') setHeading(view.heading);
+        })
+        // The heading only turns the arrowheads. Failing to read it must leave
+        // them pointing at the last known angle, not take the map down.
+        .catch(() => {});
       // Against the *visible* center, not the window's — the window's center is
       // under the sheet on purpose, see `regionAround`.
       if (
@@ -1396,7 +1421,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
             segment, which would be a wholesale swap on every direction flip.
             See `RouteArrows`.
           */}
-          <RouteArrows points={linePoints} region={camera ?? region} />
+          <RouteArrows points={linePoints} region={camera ?? region} heading={heading} />
 
           {pins.map((stop) => (
             <StopMarker

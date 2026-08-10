@@ -88,3 +88,44 @@ artefact rather than a broken feature.
 **The live-bus feedback is therefore still owed**, in daylight: the popup, the
 lateness wording, the direction filter and the covered-stop hand-down have none
 of them been seen working.
+
+
+---
+
+## Round 2, ~03:14 HST — two more on the arrows
+
+`IMG_4670.png` / `IMG_4671.png`, same folder. Route 10 again, the second shot
+with the map rotated (compass shows N off-vertical, needle to the upper right).
+
+> Bottom bar icons look fantastic now.
+>
+> The arrows are rotated correctly only when the user is facing north. Rotating
+> at all doesn't rotate the arrows. Also they look weird just black.
+
+**Tab icons: closed.** Ionicons, filled when selected.
+
+**The arrows were screen-aligned.** Rotating the *child view* fixed the
+per-segment bearing — the first shot shows arrowheads correctly following the
+line down Liliha St — but a marker's view does not turn with the map: MapKit
+rotates the map underneath the annotations and leaves them upright. So the
+bearing was right in *compass* terms and wrong on *screen* the moment the rider
+turned the map.
+
+Fixed by subtracting the map's heading, which turns a compass bearing into a
+screen angle. `Region` carries no heading, so it comes from `getCamera()` on
+each settle — one native round trip at the cadence the labeller already runs
+at, with a `catch` that leaves the arrows at their last angle, because a
+heading that cannot be read is not a reason to take the map down.
+
+**Still to confirm on a device:** whether `onRegionChangeComplete` fires for a
+gesture that *only* rotates, with no pan or zoom. If it does not, the arrows
+will lag a rotation until the next pan. There is no other hook — `onRegionChange`
+is per-frame — so this is the design either way; what is unknown is how often
+it is briefly wrong.
+
+**And they were black.** `palette.background` in dark mode is near-black, so the
+arrowheads read as holes punched in the line. The thing an arrowhead is seen
+against is the **line**, not the map, and the line is a saturated red in both
+themes — so the arrow is now a plain white constant. Third colour attempt:
+route red vanished into the line, background made a hole, white is what every
+transit map draws on a coloured route.
