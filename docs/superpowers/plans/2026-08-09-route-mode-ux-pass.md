@@ -28,7 +28,7 @@ constant rather than declaring a second one — the spec says why.
 
 `StopMarker` at `'route'`: an 8-pt plain dot in `palette.pin`, no glyph, label
 opacity 0. **The `wrap` view stays `SLOT` (34) at both scales** — the tap target
-and the marker's centre both hang off it. `scale` joins `selected` and
+and the marker's center both hang off it. `scale` joins `selected` and
 `placement` in the `tracksViewChanges` effect deps.
 
 `MapScreen` computes `scale` from `camera ?? region` in a `useMemo` alongside

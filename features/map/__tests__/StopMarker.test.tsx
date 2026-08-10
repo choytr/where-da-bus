@@ -10,7 +10,7 @@ import type { StopWithDistance } from '../../../data/gtfs/types';
  *
  * Two invariants matter and both are recorded in the component's own header:
  * the wrapper box is what MapKit hit-tests and what `reactSetFrame:` reads to
- * place the marker's centre, and children of a `react-native-maps` marker are
+ * place the marker's center, and children of a `react-native-maps` marker are
  * never conditionally mounted.
  */
 
@@ -38,7 +38,7 @@ const STOP: StopWithDistance = {
 
 /**
  * The marker's own wrapper view — the box MapKit hit-tests and the box
- * `reactSetFrame:` reads to place the marker's centre.
+ * `reactSetFrame:` reads to place the marker's center.
  *
  * It throws rather than returning undefined, because every test here is *about*
  * that box: one that had quietly gone missing must fail the test rather than
@@ -57,7 +57,7 @@ describe('StopMarker', () => {
    * The whole reason the tile shrinks and the wrapper does not. MapKit
    * hit-tests annotation views by frame, so a box that tracked the dot would
    * make every stop untappable at exactly the zoom where they are already
-   * hardest to hit — and `reactSetFrame:` would shift each marker's centre as
+   * hardest to hit — and `reactSetFrame:` would shift each marker's center as
    * well, moving forty pins off their stops.
    */
   it.each(['route', 'street'] as const)(

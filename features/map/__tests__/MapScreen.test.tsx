@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { MapScreen, COMPASS_LAYOUT_OFFSET } from '../MapScreen';
 import { MEDIUM_DETENT, PEEK_DETENT, detentsFor, tabBarOverlapOf, visibleAbove } from '../StopSheet';
-import { centredOn } from '../region';
+import { centeredOn } from '../region';
 import { SEARCH_PLACEHOLDER } from '../SearchBar';
 import { leaveRouteMode } from '../routeMode';
 import type { Place } from '../address';
@@ -427,7 +427,7 @@ const stop = (
   meters,
 });
 
-/** Centred under the close-zoom camera, so its name is on screen to be read. */
+/** Centered under the close-zoom camera, so its name is on screen to be read. */
 const IN_VIEW_LON = -157.8583;
 
 const METRICS: Metrics = {
@@ -455,7 +455,7 @@ const CLOSE_CAMERA = {
 };
 
 /**
- * Where the camera lands if stop 5 is centred in the map left visible above
+ * Where the camera lands if stop 5 is centered in the map left visible above
  * `detent`.
  *
  * Built from the screen's own helpers rather than from a literal, so tuning
@@ -470,7 +470,7 @@ function framedAgainst(detent: number) {
     tabBarOverlapOf(windowHeight, windowHeight, TAB_BAR_HEIGHT),
     METRICS.insets.top,
   );
-  return centredOn(
+  return centeredOn(
     CLOSE_CAMERA,
     { lat: 21.305, lon: -157.85 },
     visibleAbove(detents, detent, windowHeight),
@@ -542,7 +542,7 @@ describe('MapScreen', () => {
     // put the name beside the icon and neither hides it behind a bubble.
     //
     // Stop '7' rather than '5' because `stop` derives latitude from the id, and
-    // only '7' lands near the centre of the close-zoom camera. Anything much
+    // only '7' lands near the center of the close-zoom camera. Anything much
     // further south falls behind the sheet, where labels are deliberately not
     // spent.
     mockNearby.mockResolvedValue([stop('7', 'LAGOON DR', 120, IN_VIEW_LON)]);
@@ -714,7 +714,7 @@ describe('MapScreen', () => {
       lat: expect.closeTo(21.4527, 4),
       lon: -157.8583,
     });
-    // Re-anchored to the screen centre, so the offer is answered and retires.
+    // Re-anchored to the screen center, so the offer is answered and retires.
     expect(screen.queryByLabelText('Search this area')).toBeNull();
   });
 
@@ -782,7 +782,7 @@ describe('MapScreen', () => {
     mockLocation.status = 'error';
 
     await show();
-    await fireEvent.press(screen.getByLabelText('Centre on my location'));
+    await fireEvent.press(screen.getByLabelText('Center on my location'));
 
     expect(mockRequest).toHaveBeenCalledTimes(1);
     expect(mockOpenSettings).not.toHaveBeenCalled();
@@ -822,11 +822,11 @@ describe('MapScreen', () => {
     expect(screen.queryByText(/Tap ⌖ to use your location/)).toBeNull();
   });
 
-  it('asks for location when recentre is tapped, and goes there', async () => {
+  it('asks for location when recenter is tapped, and goes there', async () => {
     mockRequest.mockResolvedValue({ lat: 21.28, lon: -157.83 });
     await show();
 
-    await fireEvent.press(screen.getByLabelText('Centre on my location'));
+    await fireEvent.press(screen.getByLabelText('Center on my location'));
 
     expect(mockRequest).toHaveBeenCalledTimes(1);
     await waitFor(() => {
@@ -873,7 +873,7 @@ describe('MapScreen', () => {
     expect(mockCameraMoves).toEqual([]);
   });
 
-  it('centres the map when Search here is pressed, not when the long press lands', async () => {
+  it('centers the map when Search here is pressed, not when the long press lands', async () => {
     // The one exception, and Truman's call on 2026-08-03: a long press names a
     // point, often near an edge or under the sheet, so answering the question
     // without travelling to it puts the answer where it cannot be seen. The
@@ -1019,7 +1019,7 @@ describe('MapScreen', () => {
       expect(labelOpacity('KAPALULU PL')).toBe(0);
     });
 
-    it('centres the map on a stop chosen from the list', async () => {
+    it('centers the map on a stop chosen from the list', async () => {
       // A row names a stop the rider cannot see: the map behind the sheet is
       // showing whatever it was showing before. So the map goes to it — which
       // is the only thing that makes the list and the map one view rather than
@@ -1037,7 +1037,7 @@ describe('MapScreen', () => {
       expect(mockCameraMoves[0]).toMatchObject({ longitude: -157.85 });
     });
 
-    it('centres against the medium detent, not the one the sheet is leaving', async () => {
+    it('centers against the medium detent, not the one the sheet is leaving', async () => {
       // Selection *raises* the sheet, so framing against the peek it is leaving
       // would put the stop under where the sheet is about to be.
       //
@@ -1465,8 +1465,8 @@ describe('MapScreen', () => {
       await show();
 
       const bar = StyleSheet.flatten(screen.getByLabelText(SEARCH_PLACEHOLDER).props.style);
-      const recentre = StyleSheet.flatten(
-        screen.getByLabelText('Centre on my location').props.style,
+      const recenter = StyleSheet.flatten(
+        screen.getByLabelText('Center on my location').props.style,
       );
       const reported = screen.getByText(/^mapPadding top:/).props.children;
       // `[^-\d]`, not `\D`: stripping the minus sign turns a compass shoved up
@@ -1475,8 +1475,8 @@ describe('MapScreen', () => {
       const top = Number(String(reported).replace(/[^-\d]/g, ''));
       const compassTop = top + COMPASS_LAYOUT_OFFSET.top;
 
-      const barToButton = recentre.top - (bar.top + bar.height);
-      const buttonToCompass = compassTop - (recentre.top + recentre.height);
+      const barToButton = recenter.top - (bar.top + bar.height);
+      const buttonToCompass = compassTop - (recenter.top + recenter.height);
 
       expect(buttonToCompass).toBe(barToButton);
       // And below it, not merely evenly spaced from it — a negative gap would
@@ -1612,7 +1612,7 @@ describe('MapScreen', () => {
         await callout();
         await fireEvent.press(screen.getByLabelText('pin 5'));
         await tapMap();
-        await fireEvent.press(screen.getByLabelText('Centre on my location'));
+        await fireEvent.press(screen.getByLabelText('Center on my location'));
       }
 
       // Still usable at the end of all that, which is the whole assertion.

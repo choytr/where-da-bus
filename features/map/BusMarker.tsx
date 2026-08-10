@@ -41,7 +41,7 @@ const GAP = 3;
 const LABEL_HEIGHT = 14;
 const WIDTH = 150;
 
-/** The view is the dot and nothing else, so the coordinate sits at its centre. */
+/** The view is the dot and nothing else, so the coordinate sits at its center. */
 const ANCHOR = { x: 0.5, y: 0.5 };
 
 /** Long enough to capture a changed bitmap, short enough not to keep redrawing. */

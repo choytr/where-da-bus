@@ -182,7 +182,7 @@ describe('useAnchoredStops', () => {
     expect(result.current.source).toBe('chosen');
   });
 
-  it('recentre gives the anchor back to the location', async () => {
+  it('recenter gives the anchor back to the location', async () => {
     mockLocation.status = 'granted';
     mockLocation.coords = WAIKIKI;
     const { result } = await renderHook(() => useAnchoredStops());
@@ -193,24 +193,24 @@ describe('useAnchoredStops', () => {
     expect(result.current.source).toBe('chosen');
 
     await act(async () => {
-      result.current.recentre();
+      result.current.recenter();
     });
 
     expect(result.current.anchor).toEqual(WAIKIKI);
     expect(result.current.source).toBe('location');
   });
 
-  it('recentre asks for permission when it has never been asked for', async () => {
+  it('recenter asks for permission when it has never been asked for', async () => {
     const { result } = await renderHook(() => useAnchoredStops());
 
     await act(async () => {
-      result.current.recentre();
+      result.current.recenter();
     });
 
     expect(mockLocation.request).toHaveBeenCalledTimes(1);
   });
 
-  it('takes a fresh fix on every recentre', async () => {
+  it('takes a fresh fix on every recenter', async () => {
     // Not "asks only if it has to". The hook used to skip the request when it
     // already held a position, so recentring after a bus ride put the rider
     // back where they boarded — on a transit app, the one moment ⌖ exists for.
@@ -219,10 +219,10 @@ describe('useAnchoredStops', () => {
     const { result } = await renderHook(() => useAnchoredStops());
 
     await act(async () => {
-      await result.current.recentre();
+      await result.current.recenter();
     });
     await act(async () => {
-      await result.current.recentre();
+      await result.current.recenter();
     });
 
     expect(mockLocation.request).toHaveBeenCalledTimes(2);
@@ -234,7 +234,7 @@ describe('useAnchoredStops', () => {
 
     let fix: unknown;
     await act(async () => {
-      fix = await result.current.recentre();
+      fix = await result.current.recenter();
     });
 
     expect(fix).toEqual(WAIKIKI);

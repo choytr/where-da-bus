@@ -17,7 +17,7 @@ import type { StopWithDistance } from '../../../data/gtfs/types';
 
 const VIEWPORT = { width: 400, height: 700, visibleHeight: 700 };
 
-/** Centred on downtown Honolulu, spanning about 1 km. */
+/** Centered on downtown Honolulu, spanning about 1 km. */
 const CLOSE: Region = {
   latitude: 21.3069,
   longitude: -157.8583,
@@ -170,7 +170,7 @@ describe('labelledStopIds', () => {
     // up for the stops I'm looking at." Six of the seven stops here sit under
     // the sheet, and were taking the whole cap with them.
     const behindTheSheet = Array.from({ length: 6 }, (_, i) =>
-      // Well below centre: at this zoom these land past y = 600.
+      // Well below center: at this zoom these land past y = 600.
       stop(`hidden${i}`, 21.3069 - 0.0045 - i * 0.0002, -157.8583, 10 + i),
     );
     const inView = stop('visible', 21.3069, -157.8583, 900);
@@ -189,7 +189,7 @@ describe('labelledStopIds', () => {
     // the stop set belongs to the anchor, not the camera — but they were taking
     // label slots while sitting past the left edge.
     const offToTheLeft = Array.from({ length: 6 }, (_, i) =>
-      // Well west of centre: at this zoom these land past x = 0.
+      // Well west of center: at this zoom these land past x = 0.
       stop(`west${i}`, 21.3069 - i * 0.0012, -157.8583 - 0.008, 10 + i),
     );
     const inView = stop('visible', 21.3069, -157.8583, 900);
@@ -297,7 +297,7 @@ describe('scaleOf', () => {
 });
 
 /**
- * A bus at the centre of `CLOSE`. At this zoom 0.0001° of latitude is 7 points
+ * A bus at the center of `CLOSE`. At this zoom 0.0001° of latitude is 7 points
  * and 0.0001° of longitude is 4, which is what the offsets below are counted in.
  */
 function bus(number: string, lat = 21.3069, lon = -157.8583): LabelledBus {

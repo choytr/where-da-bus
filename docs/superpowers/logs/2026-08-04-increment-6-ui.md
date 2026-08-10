@@ -53,7 +53,7 @@ distinct `fontSize` literals across 71 usages (11, 12, 13, 14, 15, 16, 17, 20,
 
 ### Map
 
-**M5. The recentre button is too high and collides with map labels.** *Observed*
+**M5. The recenter button is too high and collides with map labels.** *Observed*
 in `IMG_4378`/`4379`: it overlaps the "Kamehameha Schools – Kapālama High School"
 label. When the compass appears (`IMG_4381` on) the two stack at different sizes
 and different horizontal offsets, which reads as two unrelated controls rather
@@ -74,10 +74,10 @@ anything is changed.
 identical red pins carry no information — not which stop is nearest, not which
 has a bus soon, not which is favorited.
 
-**M9. The *Search this area* pill sits directly beneath the recentre button** at
-the top centre-right. *Observed* `IMG_4378`. Not overlapping, but crowded.
+**M9. The *Search this area* pill sits directly beneath the recenter button** at
+the top center-right. *Observed* `IMG_4378`. Not overlapping, but crowded.
 
-**M10. The *Search here* callout text IS centred on its pin.** *Observed*
+**M10. The *Search here* callout text IS centered on its pin.** *Observed*
 `IMG_4380`. This confirms Truman's report and **the backlog entry claiming
 otherwise is dead** — deleted rather than struck through.
 
@@ -188,7 +188,7 @@ still knows which stop they are looking at. Below the button is a large empty
 expanse, which is the only complaint.
 
 **F32. The full-screen arrivals failure state loses the stop entirely.**
-*Observed* `IMG_4392`: header "Arrivals", then a centred
+*Observed* `IMG_4392`: header "Arrivals", then a centered
 "Could not reach the bus service." and `Try again` on an otherwise empty screen.
 **No stop name, no stop code, no attribution.** You cannot tell which stop
 failed. The same application state renders two different ways depending on which
@@ -423,7 +423,7 @@ answers, so they are not re-asked:
 
 **`IMG_4475`, Apple Maps.** Each stop is a small blue rounded-square tile with a
 white bus glyph. The stop's name is written **beneath** the tile in white with a
-dark halo, centred, wrapping to three lines, always visible — no tap, no bubble.
+dark halo, centered, wrapping to three lines, always visible — no tap, no bubble.
 Tiles carrying more than one stop show a number in place of the glyph and a
 `+1 more` line under the name. Nothing on that map is a teardrop.
 
@@ -659,7 +659,7 @@ stops I'm looking at."
 the map is full-screen and the camera's region spans the whole window. Every
 stop separation therefore came out short by the sheet's fraction: boxes
 comfortably apart on screen were computed as touching, which over-culled, while
-the skewed centre let genuine overlaps through. One mistake, both symptoms.
+the skewed center let genuine overlaps through. One mistake, both symptoms.
 
 Fixed by projecting against the full window height and passing `visibleHeight`
 separately — which turned out to be worth having anyway: **stops behind the

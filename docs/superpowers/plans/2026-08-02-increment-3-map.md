@@ -102,7 +102,7 @@ Every `render`/`renderHook`/`rerender`/`unmount` is awaited — see `CLAUDE.md`.
 
 - `npx expo install react-native-maps react-native-reanimated
   react-native-gesture-handler` — all three bundled in Expo Go SDK 54
-- `app/(tabs)/index.tsx` renders a full-screen `MapView` centred on Honolulu,
+- `app/(tabs)/index.tsx` renders a full-screen `MapView` centered on Honolulu,
   nothing else
 - **Run `npm ci` after this task**, not just `npm test` — the `react-dom` peer
   break is exactly this shape
@@ -114,7 +114,7 @@ Every `render`/`renderHook`/`rerender`/`unmount` is awaited — see `CLAUDE.md`.
 
 - `features/map/useAnchoredStops.ts` + `__tests__`
 - `useAnchoredStops(): { anchor: Coords; stops: StopWithDistance[]; setAnchor:
-  (c: Coords) => void; recentre: () => void; status }`
+  (c: Coords) => void; recenter: () => void; status }`
 - Wraps `useStopQueries().nearby` — the existing 1.5 km / 25 query, unchanged.
   Anchor defaults to `useLocation()`'s coords, Honolulu when denied.
 - Queries **only** on anchor change. No pan or zoom handler exists.
@@ -127,8 +127,8 @@ Every `render`/`renderHook`/`rerender`/`unmount` is awaited — see `CLAUDE.md`.
 - Pins from task 8's `stops`; `onPress` on the map sets the anchor, `onPress` on
   a marker selects — `react-native-maps` fires these separately
 - Sheet holds one list of the same `stops`; detents peek / medium / full
-- Recentre button; empty state when the anchor has no stops
-- Tests: pins and rows render the same set; map press moves the anchor; recentre
+- Recenter button; empty state when the anchor has no stops
+- Tests: pins and rows render the same set; map press moves the anchor; recenter
   restores the user's location; denied location renders the Honolulu default
   with a prompt
 
@@ -165,12 +165,12 @@ and the onboarding half is not.
   refresh sets it
 - The shared `theBus` instance in `data/thebus/index.ts` is now wrapped
 
-The comparison's second item — don't recentre the camera on a refresh the user
+The comparison's second item — don't recenter the camera on a refresh the user
 did not ask for — belongs to task 9 and is noted there.
 
 ## 9. Map, pins, sheet — note added
 
-- **Do not recentre on every poll.** Keep a "have we centred yet" flag, as
+- **Do not recenter on every poll.** Keep a "have we centered yet" flag, as
   TheBusLive's `VehicleMapViewModel` does, or a refresh yanks the view back
   while the user is panning.
 

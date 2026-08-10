@@ -179,7 +179,7 @@ of ten is worse than one that is absent.
 Behaviour a rider would see is Truman's; these are not, and are recorded so they
 are not re-opened. See the memory note of 2026-08-09.
 
-- **Tapping a route stop in the sheet centres the map on it**; tapping its pin
+- **Tapping a route stop in the sheet centers the map on it**; tapping its pin
   does not. Increment 7's rule, unchanged.
 - **Tapping a bus does nothing yet.**
 - **The XML parser is hand-rolled rather than a dependency.** The document is

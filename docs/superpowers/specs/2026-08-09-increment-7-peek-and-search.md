@@ -101,8 +101,8 @@ screen and no crowding to solve. The peek pays for itself in height instead.
 
 ## Selecting a stop moves the map
 
-**Tapping a row in the sheet centres the map on that stop**, in the middle of
-the part a rider can actually see. `centredOn()` already does exactly this and
+**Tapping a row in the sheet centers the map on that stop**, in the middle of
+the part a rider can actually see. `centeredOn()` already does exactly this and
 is tested; what changes is that selection calls it.
 
 **Against the detent the sheet is heading to**, `MEDIUM_DETENT`, not the one it

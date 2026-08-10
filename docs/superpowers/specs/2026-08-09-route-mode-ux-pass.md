@@ -96,7 +96,7 @@ Crossing the threshold costs one re-snapshot of the set, once.
 **The wrapper view stays 34 pt at both scales, and that is not cosmetic.**
 `AIRMapMarker.reactSetFrame:` sizes the annotation view from the React layout,
 MapKit hit-tests annotation views by frame, and that same method shifts the
-marker's centre whenever the view's height changes in order to keep its bottom
+marker's center whenever the view's height changes in order to keep its bottom
 edge over the same spot. A wrapper that shrank with the dot would make forty
 stops untappable *and* move every one of them. Both facts are already recorded
 in `StopMarker`'s own header; this design depends on them and changes neither.

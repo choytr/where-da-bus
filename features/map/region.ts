@@ -38,7 +38,7 @@ export type Region = {
  * a window that is subtly narrower than the query on one axis only.
  *
  * `visibleFraction` is how much of the screen's height is not under the sheet.
- * The window is widened by that fraction and its centre pushed *south*, so
+ * The window is widened by that fraction and its center pushed *south*, so
  * what a rider can actually see is the radius rather than a circle half hidden
  * behind a bottom sheet. This is arithmetic on purpose. `mapPadding` looks
  * like the built-in way to do it and is not: on Apple Maps `AIRMap.m:645`
@@ -59,8 +59,8 @@ export function regionAround(
   const visible = Math.min(Math.max(visibleFraction, 0.1), 1);
   const latitudeDelta = framingDelta / visible;
 
-  // The visible strip's centre sits (1 - visible) / 2 of the window's height
-  // above the window's own centre, so the centre goes that far south.
+  // The visible strip's center sits (1 - visible) / 2 of the window's height
+  // above the window's own center, so the center goes that far south.
   const shift = ((1 - visible) / 2) * latitudeDelta;
 
   return {
@@ -84,13 +84,13 @@ export function visibleWidthMetres(camera: Region): number {
 /**
  * The point in the middle of the part of the map a rider can actually see.
  *
- * Not `camera.latitude`. `regionAround` pushes the window's centre south so the
- * radius lands above the sheet, which means the window's centre is under the
+ * Not `camera.latitude`. `regionAround` pushes the window's center south so the
+ * radius lands above the sheet, which means the window's center is under the
  * sheet by construction — up to 1.4 km from the anchor at the medium detent.
  * Anything reasoning about "where the rider is looking" has to undo that first,
  * or the map is judged to have drifted the instant it is framed.
  */
-export function visibleCentre(camera: Region, visibleFraction = 1): Coords {
+export function visibleCenter(camera: Region, visibleFraction = 1): Coords {
   const shift = ((1 - visibleFraction) / 2) * camera.latitudeDelta;
   return { lat: camera.latitude + shift, lon: camera.longitude };
 }
@@ -105,9 +105,9 @@ export function visibleCentre(camera: Region, visibleFraction = 1): Coords {
  * asks about a point on it: they chose that zoom, and rebuilding the window
  * from the radius throws it away to answer a question they did not ask.
  *
- * The inverse of `visibleCentre`, and tested as such.
+ * The inverse of `visibleCenter`, and tested as such.
  */
-export function centredOn(camera: Region, target: Coords, visibleFraction = 1): Region {
+export function centeredOn(camera: Region, target: Coords, visibleFraction = 1): Region {
   const shift = ((1 - visibleFraction) / 2) * camera.latitudeDelta;
   return {
     ...camera,
@@ -132,7 +132,7 @@ export function hasDriftedFrom(
   fraction: number,
   visibleFraction = 1,
 ): boolean {
-  const away = metersBetween(anchor, visibleCentre(camera, visibleFraction));
+  const away = metersBetween(anchor, visibleCenter(camera, visibleFraction));
   return away > visibleWidthMetres(camera) * fraction;
 }
 

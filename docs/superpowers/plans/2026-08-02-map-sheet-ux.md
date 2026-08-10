@@ -83,8 +83,8 @@ the settled index.
   reading **Search here** via the marker ref's `showCallout()`. Only the
   callout's press calls `setAnchor`.
 - Track the camera through `onRegionChangeComplete`; show a *Search this area*
-  control once the centre is further from the anchor than **25% of the visible
-  width**. Re-anchors to screen centre and hides itself.
+  control once the center is further from the anchor than **25% of the visible
+  width**. Re-anchors to screen center and hides itself.
 - The threshold is a guess to be tuned on a device, and is a named constant so
   that is a one-line change
 - Tests: `a tap on the map does not move the anchor`; `a tap on the map clears
@@ -98,7 +98,7 @@ the settled index.
 - **Delete the `useEffect` on `[region]`.** It is the mechanism that makes every
   anchor change move the camera, which is precisely what must stop.
 - Animate imperatively from ⌖ and from the first location fix, and nowhere else
-- `regionAround(center, radiusMetres, visibleFraction = 1)` — shifts the centre
+- `regionAround(center, radiusMetres, visibleFraction = 1)` — shifts the center
   south and widens the span so the radius lands in the strip above the sheet.
   Pure arithmetic, so it is tested rather than inferred.
 - `mapPadding` set from the settled detent as well — **not** as the centring
@@ -115,14 +115,14 @@ the settled index.
 - `features/stops/useLocation.ts`, `features/map/useAnchoredStops.ts`,
   `features/map/MapScreen.tsx`, and their suites
 - `MapView`'s `onMapReady` calls `request()` once, when status is `'idle'`
-- `recentre()` **always** takes a fresh fix when permission is granted — the
+- `recenter()` **always** takes a fresh fix when permission is granted — the
   cached one is why ⌖ returned a rider to where they boarded
 - ⌖ shows a busy state while the fix is in flight
 - `'denied'` → ⌖ calls `Linking.openSettings()` (expo-linking, already a
   dependency) and the banner says location is off and can be turned on there.
   `'error'` → ⌖ retries. Closes the backlog's *"`error` is terminal"*.
 - Tests: `asks for location once the map is ready`; `does not ask again after a
-  denial`; `takes a fresh fix on every recentre`; `opens Settings when location
+  denial`; `takes a fresh fix on every recenter`; `opens Settings when location
   was denied`; `retries after a location error`
 
 ## 8. Close what this supersedes
@@ -179,7 +179,7 @@ know:
    `MapScreen` keeps only `DRIFT_FRACTION`. Same reasoning task 6 gives for
    centring by arithmetic.
 4. **`useLocation`'s `request()` now returns the fix**, and `useAnchoredStops`
-   gained `requestLocation` alongside `recentre`. ⌖ has to move the camera
+   gained `requestLocation` alongside `recenter`. ⌖ has to move the camera
    onto *this* fix; watching state for a change and guessing whether it was
    yours is the version that goes wrong when two things ask at once.
 5. **`StopCard` has a *Try again* button.** No `refreshControl`, as specified —
@@ -201,19 +201,19 @@ questions above are answered, and two produced work.
    the whole experience, and half of the one after it says "there is more here"
    without a rider having to be told. The detent is not raised.
 2. **The long-press callout appears where the finger is.** Its text is not
-   centred on the pin — shifted right. Deferred as UI polish, in the backlog.
+   centered on the pin — shifted right. Deferred as UI polish, in the backlog.
 3. **25% is about right**, but the offer must not blink out. *Search this area*
    now sticks until the anchor moves, keyed to the anchor rather than to a
    flag, so a camera settling back inside the threshold no longer retires it.
 
-And one reversal, taken knowingly: **`Search here` now centres the camera on
+And one reversal, taken knowingly: **`Search here` now centers the camera on
 the point long-pressed.** See the amendment in the spec's Revision. *Search
 this area* deliberately still does not.
 
 A second device round the same day caught the first version of that doing too
 much: it reframed on the query radius rather than panning, discarding a zoom
-the rider had chosen. `centredOn` in `region.ts` moves a window without
-touching its spans, and is the inverse of `visibleCentre`. **⌖ and the first
+the rider had chosen. `centeredOn` in `region.ts` moves a window without
+touching its spans, and is the inverse of `visibleCenter`. **⌖ and the first
 fix still reframe** — both are the map being opened on somewhere, which is a
 different act from going to a point on a street already on screen.
 

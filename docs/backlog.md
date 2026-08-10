@@ -62,7 +62,7 @@ wrong, correct the entry rather than only the code.
 - `routesForStopsSql(0)` would emit `IN ()`, which SQLite rejects. Unreachable
   today (guarded in `db.ts`); `stopsByIdsSql` shares the shape.
 - `AppShell`'s `Waiting`, `Unavailable` and `Unexpected` consume no insets. Safe
-  only because their content is vertically centred.
+  only because their content is vertically centered.
 
 ## Self-refreshing data (Increment 5)
 
@@ -85,9 +85,11 @@ wrong, correct the entry rather than only the code.
 
 ## Screens
 
-- **The stack header on the arrivals screen reads "Arrivals", not the stop
-  name.** The name is the first thing in the list body, so nothing is hidden; a
-  dynamic title would read better.
+- ~~**The stack header on the arrivals screen reads "Arrivals", not the stop
+  name.**~~ **Closed 2026-08-09, as working-as-intended.** Reviewed by Truman
+  against the built app: the stop name header sits directly under the stack
+  header in the screen body, so a dynamic title would say the same thing twice.
+  *"The arrivals screen can keep the header."* Do not reopen this as polish.
 - **Route detail shows no arrival times.** It is the ordered stop list and
   nothing else. Times per stop would mean one API request per stop.
 - **Deep links are unverified.** `scheme: wheredabus` is set and the routes are
@@ -96,14 +98,14 @@ wrong, correct the entry rather than only the code.
   countdowns. Fine at 25 rows; worth memoising if it grows.
 - **`useArrivals` treats iOS's `inactive` exactly like `background`.** Its
   `AppState` handler branches on `status === 'active'` and sends everything else
-  down the pause-and-abort path, so a Control Centre pull, the app-switcher
+  down the pause-and-abort path, so a Control Center pull, the app-switcher
   gesture, or a system dialog (including the location prompt) aborts the request
   in flight and then refetches the moment it is dismissed. One extra request per
   peek, against a quota shared by every install of the app.
 
   **This is a reading of documented `AppState` semantics, not something
   observed** — no one has counted requests on a device. It is also not obviously
-  wrong: coming back from a ten-second glance at Control Centre and seeing
+  wrong: coming back from a ten-second glance at Control Center and seeing
   ten-second-old times is the behaviour the immediate refetch exists for. Worth
   measuring before changing, and worth changing only with a device to check it
   on.
@@ -137,11 +139,55 @@ wrong, correct the entry rather than only the code.
   it up: `BusMarker` currently sets `pointerEvents="none"` on its wrapper and
   passes no `onPress`.
 - Route chips flicker for one frame when search clears, and stale entries
-  persist when the id list is empty.
+  persist when the id list is empty. **Truman could not reproduce this on the
+  Increment 8 `.ipa`, 2026-08-09, and did not recognise the description.** It
+  came from a code review, never from a device. Either it is below the
+  threshold of noticing or it no longer happens. **Reproduce it before spending
+  anything on it**, and delete this entry if a device round says it is gone.
 - The favorite `Pressable` lacks `accessibilityState={{ selected: isFavorite }}`.
   The label already communicates state, so VoiceOver is correct — cosmetic.
 
 ### Map, from the device rounds
+
+- **Buses appear off the route line, because both directions' buses are drawn
+  against one direction's line.** Reported by Truman from the Increment 8
+  `.ipa`, 2026-08-09, with two screenshots of Route 2
+  (`~/wheredabus-device/screenshots/2026-08-09/IMG_4666.png`, `IMG_4667.png`):
+  *"Sometimes a live bus is off of the route line. What's up with that?"*
+
+  **Measured, not inferred.** `useVehicles` filters the fleet on
+  `sameRoute(vehicle.route, route)` and on freshness, and **on nothing else** —
+  there is no direction term. The live feed at 21:29 that evening had 8 buses on
+  Route 2, splitting exactly two ways by `headsign`:
+
+  | headsign | count |
+  |---|---|
+  | `KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN` | 4 |
+  | `WAIKIKI - KAPIOLANI CC - DIAMOND HEAD` | 4 |
+
+  The sheet read *Toward KALIHI TRANSIT CENTER*, and bus 889 — the one sitting a
+  block off the line in `IMG_4666` — was a `WAIKIKI` bus. It was drawn in the
+  right place; it belongs to the other direction, which in that stretch runs the
+  parallel one-way street. **The position is not wrong and MapKit is not
+  wrong.**
+
+  **The join exists and is cheap.** GTFS `trips.txt` carries
+  `trip_headsign` alongside `direction_id`, and the strings are *byte-identical*
+  to what the live feed returns — `KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN`
+  appears verbatim in both. Distinct `(route, direction, headsign)` triples for
+  the whole island: **333 rows**, so this is a ~15 KB table and a schema bump,
+  not the ~500 KB a `trip_id → direction_id` table would cost (37,678 trips).
+
+  **Two things whoever picks this up must know.** *A direction can have several
+  headsigns* — Route 2 direction `1` has five, including `ALAPAI TRANSIT CENTER`
+  and three Waikiki variants, so the mapping is many-to-one and a single
+  equality test is wrong. And *twelve routes reuse one headsign across both
+  directions*, where the headsign cannot disambiguate at all: **123, 14, 444,
+  51, 52, 521, 53, 535, 54, 6, 7, 8** — mostly loops, where "direction" is a
+  weak idea to begin with. Those routes need a fallback (geometry against the
+  drawn polyline is the obvious one) or an accepted known gap.
+
+  Not yet triaged into or out of any increment.
 
 - ~~**Bus labels are unreadable with every stop pin showing.**~~ and
   ~~**Stop pins cover the route line.**~~ **Both done**, 2026-08-09, in the route
@@ -182,28 +228,9 @@ wrong, correct the entry rather than only the code.
   geocoder (a second key and a second terms-of-use) or ranking the confirmation
   down when the returned street number differs from the typed one.
 
-- **The "no location permission" banner flashes on launch before the fix
-  arrives.** Observed by Truman in Expo Go, 2026-08-09, and triaged by him as
-  minor: "the location stuff works. It's not ideal, but it works."
-
-  `MapScreen` renders the banner whenever `source === 'fallback'` and
-  `locationStatus !== 'loading'`. On a cold launch `locationStatus` starts at
-  `'idle'`, and the anchor is the downtown fallback — both true for the window
-  between the map drawing and `onMapReady` moving the status to `'loading'`, so
-  the banner is briefly correct and then wrong.
-
-  The obvious fix is to suppress it while the status is still `'idle'`, but
-  `'idle'` is also the resting state of a launch where the rider never gets a
-  prompt at all, and suppressing it there would remove the only thing telling
-  them ⌖ exists. **Whatever is done here needs a device round to confirm**, and
-  the flash costs nothing today.
-
 Both cosmetic, and Truman was explicit about the order: "UI design needs work,
 but that'll come later. Functionality first."
 
-- **The *Search here* callout's text is not centred on its pin.** The bubble is
-  drawn by this app rather than by MapKit, so the fix is ours and is a layout
-  one.
 - **The card's header and the arrivals screen's disagree.** `StopCard` shows
   distance and route-number chips; `/stop/[code]` shows neither. He prefers the
   card's. Adding chips to `ArrivalsScreen` costs it a `routesForStops` query it
@@ -500,7 +527,7 @@ list's `onLayout` frame — rather than read.
 
 **`mapPadding` is not the centring mechanism on Apple Maps.** `AIRMap.m:645`
 assigns it to `layoutMargins`; the Google branch sets `padding`, which does move
-the camera. `region.ts` centres by arithmetic instead, which cannot be wrong
+the camera. `region.ts` centers by arithmetic instead, which cannot be wrong
 about MapKit because it never asks. **This is a reading of native source, not an
 observation** — the same move that produced the two wrong claims above.
 

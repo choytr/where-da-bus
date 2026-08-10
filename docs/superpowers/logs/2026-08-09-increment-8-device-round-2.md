@@ -141,7 +141,7 @@ six were changed together on 2026-08-09 and confirmed by nothing.
       the search bar, right edges aligned, not under the bar
 - [ ] **Launch flash**: force-quit and relaunch three or four times. *"Showing
       downtown Honolulu"* must never appear, even for one frame
-- [ ] ⌖ recentres and the map travels to you
+- [ ] ⌖ recenters and the map travels to you
 - [ ] *Search this area* appears after panning away — and **does not** appear
       while a route is showing
 - [ ] Long press drops a pin, *Search here* takes it up and pans there

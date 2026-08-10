@@ -225,7 +225,7 @@ card's band reads `‹ Route 1 · ★` where it read `‹ Nearby · ★`. **Word
 treatment are provisional** — Truman asked for the current direction to be made
 unmistakable and will confirm it on a device.
 
-**Also:** a route stop tapped in the sheet centres the map; its pin does not
+**Also:** a route stop tapped in the sheet centers the map; its pin does not
 (Increment 7's rule). Selecting a pin in route mode opens the card and its back
 control returns to the route list, not to nearby. The legend is pinned in route
 mode like every other Data-showing mode, and still omitted at the peek. **Hide

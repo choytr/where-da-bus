@@ -758,7 +758,7 @@ describe('boundingBox', () => {
     assert.ok(large.minLon < small.minLon);
   });
 
-  test('brackets the centre point', () => {
+  test('brackets the center point', () => {
     const box = boundingBox({ lat: 21.3, lon: -157.9 }, 500);
     assert.ok(box.minLat < 21.3 && box.maxLat > 21.3);
     assert.ok(box.minLon < -157.9 && box.maxLon > -157.9);

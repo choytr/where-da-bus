@@ -21,10 +21,10 @@ import { RouteLine } from './RouteLine';
 import { BusMarker } from './BusMarker';
 import { useVehicles, type BusOnMap } from './useVehicles';
 import {
-  centredOn,
+  centeredOn,
   hasDriftedFrom,
   regionAround,
-  visibleCentre,
+  visibleCenter,
   type Region,
 } from './region';
 import {
@@ -71,7 +71,7 @@ import { metersBetween, type Coords } from '../../lib/distance';
  * decides whether to offer.
  */
 
-const RECENTRE_LABEL = 'Centre on my location';
+const RECENTER_LABEL = 'Center on my location';
 const SETTINGS_LABEL = 'Turn on location in Settings';
 
 /**
@@ -238,7 +238,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
     stops,
     status,
     setAnchor,
-    recentre,
+    recenter,
     requestLocation,
     locationStatus,
   } = useAnchoredStops();
@@ -298,7 +298,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const onCameraSettled = useCallback(
     (region: Region) => {
       setCamera(region);
-      // Against the *visible* centre, not the window's — the window's centre is
+      // Against the *visible* center, not the window's — the window's center is
       // under the sheet on purpose, see `regionAround`.
       if (
         hasDriftedFrom(anchor, region, DRIFT_FRACTION, visibleAbove(detents, detent, mapHeight))
@@ -396,7 +396,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   );
 
   /**
-   * The camera moves in exactly four situations: a ⌖ recentre, the first time
+   * The camera moves in exactly four situations: a ⌖ recenter, the first time
    * the anchor turns out to be the rider's own location, a *Search here* taken
    * up from a long press, and a stop picked out of the search. Nowhere else —
    * not on a pin tap, not on a poll, and not on *Search this area*.
@@ -430,7 +430,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
 
   /**
    * Travel without zooming: the window keeps the spans it already has and only
-   * its centre moves. `frameOn` rebuilds the window from the query radius,
+   * its center moves. `frameOn` rebuilds the window from the query radius,
    * which is right for opening the map on somewhere and wrong for going to a
    * point on a street a rider has already zoomed into.
    *
@@ -445,7 +445,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
       // ones to preserve.
       const base = camera ?? region;
       map.current?.animateToRegion(
-        centredOn(base, center, visibleAbove(detents, against, mapHeight)),
+        centeredOn(base, center, visibleAbove(detents, against, mapHeight)),
         CAMERA_MS,
       );
     },
@@ -790,7 +790,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
 
   const searchThisArea = useCallback(() => {
     if (camera === null) return;
-    searchFrom(visibleCentre(camera, visibleAbove(detents, detent, mapHeight)));
+    searchFrom(visibleCenter(camera, visibleAbove(detents, detent, mapHeight)));
   }, [camera, detent, detents, mapHeight, searchFrom]);
 
   /**
@@ -1063,7 +1063,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * single accidental "Don't Allow" from being permanent. An `error` is
    * different — nothing was refused, so the fix is to ask again.
    */
-  const onRecentre = useCallback(async () => {
+  const onRecenter = useCallback(async () => {
     if (locationStatus === 'denied') {
       void Linking.openSettings();
       return;
@@ -1077,12 +1077,12 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
 
     setLocating(true);
     try {
-      const coords = await recentre();
+      const coords = await recenter();
       if (coords !== null) frameOn(coords);
     } finally {
       setLocating(false);
     }
-  }, [locationStatus, recentre, frameOn]);
+  }, [locationStatus, recenter, frameOn]);
 
   /**
    * The prompt is tied to *opening the map*, which is a deliberate act, rather
@@ -1256,20 +1256,20 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
       <Pressable
         accessibilityRole="button"
         // The label follows what the button will actually do. A ⌖ that opens
-        // Settings and announces itself as "centre on my location" is a lie to
+        // Settings and announces itself as "center on my location" is a lie to
         // exactly the riders who most need to be told.
-        accessibilityLabel={locationStatus === 'denied' ? SETTINGS_LABEL : RECENTRE_LABEL}
+        accessibilityLabel={locationStatus === 'denied' ? SETTINGS_LABEL : RECENTER_LABEL}
         accessibilityState={{ busy: locating }}
-        onPress={onRecentre}
+        onPress={onRecenter}
         style={[
-          styles.recentre,
+          styles.recenter,
           { top: controlsTop, backgroundColor: palette.background, borderColor: palette.border },
         ]}
       >
         {locating ? (
           <ActivityIndicator />
         ) : (
-          <Text style={[styles.recentreGlyph, { color: palette.text }]}>⌖</Text>
+          <Text style={[styles.recenterGlyph, { color: palette.text }]}>⌖</Text>
         )}
       </Pressable>
 
@@ -1356,7 +1356,7 @@ const styles = StyleSheet.create({
     opacity: 0.95,
   },
   promptText: { fontSize: 13, lineHeight: 18 },
-  recentre: {
+  recenter: {
     position: 'absolute',
     // The same constants the compass lines itself up against, so the two
     // cannot drift apart by editing one of them.
@@ -1368,7 +1368,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  recentreGlyph: { fontSize: 22, lineHeight: 26 },
+  recenterGlyph: { fontSize: 22, lineHeight: 26 },
   searchArea: {
     position: 'absolute',
     alignSelf: 'center',

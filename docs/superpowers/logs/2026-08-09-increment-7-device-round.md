@@ -46,7 +46,7 @@ Both changed on 2026-08-09; the gap fix is unconfirmed.
       bar
 - [ ] **Launch flash**: force-quit and relaunch three or four times. *"Showing
       downtown Honolulu"* must never appear, even for one frame
-- [ ] ⌖ recentres and the map travels to you
+- [ ] ⌖ recenters and the map travels to you
 - [ ] *Search this area* appears after panning away, and re-anchors without
       moving the camera
 - [ ] Long press drops a pin, *Search here* takes it up and pans there

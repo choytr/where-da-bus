@@ -47,11 +47,46 @@ These are basic instructions for how I've been sideloading it on my phone with a
 - **Stop data that keeps itself current.** A copy ships with the app as a floor, and a fresher one is fetched in the background when the published feed changes, so the data doesn't go stale between builds.
 - **Error states that tell you the truth.** "No buses coming" and "couldn't reach the API" never look alike, and a spinner never replaces times you already had. It shows you the stale ones with an age instead.
 
+## Architecture
+
+**Two data sources, and the split between them is the load-bearing decision.** Anything time-sensitive — arrival times, where the buses are — comes from the live API on every view. Everything static — stop names, the codes on the signs, coordinates, route shapes, which routes serve which stop — comes from a [GTFS](https://gtfs.org) feed baked into a SQLite file. Oahu's feed is not fresh enough to be trusted for arrival times, so it is never asked about them.
+
+That means the app is useful with no network at all: the map draws, the stops are there, and a route's stop list reads fine offline. Only the times go missing, and the UI says so rather than showing a spinner forever.
+
+```
+app/                 every file is a route (expo-router) — three lines each
+features/            the actual screens: map, stops, arrivals, routes, search, settings
+data/thebus/         TheBusClient — the only thing that touches the live API
+data/gtfs/           the SQL, and the hooks that open the database
+scripts/build-gtfs/  the feed -> assets/db/gtfs.db
+```
+
+Three boundaries carry the weight. **`TheBusClient` is an interface**, because the vendor's JSON is string-typed throughout, disagrees with its own field tables, and uses `"0"` and `"???"` as sentinels — that mapping is real work and it belongs in one place rather than in a screen. **The API key belongs to the user**, lives in the device keychain, and gates the whole app: no key, no screens, so "no key yet" never becomes a state every data view has to render. And **error states are a feature** — loading, data-with-an-age, and error-with-last-known-values are three different things, because "no buses coming" and "couldn't reach the API" must never look alike at a stop at night.
+
+### The database builds itself
+
+Nobody runs the build script by hand, and the `.db` in the repo is not the one you end up using.
+
+```mermaid
+flowchart LR
+  A["Oahu's GTFS feed<br/>~88 MB of .txt"] -->|weekly cron| B["gtfs-data.yml<br/>on GitHub Actions"]
+  B -->|only if the feed changed| C["build-gtfs<br/>~1.2 MB SQLite"]
+  C --> D["release tag 'data'<br/>gtfs-v&lt;schema&gt;-&lt;builtAt&gt;.db<br/>+ manifest.json"]
+  D -->|checked shortly after launch| E["the app"]
+  F["assets/db/gtfs.db<br/>bundled floor"] --> E
+```
+
+`.github/workflows/gtfs-data.yml` runs Mondays, downloads the feed, and **exits without publishing if it hasn't changed**. When it has, the build script reads it — including the 73 MB `stop_times.txt` — and emits about 1.2 MB holding only the relationships those files imply. No `.txt` ever ships, and `stop_times.txt` in particular is deliberately never an asset: it is tens of megabytes answering a question the live arrivals endpoint already answers.
+
+The app checks `manifest.json` shortly after launch, **verifies the `sha256` and counts the rows in the download before trusting it**, and then moves a stored pointer — it does not swap the database underneath a running screen. The build you download now is the one you open next launch.
+
+`assets/db/gtfs.db` stays committed and bundled as a **floor**. That is what makes every failure in the chain — no network, a bad hash, a truncated download, a release that never got published — degrade to *stale data* rather than to *no data*. The schema version is part of the published filename, so an old build is never handed a database it cannot read.
+
+The feed also states the last day it is valid through; the build carries that into the file, and Settings says so once that day has passed.
+
 ## Development
 
-Static stop data is baked into the app as a SQLite file; anything time-sensitive comes from the live API. The [GTFS](https://gtfs.org) feed Oahu publishes is not fresh enough to be trusted for arrival times, so it only ever supplies stop names, codes, coordinates, route shapes, and which routes serve which stop.
-
-That file is not updated by hand. A weekly GitHub Action rebuilds it from the feed and publishes it to a fixed release tag; the app checks the manifest shortly after launch, verifies the hash and counts the rows before trusting a download, and keeps the bundled copy as a floor — so every failure in that chain degrades to stale data rather than to no data.
+Two test runners, deliberately. Jest covers everything that imports React Native; the GTFS build script and the SQL are plain Node and run under `node --test` against the real built asset, with no React Native in the program at all. A change to the database layer needs both.
 
 ```bash
 npm start              # Expo dev server — scan the QR with Expo Go. The normal dev loop.

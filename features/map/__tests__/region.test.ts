@@ -1,8 +1,8 @@
 import {
-  centredOn,
+  centeredOn,
   hasDriftedFrom,
   regionAround,
-  visibleCentre,
+  visibleCenter,
   visibleWidthMetres,
 } from '../region';
 import { metersBetween } from '../../../lib/distance';
@@ -10,7 +10,7 @@ import { metersBetween } from '../../../lib/distance';
 const HONOLULU = { lat: 21.3069, lon: -157.8583 };
 
 describe('regionAround', () => {
-  it('centres on the anchor', () => {
+  it('centers on the anchor', () => {
     const region = regionAround(HONOLULU, 1500);
     expect(region.latitude).toBe(HONOLULU.lat);
     expect(region.longitude).toBe(HONOLULU.lon);
@@ -71,7 +71,7 @@ describe('regionAround', () => {
     // The medium detent: 45% of the screen is sheet, 55% is map.
     const covered = regionAround(HONOLULU, 1500, 0.55);
 
-    // The centre goes south, because the visible strip is the top of the window.
+    // The center goes south, because the visible strip is the top of the window.
     expect(covered.latitude).toBeLessThan(HONOLULU.lat);
 
     // And the anchor comes out in the middle of that strip, not the window.
@@ -108,7 +108,7 @@ describe('hasDriftedFrom', () => {
     expect(hasDriftedFrom(HONOLULU, north(200), 0.25)).toBe(false);
   });
 
-  it('is true once the centre passes the fraction of the visible width', () => {
+  it('is true once the center passes the fraction of the visible width', () => {
     const quarter = visibleWidthMetres(framing) * 0.25;
 
     expect(hasDriftedFrom(HONOLULU, north(quarter * 0.9), 0.25)).toBe(false);
@@ -116,7 +116,7 @@ describe('hasDriftedFrom', () => {
   });
 
   it('is false for the very window regionAround just produced', () => {
-    // The one that catches the off-by-a-sheet. `regionAround` centres the
+    // The one that catches the off-by-a-sheet. `regionAround` centers the
     // *window* well south of the anchor so the radius lands above the sheet,
     // so measuring drift from `camera.latitude` marks a map as drifted the
     // instant it is framed — and offers to re-search what it is already
@@ -124,7 +124,7 @@ describe('hasDriftedFrom', () => {
     const framed = regionAround(HONOLULU, 1500, 0.55);
 
     expect(hasDriftedFrom(HONOLULU, framed, 0.25, 0.55)).toBe(false);
-    expect(metersBetween(HONOLULU, visibleCentre(framed, 0.55))).toBeCloseTo(0, 6);
+    expect(metersBetween(HONOLULU, visibleCenter(framed, 0.55))).toBeCloseTo(0, 6);
   });
 
   it('means the same thing at every zoom', () => {
@@ -139,7 +139,7 @@ describe('hasDriftedFrom', () => {
   });
 });
 
-describe('centredOn', () => {
+describe('centeredOn', () => {
   /** A rider who has zoomed well past the query radius, down to a street. */
   const zoomedIn = { latitude: 21.3069, longitude: -157.8583, latitudeDelta: 0.004, longitudeDelta: 0.004 };
   const target = { lat: 21.29, lon: -157.84 };
@@ -147,30 +147,30 @@ describe('centredOn', () => {
   it('keeps the zoom the rider chose', () => {
     // The bug this exists for: a long-press search rebuilt the window from the
     // 1.5 km radius and threw away a zoom the rider had set deliberately.
-    const moved = centredOn(zoomedIn, target, 0.55);
+    const moved = centeredOn(zoomedIn, target, 0.55);
 
     expect(moved.latitudeDelta).toBe(zoomedIn.latitudeDelta);
     expect(moved.longitudeDelta).toBe(zoomedIn.longitudeDelta);
   });
 
   it('puts the target in the middle of what the rider can see', () => {
-    const moved = centredOn(zoomedIn, target, 0.55);
+    const moved = centeredOn(zoomedIn, target, 0.55);
 
-    expect(visibleCentre(moved, 0.55).lat).toBeCloseTo(target.lat, 9);
-    expect(visibleCentre(moved, 0.55).lon).toBeCloseTo(target.lon, 9);
+    expect(visibleCenter(moved, 0.55).lat).toBeCloseTo(target.lat, 9);
+    expect(visibleCenter(moved, 0.55).lon).toBeCloseTo(target.lon, 9);
   });
 
-  it('is the inverse of visibleCentre at any coverage', () => {
+  it('is the inverse of visibleCenter at any coverage', () => {
     for (const fraction of [1, 0.86, 0.55, 0.1]) {
-      const seen = visibleCentre(centredOn(zoomedIn, target, fraction), fraction);
+      const seen = visibleCenter(centeredOn(zoomedIn, target, fraction), fraction);
       expect(seen.lat).toBeCloseTo(target.lat, 9);
     }
   });
 
   it('moves the window south of the target when a sheet covers the bottom', () => {
-    expect(centredOn(zoomedIn, target, 0.55).latitude).toBeLessThan(target.lat);
+    expect(centeredOn(zoomedIn, target, 0.55).latitude).toBeLessThan(target.lat);
     // And not at all when nothing is covered.
-    expect(centredOn(zoomedIn, target, 1).latitude).toBe(target.lat);
+    expect(centeredOn(zoomedIn, target, 1).latitude).toBe(target.lat);
   });
 });
 

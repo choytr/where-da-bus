@@ -58,7 +58,7 @@ export type AnchoredStops = {
    * rider back where they boarded — on a transit app, the exact moment the
    * button exists for.
    */
-  recentre: () => Promise<Coords | null>;
+  recenter: () => Promise<Coords | null>;
   /**
    * Ask for a location without touching the anchor — what the map calls once it
    * has drawn, so the permission prompt appears over a map rather than over a
@@ -131,7 +131,7 @@ export function useAnchoredStops(): AnchoredStops {
     setChosen(coords);
   }, []);
 
-  const recentre = useCallback(async () => {
+  const recenter = useCallback(async () => {
     setChosen(null);
     return request();
   }, [request]);
@@ -143,7 +143,7 @@ export function useAnchoredStops(): AnchoredStops {
     stops,
     status,
     setAnchor,
-    recentre,
+    recenter,
     requestLocation: request,
     locationStatus: location.status,
   };

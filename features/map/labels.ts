@@ -95,7 +95,7 @@ export function scaleOf(region: Region | null): MapScale {
 /** The label's box, matching `StopMarker`'s own geometry. */
 const LABEL_WIDTH = 124;
 const LABEL_HEIGHT = 28;
-/** The tile's box, likewise. Square, centred on the stop's coordinate. */
+/** The tile's box, likewise. Square, centered on the stop's coordinate. */
 const TILE_SIZE = 34;
 /** Distance from the coordinate to the near edge of the label, either way up. */
 const LABEL_OFFSET = 20;
@@ -127,7 +127,7 @@ export type Viewport = {
    * It was the height *above the sheet* for one build, and that was simply
    * wrong. Every stop separation came out short by the sheet's fraction, so
    * boxes that were comfortably apart on screen were computed as touching —
-   * which over-culled — while the skewed centre let genuine overlaps through.
+   * which over-culled — while the skewed center let genuine overlaps through.
    * Truman had both symptoms at once on 2026-08-08: "sometimes the labels do
    * overlap and sometimes it's really hard to get the labels to show up for the
    * stops I'm looking at."
@@ -462,7 +462,7 @@ export function stopUnderBus(
     const tile = projection.tileBox(stop, STOP_GEOMETRY);
     if (!overlaps(busTile, tile)) continue;
 
-    // Centre-to-centre, squared: the nearest stop is the one the rider was
+    // Center-to-center, squared: the nearest stop is the one the rider was
     // aiming at when two of them sit under one dot.
     const dx = (tile.left + tile.right) / 2 - (busTile.left + busTile.right) / 2;
     const dy = (tile.top + tile.bottom) / 2 - (busTile.top + busTile.bottom) / 2;

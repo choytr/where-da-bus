@@ -64,7 +64,7 @@ const WIDTH = 124;
 
 /**
  * The view is the size of the tile and nothing else, so the coordinate sits at
- * its centre.
+ * its center.
  *
  * **The name is positioned absolutely, outside that box, on purpose.**
  * `AIRMapMarker.reactSetFrame:` sets the annotation view's `bounds` from the
@@ -74,7 +74,7 @@ const WIDTH = 124;
  * think they're eating the press on those icons." Read out of the library's own
  * source, `ios/AirMaps/AIRMapMarker.m`, rather than guessed.
  *
- * That same method also shifts the marker's centre whenever the view's height
+ * That same method also shifts the marker's center whenever the view's height
  * changes, to keep its bottom edge over the same spot — a second, independent
  * reason this box must not grow and shrink as labels come and go.
  */
@@ -198,7 +198,7 @@ export const StopMarker = memo(function StopMarker({
         `ANCHOR`. MapKit hit-tests annotation views by frame, so a wrapper that
         shrank with the dot would make forty stops untappable at exactly the
         zoom where they are hardest to hit; and `reactSetFrame:` shifts the
-        marker's centre whenever the view's height changes, so it would move
+        marker's center whenever the view's height changes, so it would move
         every pin as well. The tile inside it shrinks; this box never does.
       */}
       <View style={styles.wrap} pointerEvents="none">
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
   },
   label: {
     position: 'absolute',
-    // Centred on the tile by hanging equally off both sides.
+    // Centered on the tile by hanging equally off both sides.
     left: (SLOT - WIDTH) / 2,
     width: WIDTH,
     height: LABEL_HEIGHT,

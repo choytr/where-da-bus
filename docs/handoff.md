@@ -133,7 +133,7 @@ Do not re-grill it and do not re-open what the spec settled.
 
 The map sheet's detents are points computed from a **measured** container. Its
 resting peek is the grab handle, a band naming the mode, and one row. Tapping a
-row in the sheet centres the map on that stop; tapping a pin does not. The Stops
+row in the sheet centers the map on that stop; tapping a pin does not. The Stops
 tab has `Stops | Routes` chips over one shared search engine (`useSearch`), and
 a nudge that offers the filter which would have answered.
 

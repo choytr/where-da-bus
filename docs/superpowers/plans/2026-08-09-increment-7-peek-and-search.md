@@ -20,7 +20,7 @@ appearance is inference until he says otherwise.
 ## Tasks 1–3 — the sheet — **DONE, and device-confirmed**
 
 Detents in points from a **measured** container; sheet content clear of the tab
-bar; row taps centre the map, pin taps do not. Four device rounds reshaped the
+bar; row taps center the map, pin taps do not. Four device rounds reshaped the
 peek along the way and the spec records only where it landed. `MEDIUM_FRACTION`
 and `PEEK_BAND` / `PEEK_ROW` are the tuning knobs.
 

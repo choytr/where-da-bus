@@ -29,7 +29,7 @@ search and favorites go to the Stops tab.
 ## Map tab
 
 **Stops are anchored to a point, not to the viewport.** The anchor is the user's
-location by default. Tapping the map moves it. A recentre button resets it. The
+location by default. Tapping the map moves it. A recenter button resets it. The
 set is the existing nearby query — roughly 25 stops within 1.5 km — run once per
 anchor change.
 
@@ -158,7 +158,7 @@ stop set and the selection together.
 Replaced by two paths, both explicit:
 
 - **"Search this area"**, appearing once the camera has drifted roughly a
-  quarter of the visible width from the anchor, re-anchoring to screen centre.
+  quarter of the visible width from the anchor, re-anchoring to screen center.
   Discoverable without being taught, which long-press can never be.
 - **Long-press**, dropping a temporary marker with a *Search here* callout.
   Nothing queries until the callout is tapped, so a stray long-press costs one
@@ -168,11 +168,11 @@ A plain tap now only dismisses the detail card, and does nothing otherwise.
 
 ### The camera moves in exactly two situations
 
-On ⌖ recentre, and on the first location fix. Not on re-anchoring, not on
+On ⌖ recenter, and on the first location fix. Not on re-anchoring, not on
 selection, not on a poll.
 
 > **Amended 2026-08-03, after driving it** — **three** situations. Truman asked
-> for *Search here* to centre the map on the point long-pressed, and that is now
+> for *Search here* to center the map on the point long-pressed, and that is now
 > what it does. The reasoning is the one thing this section did not weigh: a
 > long press *names* a point, and the point named is often near a screen edge or
 > under the sheet, so answering without travelling to it puts the answer where
