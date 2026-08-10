@@ -30,6 +30,7 @@ const mockLocation: LocationState & { granted: Coords | null } = {
   coords: null,
   granted: null,
   request: mockRequest,
+  requestIfAllowed: mockRequest,
 };
 
 jest.mock('../../stops/useLocation', () => ({

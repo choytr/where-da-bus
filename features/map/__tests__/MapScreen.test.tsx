@@ -312,6 +312,7 @@ const mockLocation: LocationState = {
   status: 'idle',
   coords: null,
   request: mockRequest,
+  requestIfAllowed: mockRequest,
 };
 
 jest.mock('../../stops/useLocation', () => ({

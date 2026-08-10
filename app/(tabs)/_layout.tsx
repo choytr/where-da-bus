@@ -1,5 +1,35 @@
+import { Text } from 'react-native';
 import { Tabs } from 'expo-router';
 import { useTheme } from '../../lib/theme';
+
+/**
+ * The tab icons.
+ *
+ * **Glyphs, not an icon set, and that is a dependency decision.** The tab bar
+ * passed no `tabBarIcon` at all until Increment 9, which is why iOS drew
+ * placeholder triangles. The plan called for `@expo/vector-icons` on the
+ * grounds that it is already installed — it is in the lockfile, but npm nests
+ * it at `node_modules/expo/node_modules/@expo/vector-icons`, so it is **not
+ * resolvable from this file**: `require.resolve` fails from the project root,
+ * and Metro resolves from the importing file the same way. Reaching it means
+ * `npx expo install @expo/vector-icons`, which is a new direct dependency, and
+ * `CLAUDE.md` is explicit that adding one here is an architectural decision
+ * rather than a routine install.
+ *
+ * Text costs nothing, tints with `color` for free, and is the language the rest
+ * of this app already speaks — ⌖ recenters the map, ✕ leaves route mode, ⌕ is
+ * the search bar, ★ is a favorite. If Truman wants drawn icons, that is one
+ * install and one edit here.
+ */
+const ICONS = { index: '◎', stops: '≡', settings: '⚙' } as const;
+
+function tabIcon(name: keyof typeof ICONS) {
+  return function TabIcon({ color, size }: { color: string; size: number }) {
+    // `lineHeight` matched to `fontSize`: without it the glyph sits high in the
+    // tab bar, because a glyph's own line box is taller than the character.
+    return <Text style={{ color, fontSize: size, lineHeight: size }}>{ICONS[name]}</Text>;
+  };
+}
 
 /**
  * The three tabs. `(tabs)` is a route *group* — the parentheses keep it out of
@@ -31,9 +61,12 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: palette.background },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Map' }} />
-      <Tabs.Screen name="stops" options={{ title: 'Stops' }} />
-      <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
+      <Tabs.Screen name="index" options={{ title: 'Map', tabBarIcon: tabIcon('index') }} />
+      <Tabs.Screen name="stops" options={{ title: 'Stops', tabBarIcon: tabIcon('stops') }} />
+      <Tabs.Screen
+        name="settings"
+        options={{ title: 'Settings', tabBarIcon: tabIcon('settings') }}
+      />
     </Tabs>
   );
 }

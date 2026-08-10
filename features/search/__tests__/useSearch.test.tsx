@@ -162,4 +162,56 @@ describe('useSearch', () => {
       results: [{ kind: 'stop', stop: stop('5', 'LAGOON DR') }],
     });
   });
+  /**
+   * The carry-forward exists so a *keystroke* never blanks the list under a
+   * thumb. An explicit filter change is not a keystroke — it is "show me
+   * something else" — and carrying stops into the Routes chip read as the chip
+   * not having worked. `docs/backlog.md` carried this as an open defect.
+   */
+  describe('changing the filter', () => {
+    it('clears results when the filter changes', async () => {
+      mockSearchByName.mockResolvedValue([stop('596', 'KING ST + BISHOP ST')]);
+
+      const { result, rerender } = await renderHook(
+        ({ filter }: { filter: 'stops' | 'routes' }) => useSearch('king', filter),
+        { initialProps: { filter: 'stops' as const } },
+      );
+
+      await waitFor(() => expect(result.current.state.state).toBe('done'));
+
+      // Slow the next answer down, so the state right after the chip is the
+      // one under test rather than whatever replaced it.
+      mockSearchRoutes.mockImplementation(
+        () => new Promise(() => []) as Promise<RouteSummary[]>,
+      );
+      await rerender({ filter: 'routes' as const });
+
+      await waitFor(() =>
+        expect(result.current.state).toEqual({ state: 'running', results: [] }),
+      );
+    });
+
+    it('keeps the list under a keystroke, which is what the carry-forward is for', async () => {
+      const found = stop('596', 'KING ST + BISHOP ST');
+      mockSearchByName.mockResolvedValue([found]);
+
+      const { result, rerender } = await renderHook(
+        ({ query }: { query: string }) => useSearch(query, 'stops'),
+        { initialProps: { query: 'king' } },
+      );
+
+      await waitFor(() => expect(result.current.state.state).toBe('done'));
+
+      mockSearchByName.mockImplementation(() => new Promise(() => []) as Promise<Stop[]>);
+      await rerender({ query: 'king s' });
+
+      await waitFor(() =>
+        expect(result.current.state).toEqual({
+          state: 'running',
+          results: [{ kind: 'stop', stop: found }],
+        }),
+      );
+    });
+  });
+
 });

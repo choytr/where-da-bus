@@ -90,6 +90,9 @@ export function useSearch(
     onScreen.current = keptResults(state);
   }, [state]);
 
+  /** Which filter produced what is on screen, so a chip change can blank it. */
+  const lastFilter = useRef<SearchFilter>(filter);
+
   useEffect(() => {
     const trimmed = query.trim();
     if (trimmed === '') {
@@ -99,11 +102,28 @@ export function useSearch(
     }
 
     let cancelled = false;
+
+    /**
+     * **A filter change blanks the list; a keystroke does not.**
+     *
+     * The carry-forward exists for one reason: a rider typing must not have the
+     * list vanish under their thumb between keystrokes. Switching filter is not
+     * that — it is an explicit *"show me something else"*, and carrying the old
+     * filter's results into it left stops on screen under the Routes chip until
+     * the query returned, which read as the chip not having worked.
+     *
+     * Told apart by remembering which filter produced what is on screen, rather
+     * than by an effect keyed on `filter` alone: the effect below already runs
+     * for both, and a second one racing it would be two writers of one state.
+     */
+    const carried = lastFilter.current === filter ? onScreen.current : NO_RESULTS;
+    lastFilter.current = filter;
+
     // Address mode shows no local results at all — it is waiting for a submit —
     // but it still runs the queries below for the nudge, so it never claims to
     // be running something it will not display.
     if (filter === 'address') setState(OFF);
-    else setState({ state: 'running', results: onScreen.current });
+    else setState({ state: 'running', results: carried });
 
     /**
      * Both halves, always, regardless of filter. Two of the three answers are

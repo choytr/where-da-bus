@@ -3,7 +3,7 @@ import { act, cleanup, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
 import { ArrivalsScreen, NOTICES } from '../ArrivalsScreen';
 import type { Arrival, ArrivalsResult, TheBusClient } from '../../../data/thebus';
-import type { Stop } from '../../../data/gtfs/types';
+import type { RouteSummary, Stop } from '../../../data/gtfs/types';
 import { TestTheme } from '../../../lib/testing/theme';
 
 /** This screen never asks for the fleet; throwing keeps that honest. */
@@ -31,7 +31,7 @@ const mockQueries = {
     lat: 21.31,
     lon: -157.86,
   })),
-  routesForStops: jest.fn(async () => new Map()),
+  routesForStops: jest.fn(async (): Promise<Map<string, RouteSummary[]>> => new Map()),
   stopsByIds: jest.fn(async () => []),
   feedEndDate: jest.fn(async () => null),
   routeById: jest.fn(async () => null),
@@ -41,6 +41,28 @@ const mockQueries = {
 jest.mock('../../../data/gtfs/db', () => ({
   useStopQueries: () => mockQueries,
 }));
+
+/**
+ * The screen reads a location only if one is already permitted — see
+ * `requestIfAllowed`. This double is what lets a test say "location is
+ * available" or "it is not" without a native module, and the *absence* of
+ * `request` here is deliberate: this screen must never be able to put a
+ * permission dialog in front of anyone.
+ */
+const mockRequestIfAllowed = jest.fn(async (): Promise<{ lat: number; lon: number } | null> => null);
+
+jest.mock('../../stops/useLocation', () => ({
+  useLocation: () => ({
+    status: 'idle',
+    coords: null,
+    request: () => {
+      throw new Error('the arrival board must not ask for permission');
+    },
+    requestIfAllowed: mockRequestIfAllowed,
+  }),
+}));
+
+jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 
 /**
  * `initialWindowMetrics` is null off-device and a provider seeded with null
@@ -116,6 +138,8 @@ describe('ArrivalsScreen', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-08-02T08:40:00.000Z'));
+    mockQueries.routesForStops.mockResolvedValue(new Map());
+    mockRequestIfAllowed.mockResolvedValue(null);
   });
 
   afterEach(async () => {
@@ -247,4 +271,53 @@ describe('ArrivalsScreen', () => {
     await show(clientOf(boardOf(arrival({ canceled: true }))));
     screen.getByText('Canceled');
   });
+  /**
+   * The card's meta block, which this screen did not have until Increment 9.
+   * Which routes call here is a fact about the stop; how far away it is depends
+   * on a location this screen must never ask for.
+   */
+  describe('the meta block', () => {
+    const routes: RouteSummary[] = [
+      { route_id: '31', short_name: '32', long_name: 'Mapunapuna-Airport' },
+      { route_id: '18', short_name: '19', long_name: 'Airport-Hickam' },
+    ];
+
+    it('shows route chips for the stop', async () => {
+      mockQueries.routesForStops.mockResolvedValue(new Map([['596', routes]]));
+
+      await show(clientOf(boardOf(arrival())));
+
+      await screen.findByLabelText('Route 32');
+      expect(screen.getByLabelText('Route 19')).toBeTruthy();
+    });
+
+    it('shows the distance when a location is already permitted', async () => {
+      mockRequestIfAllowed.mockResolvedValue({ lat: 21.311, lon: -157.86 });
+
+      await show(clientOf(boardOf(arrival())));
+
+      // ~111 m north of the stop, which formats in metres rather than km.
+      await screen.findByText(/^\d+ m$/);
+    });
+
+    it('omits distance when location is unavailable', async () => {
+      mockRequestIfAllowed.mockResolvedValue(null);
+
+      await show(clientOf(boardOf(arrival())));
+
+      expect(screen.queryByText(/ m$/)).toBeNull();
+      expect(screen.queryByText(/ km$/)).toBeNull();
+    });
+
+    /**
+     * The board is reachable by deep link, so it can be the first screen a
+     * rider ever sees. `useLocation`'s double throws if `request` is called.
+     */
+    it('never asks for permission to show one', async () => {
+      await show(clientOf(boardOf(arrival())));
+
+      expect(mockRequestIfAllowed).toHaveBeenCalled();
+    });
+  });
+
 });

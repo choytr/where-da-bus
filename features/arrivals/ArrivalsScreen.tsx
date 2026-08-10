@@ -8,9 +8,13 @@ import {
   Text,
   View,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStopQueries } from '../../data/gtfs/db';
-import type { Stop } from '../../data/gtfs/types';
+import { useLocation } from '../stops/useLocation';
+import { formatDistance } from '../stops/StopRow';
+import { metersBetween } from '../../lib/distance';
+import type { RouteSummary, Stop } from '../../data/gtfs/types';
 import type { TheBusClient } from '../../data/thebus';
 import { ArrivalRow } from './ArrivalRow';
 import { BoardHeader } from './BoardHeader';
@@ -41,12 +45,15 @@ export type ArrivalsScreenProps = {
 export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
   const { palette } = useTheme();
   const insets = useSafeAreaInsets();
-  const { searchByCode } = useStopQueries();
+  const { searchByCode, routesForStops } = useStopQueries();
+  const { requestIfAllowed } = useLocation();
   const { sections, board, failure, fetchedAt, loading, refreshing, refresh, now, tick } =
     useArrivalBoard(stopCode, client);
 
   const [stop, setStop] = useState<Stop | null>(null);
   const [stopResolved, setStopResolved] = useState(false);
+  const [routes, setRoutes] = useState<RouteSummary[]>([]);
+  const [meters, setMeters] = useState<number | null>(null);
 
   useEffect(() => {
     let current = true;
@@ -60,6 +67,33 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
       current = false;
     };
   }, [searchByCode, stopCode]);
+
+  /**
+   * The card's meta block, on the screen that had none.
+   *
+   * Route chips **always** — which routes call here is a fact about the stop
+   * and needs no location — and a distance only when one is free to know.
+   * `requestIfAllowed` never shows the permission dialog, so a board opened
+   * from a deep link is not a screen that asks anyone where they are; it simply
+   * says less. `meters === null ? null` is the same shape `StopCard` already
+   * uses for the same reason.
+   */
+  useEffect(() => {
+    if (stop === null) return;
+    let current = true;
+
+    void routesForStops([stop.stop_id]).then((byStop) => {
+      if (current) setRoutes(byStop.get(stop.stop_id) ?? []);
+    });
+
+    void requestIfAllowed().then((fix) => {
+      if (current && fix !== null) setMeters(metersBetween(fix, stop));
+    });
+
+    return () => {
+      current = false;
+    };
+  }, [stop, routesForStops, requestIfAllowed]);
 
   // Nothing has arrived yet and nothing has failed: the only state in which a
   // spinner is allowed to be the whole screen.
@@ -106,13 +140,42 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
           <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={palette.muted} />
         }
         ListHeaderComponent={
-          <BoardHeader
-            stopName={stop?.stop_name ?? (stopResolved ? NOTICES.unknownStop : ' ')}
-            stopCode={stopCode}
-            fetchedAt={fetchedAt}
-            failure={failure}
-            now={tick}
-          />
+          <View>
+            <BoardHeader
+              stopName={stop?.stop_name ?? (stopResolved ? NOTICES.unknownStop : ' ')}
+              stopCode={stopCode}
+              fetchedAt={fetchedAt}
+              failure={failure}
+              now={tick}
+            />
+
+            {/* What a rider uses to tell two stops a block apart apart, and to
+                jump to a route this stop is on. The map's card has carried this
+                since Increment 3; the screen behind `/stop/[code]` did not. */}
+            <View style={styles.meta}>
+              {meters === null ? null : (
+                <Text style={[styles.metaText, { color: palette.muted }]}>
+                  {formatDistance(meters)}
+                </Text>
+              )}
+              <View style={styles.chips}>
+                {routes.map((route) => (
+                  <Pressable
+                    key={route.route_id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Route ${route.short_name}`}
+                    onPress={() => router.push(`/route/${encodeURIComponent(route.route_id)}`)}
+                    hitSlop={6}
+                    style={[styles.chip, { backgroundColor: palette.chip }]}
+                  >
+                    <Text style={[styles.chipText, { color: palette.text }]}>
+                      {route.short_name}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </View>
         }
         renderSectionHeader={({ section }) =>
           section.data.length === 0 ? null : (
@@ -152,6 +215,11 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  meta: { paddingHorizontal: 16, gap: 8, paddingBottom: 4 },
+  metaText: { fontSize: 13, fontVariant: ['tabular-nums'] },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  chipText: { fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'] },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   centerText: { fontSize: 14 },
   errorTitle: { fontSize: 16, fontWeight: '600', textAlign: 'center', maxWidth: 320 },
