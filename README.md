@@ -36,23 +36,25 @@ These are basic instructions for how I've been sideloading it on my phone with a
 ## Features
 
 What works today:
+- **A map of the stops around you**, which is the home screen. Tap anywhere on the island to see what's running there, so you can check service somewhere unfamiliar before you leave the house.
 - **Stops near you**, sorted by distance. This is the whole reason the app exists — Google Maps won't show you anything until you give it a destination, and Apple Maps is too shallow to be useful at a stop.
-- **Search** by stop name or by the number printed on the physical stop sign.
+- **Search** across stop names, the number printed on the physical stop sign, route numbers, and Oahu addresses — one box, and it works out which kind of answer you meant.
 - **Favorites**, for the stops you actually use.
 - **Live arrivals** for any stop, in one chronological list sectioned by direction, the way Da Bus did it.
 - **An honest distinction between a real GPS estimate and a schedule guess.** Roughly 96% of what the API returns is the latter, and labelling those as live times is how a transit app earns your distrust at a stop at night.
+- **Routes drawn on the map.** Pick a route and the map draws the road it actually follows, that route's stops as its pins, and the buses driving it right now — each labelled with its fleet number and how long ago it reported. One direction at a time, and the map stays in route mode until you close it.
 - **Route detail** — every stop a route serves, in order, entirely offline.
+- **Light, dark and automatic theming.**
+- **Stop data that keeps itself current.** A copy ships with the app as a floor, and a fresher one is fetched in the background when the published feed changes, so the data doesn't go stale between builds.
 - **Error states that tell you the truth.** "No buses coming" and "couldn't reach the API" never look alike, and a spinner never replaces times you already had. It shows you the stale ones with an age instead.
 
-What's coming, roughly in order:
-- A map of nearby stops, with tap-anywhere-to-search so you can check service somewhere unfamiliar before you leave the house.
-- Light/dark/automatic theming.
-- Refreshing the bundled stop data on the device, instead of it shipping with the app.
-- Route lines drawn on the map, and live bus positions.
+The roadmap I set out with — through route lines and live buses on the map — is now built, and what comes after it isn't decided yet. The one thing deliberately left on the shelf is showing how early or late each bus is running: the app already receives it and doesn't yet display it anywhere.
 
 ## Development
 
-Static stop data is baked into the app as a SQLite file; anything time-sensitive comes from the live API. The GTFS feed Oahu publishes is not fresh enough to be trusted for arrival times, so it only ever supplies stop names, codes, coordinates, and which routes serve which stop.
+Static stop data is baked into the app as a SQLite file; anything time-sensitive comes from the live API. The GTFS feed Oahu publishes is not fresh enough to be trusted for arrival times, so it only ever supplies stop names, codes, coordinates, route shapes, and which routes serve which stop.
+
+That file is not updated by hand. A weekly GitHub Action rebuilds it from the feed and publishes it to a fixed release tag; the app checks the manifest shortly after launch, verifies the hash and counts the rows before trusting a download, and keeps the bundled copy as a floor — so every failure in that chain degrades to stale data rather than to no data.
 
 ```bash
 npm start              # Expo dev server — scan the QR with Expo Go. The normal dev loop.
