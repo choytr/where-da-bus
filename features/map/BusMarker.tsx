@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { schedule } from '../../lib/schedule';
 import { useTheme } from '../../lib/theme';
+import { adherenceOf } from './adherence';
 import type { LabelPlacement } from './labels';
 import type { BusOnMap } from './useVehicles';
 
@@ -64,39 +65,6 @@ export function ageWords(ageMs: number): string {
 /** `252 · here 20 s ago` — the fleet number, and how much to trust the dot. */
 export function busLabel(bus: BusOnMap): string {
   return `${bus.vehicle.number} · ${ageWords(bus.ageMs)}`;
-}
-
-/** How far off schedule a bus is, reduced to the four things the ring can say. */
-export type Adherence = 'late' | 'early' | 'onTime' | 'unknown';
-
-/**
- * The band around zero that counts as on time, in minutes.
- *
- * **Asymmetric, and deliberately so.** Running late is ordinary and riders
- * absorb a few minutes of it without noticing; running *early* is the failure
- * that strands someone who arrived on time, so it earns a ring sooner. The
- * shape matches how agencies define on-time performance — a minute or two early
- * at most, several minutes late tolerated.
- *
- * Both are tuning knobs. Nothing here is measured, and the right band is a
- * judgement only a device can settle.
- */
-const LATE_MINUTES = 5;
-const EARLY_MINUTES = 2;
-
-/**
- * **Positive minutes mean EARLY.** The vendor's sign convention, recorded in
- * `docs/backlog.md` and easy to get backwards — it is the whole reason this is
- * a named function with a test rather than a comparison inline in a style prop.
- *
- * Nothing bounds the input: thirty live values sampled on 2026-08-02 spanned
- * −19 to +4 minutes, and there is no documented ceiling.
- */
-export function adherenceOf(minutes: number | null): Adherence {
-  if (minutes === null) return 'unknown';
-  if (minutes <= -LATE_MINUTES) return 'late';
-  if (minutes >= EARLY_MINUTES) return 'early';
-  return 'onTime';
 }
 
 export type BusMarkerProps = {

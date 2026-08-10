@@ -197,6 +197,44 @@ export type StopSheetProps = {
   selectedTripId?: string | null;
 };
 
+/**
+ * What the bus layer is doing, which the map itself cannot say.
+ *
+ * **Four states that used to be one.** An empty map meant "still fetching",
+ * "this route has no buses running" and "the API is unreachable" all at once,
+ * and `CLAUDE.md` is explicit that conflating the last two is what makes a
+ * transit app untrustworthy at a stop at night. The bus layer was the one place
+ * left in the app that did it, because `MapScreen` took `buses` off
+ * `useVehicles` and dropped `failure` on the floor.
+ */
+export type BusLayerState =
+  | { kind: 'loading' }
+  | { kind: 'running'; count: number; late: number }
+  | { kind: 'none' }
+  | { kind: 'unreachable' };
+
+/**
+ * The line, in as few characters as it can be said in — it shares one line with
+ * the direction inside a band that cannot grow. See the render.
+ *
+ * The late count is dropped when it is zero rather than written as `· 0 late`,
+ * which is a sentence about nothing.
+ */
+export function busLayerWords(state: BusLayerState): string {
+  switch (state.kind) {
+    case 'loading':
+      return 'Looking for buses…';
+    case 'running':
+      return state.late === 0
+        ? `${state.count} ${state.count === 1 ? 'bus' : 'buses'}`
+        : `${state.count} ${state.count === 1 ? 'bus' : 'buses'} · ${state.late} late`;
+    case 'none':
+      return 'No buses running';
+    case 'unreachable':
+      return "Can't reach TheBus";
+  }
+}
+
 /** What the sheet needs in order to draw a route, from `MapScreen`. */
 export type RouteView = {
   route: RouteSummary | null;
@@ -206,6 +244,8 @@ export type RouteView = {
   stops: readonly StopWithDistance[];
   /** How many directions the route has. One means no flip control. */
   directionCount: number;
+  /** What the live layer is doing. See `BusLayerState`. */
+  busLayer: BusLayerState;
   onFlip: () => void;
   onLeave: () => void;
 };
@@ -370,9 +410,52 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
                 >
                   {routeView.route === null ? 'Route' : `Route ${routeView.route.short_name}`}
                 </Text>
-                <Text numberOfLines={1} style={[styles.bandMeta, { color: palette.muted }]}>
-                  {directionLabel(routeView.direction)}
-                </Text>
+                {/*
+                  **One line, shared, and the band cannot grow to give them
+                  two.** `PEEK_BAND` is 44 points and all three sheet modes must
+                  match at the top or the resting sheet twitches the moment a
+                  route is picked; it already spends that on the heading and
+                  this line.
+
+                  So the direction flexes and truncates while the bus state is
+                  fixed and never does. That way round because the direction is
+                  recoverable — it names the last stop in the list directly
+                  underneath — while a truncated `Can't reach TheB…` is not.
+
+                  Stated as a relationship rather than as measured widths on
+                  purpose: there is no device on this side, so a design that
+                  needed a string's rendered width to be right would be a design
+                  that had to be guessed at.
+                */}
+                <View style={styles.bandMetaRow}>
+                  {directionLabel(routeView.direction) === '' ? null : (
+                    <>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.bandMeta, styles.bandDirection, { color: palette.muted }]}
+                      >
+                        {directionLabel(routeView.direction)}
+                      </Text>
+                      {/* Its own element so the state reads alone to VoiceOver. */}
+                      <Text style={[styles.bandMeta, { color: palette.muted }]}>{' · '}</Text>
+                    </>
+                  )}
+                  <Text
+                    testID="bus-layer-state"
+                    numberOfLines={1}
+                    style={[
+                      styles.bandMeta,
+                      {
+                        color:
+                          routeView.busLayer.kind === 'unreachable'
+                            ? palette.warning
+                            : palette.muted,
+                      },
+                    ]}
+                  >
+                    {busLayerWords(routeView.busLayer)}
+                  </Text>
+                </View>
               </View>
 
               {/*
@@ -520,6 +603,11 @@ const styles = StyleSheet.create({
   bandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   bandMain: { flex: 1 },
   bandMeta: { fontSize: 12, marginTop: 1 },
+  /** The direction and the bus state, sharing the band's one spare line. */
+  bandMetaRow: { flexDirection: 'row', alignItems: 'baseline' },
+  /** Flexes, so it is the one that truncates. `flexShrink` is not enough on its
+   *  own here — without a basis of zero a long headsign pushes the state off. */
+  bandDirection: { flexShrink: 1 },
   bandButton: {
     width: 30,
     height: 30,

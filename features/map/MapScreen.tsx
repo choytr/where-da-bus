@@ -29,6 +29,7 @@ import {
 } from './region';
 import {
   StopSheet,
+  type BusLayerState,
   detentsFor,
   tabBarOverlapOf,
   FULL_DETENT,
@@ -529,7 +530,31 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * the fleet response carries. Null when no route is showing, and then nothing
    * is requested at all.
    */
-  const { buses } = useVehicles(client, loadedRoute?.route?.short_name ?? null);
+  const { buses, failure: busFailure, fetchedAt: busesFetchedAt, lateCount } = useVehicles(
+    client,
+    loadedRoute?.route?.short_name ?? null,
+  );
+
+  /**
+   * What the route band says about the live layer.
+   *
+   * **`failure` used to be dropped here**, which left a rejected key, an
+   * unreachable API and a route with genuinely no buses running all rendering
+   * as the same empty map — the ambiguity `CLAUDE.md` names as the thing that
+   * makes a transit app untrustworthy.
+   *
+   * Order matters: buses in hand beat a failure, because a fetch that failed
+   * after a good one leaves the previous fleet on screen counting up rather
+   * than clearing it, and the map should describe what it is drawing.
+   * `fetchedAt` is what separates "no buses on this route" from "nothing has
+   * come back yet" — an empty list means both until the first response lands.
+   */
+  const busLayer = useMemo((): BusLayerState => {
+    if (buses.length > 0) return { kind: 'running', count: buses.length, late: lateCount };
+    if (busesFetchedAt !== null) return { kind: 'none' };
+    if (busFailure !== null) return { kind: 'unreachable' };
+    return { kind: 'loading' };
+  }, [buses.length, lateCount, busesFetchedAt, busFailure]);
 
   /**
    * The arrival a rider tapped in the card, or null.
@@ -682,11 +707,21 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * one costs a dismissal rather than the whole view — and so the gesture is
    * cancellable after it has fired, which a long press that searched could not
    * be.
+   *
+   * **It does nothing at all in route mode**, for the same reason *Search this
+   * area* is suppressed there — see `offering`. Taking the offer up replaces the
+   * anchor's stop set, and in route mode the pins are the route's stops, so the
+   * map would look identical afterwards and the gesture would read as broken.
+   * Truman asked for this on 2026-08-09; the pair had only ever been half done.
    */
-  const onMapLongPress = useCallback((event: LongPressEvent) => {
-    const { latitude, longitude } = event.nativeEvent.coordinate;
-    setPending({ lat: latitude, lon: longitude });
-  }, []);
+  const onMapLongPress = useCallback(
+    (event: LongPressEvent) => {
+      if (routeMode !== null) return;
+      const { latitude, longitude } = event.nativeEvent.coordinate;
+      setPending({ lat: latitude, lon: longitude });
+    },
+    [routeMode],
+  );
 
   const searchFrom = useCallback(
     (coords: Coords) => {
@@ -1083,6 +1118,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
                 direction,
                 stops: routePins,
                 directionCount: loadedRoute?.directions.length ?? 0,
+                busLayer,
                 onFlip: flipDirection,
                 onLeave: leaveRoute,
               }

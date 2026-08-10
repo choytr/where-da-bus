@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
-import { BusMarker, adherenceOf, ageWords, busLabel } from '../BusMarker';
+import { BusMarker, ageWords, busLabel } from '../BusMarker';
+import { adherenceOf } from '../adherence';
 import { TestTheme } from '../../../lib/testing/theme';
 import type { BusOnMap } from '../useVehicles';
 

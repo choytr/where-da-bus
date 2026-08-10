@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState } from 'react-native';
 import { repeat } from '../../lib/schedule';
+import { adherenceOf } from './adherence';
 import type { ApiFailure, Fleet, TheBusClient, Vehicle } from '../../data/thebus';
 
 /**
@@ -54,6 +55,13 @@ export type VehiclesView = {
   readonly failure: ApiFailure | null;
   /** Device clock when the fleet arrived. Null until the first success. */
   readonly fetchedAt: Date | null;
+  /**
+   * How many of `buses` are running behind, for the line in the route band.
+   *
+   * Counted here rather than in the sheet so the ring on the dot and the
+   * number in the words cannot disagree — they read one `adherenceOf`.
+   */
+  readonly lateCount: number;
 };
 
 /**
@@ -128,6 +136,22 @@ export function useVehicles(client: TheBusClient, route: string | null): Vehicle
       return;
     }
 
+    /**
+     * **The clock is reset on activation, and leaving it out was a bug.**
+     *
+     * `now` is seeded when the *screen* mounts and only ticks while a route is
+     * showing. So opening the map, leaving it ten minutes, and then picking a
+     * route left `now` ten minutes in the past: `now − fetchedAt` came out at
+     * about −10 min, `ageOf`'s `Math.max(0, …)` clamped every age to zero, and
+     * for a whole `AGE_TICK_MS` every bus read "here now" while nothing could
+     * fail the freshness filter that keeps ~950 ghosts off the map.
+     *
+     * Found by reading rather than on a device, though the 2026-08-09
+     * screenshot of twelve labels every one of which said "here now" is
+     * consistent with it.
+     */
+    setNow(new Date());
+
     let inFlight = new AbortController();
     let stopPolling: (() => void) | null = null;
 
@@ -190,5 +214,10 @@ export function useVehicles(client: TheBusClient, route: string | null): Vehicle
       .sort((a, b) => a.ageMs - b.ageMs);
   }, [fleet, fetchedAt, route, now]);
 
-  return { buses, failure, fetchedAt };
+  const lateCount = useMemo(
+    () => buses.filter((bus) => adherenceOf(bus.vehicle.adherence) === 'late').length,
+    [buses],
+  );
+
+  return { buses, failure, fetchedAt, lateCount };
 }

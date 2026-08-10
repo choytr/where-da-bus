@@ -215,3 +215,72 @@ describe('useVehicles', () => {
     expect(result.current.buses.map((b) => b.vehicle.number)).toEqual(['new', 'mid', 'old']);
   });
 });
+
+describe('the clock ages are read against', () => {
+  /**
+   * `now` is seeded when the *screen* mounts and only ticks while a route is
+   * showing, so the map sitting idle leaves it arbitrarily far in the past.
+   *
+   * Without the reset, `now − fetchedAt` comes out negative, `ageOf`'s
+   * `Math.max(0, …)` clamps every age to zero, and for a whole `AGE_TICK_MS`
+   * every bus reads "here now" while nothing can fail the freshness filter that
+   * keeps ~950 ghosts off the map. Found by reading; the 2026-08-09 screenshot
+   * of twelve labels every one of which said "here now" is consistent with it.
+   */
+  it('ages a fleet against a current clock after a long idle', async () => {
+    // Well past FRESH_MS, so this bus must not be drawn.
+    const stale = bus('999', '1', FRESH_MS + 10 * 60_000);
+    const client = clientOf(fleetOf(stale));
+
+    const { rerender, result } = await renderHook(
+      ({ route }: { route: string | null }) => useVehicles(client, route),
+      { initialProps: { route: null } },
+    );
+
+    // The map, open and idle, with no route showing and the tick not running.
+    await advance(30 * 60_000);
+
+    await rerender({ route: '1' });
+    await waitFor(() => expect(result.current.buses.length).toBe(0));
+
+    expect(result.current.buses).toHaveLength(0);
+  });
+
+  it('still draws a fresh bus after the same idle', async () => {
+    const fresh = bus('252', '1', 20_000);
+    const client = clientOf(fleetOf(fresh));
+
+    const { rerender, result } = await renderHook(
+      ({ route }: { route: string | null }) => useVehicles(client, route),
+      { initialProps: { route: null } },
+    );
+
+    await advance(30 * 60_000);
+    await rerender({ route: '1' });
+
+    await waitFor(() => expect(result.current.buses).toHaveLength(1));
+    expect(result.current.buses[0]?.vehicle.number).toBe('252');
+  });
+});
+
+describe('lateCount', () => {
+  /** Counted beside the buses so the ring on a dot and the number in the band
+   *  cannot disagree — both read one `adherenceOf`. */
+  it('counts only the buses running behind', async () => {
+    const client = clientOf(
+      fleetOf(
+        { ...bus('a', '1', 10_000), adherence: -12 },
+        { ...bus('b', '1', 10_000), adherence: -30 },
+        { ...bus('c', '1', 10_000), adherence: 0 },
+        // Positive is EARLY, and early is not late.
+        { ...bus('d', '1', 10_000), adherence: 6 },
+        { ...bus('e', '1', 10_000), adherence: null },
+      ),
+    );
+
+    const { result } = await renderHook(() => useVehicles(client, '1'));
+
+    await waitFor(() => expect(result.current.buses).toHaveLength(5));
+    expect(result.current.lateCount).toBe(2);
+  });
+});

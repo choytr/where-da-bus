@@ -8,6 +8,7 @@ import {
   PEEK_DETENT,
   MEDIUM_DETENT,
   FULL_DETENT,
+  type BusLayerState,
   type RouteView,
 } from '../StopSheet';
 import { PEEK_BAND, PEEK_ROW } from '../peek';
@@ -98,6 +99,7 @@ const ROUTE_VIEW: RouteView = {
   direction: { directionId: '0', shapeId: 's-out', stops: STOPS },
   stops: STOPS,
   directionCount: 2,
+  busLayer: { kind: 'running', count: 3, late: 0 },
   onFlip: jest.fn(),
   onLeave: jest.fn(),
 };
@@ -295,6 +297,86 @@ describe('StopSheet', () => {
      * The route's stop list presents Data, so it owes the legend like every
      * other surface. The peek is still the exception, and for the same reason.
      */
+    /**
+     * The four states that used to be one empty map. The last two are the pair
+     * CLAUDE.md says must never render alike: "no buses coming" is answered by
+     * waiting and "couldn't reach TheBus" never is.
+     */
+    describe('the bus layer’s line', () => {
+      const withLayer = (busLayer: BusLayerState) => ({ ...ROUTE_VIEW, busLayer });
+
+      it('says it is looking before the first fleet arrives', async () => {
+        await show(null, jest.fn(), OVERLAP, withLayer({ kind: 'loading' }));
+
+        expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('Looking for buses…');
+      });
+
+      it('counts the buses it is drawing', async () => {
+        await show(
+          null,
+          jest.fn(),
+          OVERLAP,
+          withLayer({ kind: 'running', count: 7, late: 2 }),
+        );
+
+        expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('7 buses · 2 late');
+      });
+
+      /** `· 0 late` is a sentence about nothing. */
+      it('drops the late count when none of them are', async () => {
+        await show(
+          null,
+          jest.fn(),
+          OVERLAP,
+          withLayer({ kind: 'running', count: 4, late: 0 }),
+        );
+
+        const line = screen.getByTestId('bus-layer-state');
+        expect(line).toHaveTextContent('4 buses');
+        expect(line).not.toHaveTextContent('late');
+      });
+
+      it('says no buses are running rather than staying silent', async () => {
+        await show(null, jest.fn(), OVERLAP, withLayer({ kind: 'none' }));
+
+        expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('No buses running');
+      });
+
+      /**
+       * The distinction the whole state exists for. A rider who cannot tell
+       * these apart cannot tell whether waiting will help.
+       */
+      it('never says an outage the way it says an empty route', async () => {
+        await show(null, jest.fn(), OVERLAP, withLayer({ kind: 'unreachable' }));
+        const outage = screen.getByTestId('bus-layer-state').props.children;
+
+        await show(null, jest.fn(), OVERLAP, withLayer({ kind: 'none' }));
+        const empty = screen.getByTestId('bus-layer-state').props.children;
+
+        expect(outage).not.toEqual(empty);
+      });
+
+      /**
+       * The constraint that shaped this line into sharing one rather than
+       * taking its own. All three modes must match at the top or the resting
+       * sheet twitches the moment a route is picked.
+       */
+      it('leaves the band exactly PEEK_BAND tall in every state', async () => {
+        const states: BusLayerState[] = [
+          { kind: 'loading' },
+          { kind: 'running', count: 12, late: 9 },
+          { kind: 'none' },
+          { kind: 'unreachable' },
+        ];
+
+        for (const busLayer of states) {
+          await show(null, jest.fn(), OVERLAP, withLayer(busLayer));
+          const band = StyleSheet.flatten(screen.getByTestId('route-band').props.style);
+          expect(band.height).toBe(PEEK_BAND);
+        }
+      });
+    });
+
     it('pins the legend under the route’s stop list', async () => {
       await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
 

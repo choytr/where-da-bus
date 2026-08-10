@@ -1716,6 +1716,30 @@ describe('MapScreen', () => {
       expect(screen.queryByLabelText('Search this area')).toBeNull();
     });
 
+    /**
+     * The other half of the same pair, and it was missed until Truman asked for
+     * it on 2026-08-09. A long press offers *Search here*, which replaces the
+     * anchor's stop set — in route mode the pins are the route's stops, so
+     * taking the offer up leaves the map looking identical and the gesture
+     * reads as broken.
+     */
+    it('drops no pending marker for a long press while a route is showing', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('long press the map'));
+
+      expect(screen.queryByLabelText('pin pending-anchor')).toBeNull();
+    });
+
+    it('takes a long press again once the route is dismissed', async () => {
+      await showRoute();
+      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+      await fireEvent.press(screen.getByLabelText('long press the map'));
+
+      await waitFor(() => screen.getByLabelText('pin pending-anchor'));
+    });
+
     it('offers to search this area again once the route is dismissed', async () => {
       await showRoute();
       await fireEvent.press(screen.getByLabelText('Stop showing this route'));
@@ -1754,6 +1778,79 @@ describe('MapScreen', () => {
         // its fleet number — the same key that keeps markers stable across a
         // poll that replaces the whole set.
         await waitFor(() => screen.getByLabelText('pin bus-252'));
+      });
+
+      /**
+       * The layer's four states, derived here and worded in `StopSheet`.
+       *
+       * `failure` used to be taken off `useVehicles` and dropped, so a rejected
+       * key, an unreachable API and a route with genuinely no buses running all
+       * rendered as the same empty map. `CLAUDE.md` names that conflation as
+       * the thing that makes a transit app untrustworthy at a stop at night,
+       * and this was the last place in the app still doing it.
+       *
+       * It is also the instrument for the bug Truman reported on 2026-08-09 —
+       * buses absent on first render until he zoomed. A line that goes from
+       * "Looking for buses…" to a count on its own settles whether the zoom
+       * mattered at all.
+       */
+      it('says it is looking while the first fleet is in flight', async () => {
+        // `client` is a module-level fixture, so the held-open reply is put
+        // back before the next test sees it.
+        const answering = client.vehicles;
+        let answer: (result: FleetResult) => void = () => {};
+        client.vehicles = () =>
+          new Promise<FleetResult>((resolve) => {
+            answer = resolve;
+          });
+
+        try {
+          await showRoute();
+
+          expect(screen.getByTestId('bus-layer-state')).toHaveTextContent(
+            'Looking for buses…',
+          );
+
+          await act(async () => {
+            answer(fleetOf(bus('252', '32')));
+          });
+          await waitFor(() =>
+            expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('1 bus'),
+          );
+        } finally {
+          client.vehicles = answering;
+        }
+      });
+
+      it('counts the buses it is drawing, and the late ones', async () => {
+        mockFleetResult = fleetOf(
+          { ...bus('252', '32'), adherence: -12 },
+          { ...bus('253', '32'), adherence: 0 },
+        );
+        await showRoute();
+
+        await waitFor(() =>
+          expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('2 buses · 1 late'),
+        );
+      });
+
+      it('says no buses are running rather than looking forever', async () => {
+        mockFleetResult = fleetOf(bus('300', '13'));
+        await showRoute();
+
+        await waitFor(() =>
+          expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('No buses running'),
+        );
+      });
+
+      /** The pair that must never render alike: one is fixed by waiting, one is not. */
+      it('says it cannot reach TheBus when the fleet fails', async () => {
+        mockFleetResult = { ok: false, failure: { kind: 'unreachable' } };
+        await showRoute();
+
+        await waitFor(() =>
+          expect(screen.getByTestId('bus-layer-state')).toHaveTextContent("Can't reach TheBus"),
+        );
       });
 
       it('draws no buses before a route is picked', async () => {
