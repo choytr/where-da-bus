@@ -50,3 +50,10 @@ yarn-error.*
 # (see the jest config in package.json), and tsc pulled a WIP branch into the
 # root program (see tsconfig.json's exclude).
 .claude/worktrees/
+
+# Editor swap and backup files. A `git add -A` swept one of these into
+# 18de45f on 2026-08-09.
+*.swp
+*.swo
+*~
+.*.sw[a-p]

@@ -30,8 +30,15 @@ Truman asked to have removed. The whole-diff review ran inline and its three
 findings are fixed (`aa83a6e`).
 
 **Nothing is now known to block the merge to `main`**, which still needs
-Truman's explicit permission every time. 707 Jest, 130 `node --test`, clean
+Truman's explicit permission every time. 712 Jest, 130 `node --test`, clean
 typecheck.
+
+**The next action is that merge decision, and nothing else is queued.** The map
+work of 2026-08-09 is finished and verified on a device: the crash, the undrawn
+buses, and a stop pin under a bus dot needing two taps (`651bb07`) are all
+closed, each confirmed by Truman on the phone rather than by a passing suite.
+Do not open new work before asking him what he wants next — an increment here
+starts with a grilling, not with a plan.
 
 **The SIGABRT is fixed, and so is the undrawn-bus fault.** They were never one
 bug. Both were closed on the evening of 2026-08-09 across `6a04caf`, `4f5717c`
