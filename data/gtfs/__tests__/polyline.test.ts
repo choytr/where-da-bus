@@ -51,8 +51,13 @@ describe('polyline', () => {
       lon: -157.85 - i * 0.000015,
     }));
     const decoded = decodePolyline(encodePolyline(points));
-    const last = decoded[decoded.length - 1];
-    const expected = points[points.length - 1];
+    const last = decoded.at(-1);
+    const expected = points.at(-1);
+    // Both lines were built in this test, so an empty one is the encoder having
+    // lost the whole run — which must fail here rather than compare NaN.
+    if (last === undefined || expected === undefined) {
+      throw new Error('encode/decode produced an empty line');
+    }
     expect(Math.abs(last.lat - expected.lat)).toBeLessThan(0.00001);
     expect(Math.abs(last.lon - expected.lon)).toBeLessThan(0.00001);
   });

@@ -54,7 +54,7 @@ describe('useStopQueries.nearby', () => {
     const rows = await result.current.nearby({ lat: 21.3, lon: -157.85 });
 
     expect(rows.map((r) => r.stop_id)).toEqual(['near', 'far']);
-    expect(rows[0].meters).toBeLessThan(rows[1].meters);
+    expect(rows[0]?.meters).toBeLessThan(Number(rows[1]?.meters));
   });
 
   it('passes the computed bounding box to the query', async () => {
@@ -380,7 +380,7 @@ describe('useStopQueries.routeStops', () => {
     const { result } = await renderHook(() => useStopQueries());
     const directions = await result.current.routeStops('1');
 
-    expect(directions[1].shapeId).toBeNull();
+    expect(directions[1]?.shapeId).toBeNull();
   });
 
   it('keeps each direction in the order the feed serves it', async () => {
@@ -390,8 +390,8 @@ describe('useStopQueries.routeStops', () => {
     const { result } = await renderHook(() => useStopQueries());
     const directions = await result.current.routeStops('1');
 
-    expect(directions[0].stops.map((s) => s.stop_id)).toEqual(['1', '2']);
-    expect(directions[1].stops.map((s) => s.stop_id)).toEqual(['3']);
+    expect(directions[0]?.stops.map((s) => s.stop_id)).toEqual(['1', '2']);
+    expect(directions[1]?.stops.map((s) => s.stop_id)).toEqual(['3']);
   });
 
   it('drops a shape row whose columns are the wrong type', async () => {
@@ -403,7 +403,7 @@ describe('useStopQueries.routeStops', () => {
     const { result } = await renderHook(() => useStopQueries());
     const directions = await result.current.routeStops('1');
 
-    expect(directions[0].shapeId).toBeNull();
+    expect(directions[0]?.shapeId).toBeNull();
   });
 });
 

@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { render, screen } from '@testing-library/react-native';
 import { BusMarker, ageWords, busLabel } from '../BusMarker';
 import { adherenceOf } from '../adherence';
@@ -146,27 +147,26 @@ describe('adherenceOf', () => {
   });
 });
 
-function flatten(style: unknown): Record<string, unknown> {
-  if (Array.isArray(style)) {
-    return style.reduce<Record<string, unknown>>(
-      (all, one) => ({ ...all, ...flatten(one) }),
-      {},
-    );
+/**
+ * The bus's own wrapper view. It throws rather than returning undefined: every
+ * test below is about what that box contains, so one that had gone missing must
+ * fail the test rather than flow into an assertion as `undefined`.
+ */
+function wrapperOf(testID: string) {
+  const wrap = screen.getByTestId(testID).children[0];
+  if (wrap === undefined || typeof wrap === 'string') {
+    throw new Error(`marker ${testID} rendered no wrapper view`);
   }
-  return typeof style === 'object' && style !== null
-    ? (style as Record<string, unknown>)
-    : {};
+  return wrap;
 }
 
-async function dotStyle(adherence: number | null): Promise<Record<string, unknown>> {
+async function dotStyle(adherence: number | null) {
   const view = await render(
     <TestTheme>
       <BusMarker bus={busOnMap(0, '252', adherence)} highlighted={false} placement="below" />
     </TestTheme>,
   );
-  const wrap = screen.getByTestId('bus-252').children[0];
-  if (typeof wrap === 'string') throw new Error('expected the wrapper view');
-  const style = flatten(wrap.props.children[0].props.style);
+  const style = StyleSheet.flatten(wrapperOf('bus-252').props.children[0].props.style);
   await view.unmount();
   return style;
 }
@@ -209,7 +209,7 @@ describe('BusMarker’s label placement', () => {
     );
 
     const label = screen.getByText('252 · here now');
-    expect(flatten(label.props.style).opacity).toBe(0);
+    expect(StyleSheet.flatten(label.props.style).opacity).toBe(0);
   });
 
   it('shows it once the labeller has placed it', async () => {
@@ -219,6 +219,6 @@ describe('BusMarker’s label placement', () => {
       </TestTheme>,
     );
 
-    expect(flatten(screen.getByText('252 · here now').props.style).opacity).toBe(1);
+    expect(StyleSheet.flatten(screen.getByText('252 · here now').props.style).opacity).toBe(1);
   });
 });

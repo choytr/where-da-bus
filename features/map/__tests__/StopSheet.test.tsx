@@ -18,6 +18,15 @@ import type { StopWithDistance } from '../../../data/gtfs/types';
 import type { ArrivalsResult, TheBusClient } from '../../../data/thebus';
 
 /**
+ * These suites are about the arrival board, and the fleet endpoint is no part
+ * of it. Throwing says so — a stub that answered would let a future test think
+ * it was asserting something about buses when it was not.
+ */
+const noFleet: TheBusClient['vehicles'] = () => {
+  throw new Error('this stub serves arrivals only');
+};
+
+/**
  * The sheet's two modes. What is under test is only which of them is on screen
  * and how a rider gets between them — the card's own contents are
  * StopCard.test.tsx, and how the sheet slides is not testable off-device.
@@ -68,7 +77,7 @@ const mockArrivalsResult: ArrivalsResult = {
  * module-level `theBus`; passing a stub is both smaller and honest about the
  * dependency, since there is no longer a client to reach for.
  */
-const client: TheBusClient = { arrivals: jest.fn(async () => mockArrivalsResult) };
+const client: TheBusClient = { arrivals: jest.fn(async () => mockArrivalsResult), vehicles: noFleet };
 
 const stop = (id: string, name: string, meters: number): StopWithDistance => ({
   stop_id: id,
@@ -79,7 +88,11 @@ const stop = (id: string, name: string, meters: number): StopWithDistance => ({
   meters,
 });
 
-const STOPS = [stop('5', 'LAGOON DR', 120), stop('6', 'KAPALULU PL', 340)];
+// Named rather than indexed out of STOPS, so a test selecting "the first
+// stop" says which stop it means and cannot be handed `undefined`.
+const LAGOON = stop('5', 'LAGOON DR', 120);
+const KAPALULU = stop('6', 'KAPALULU PL', 340);
+const STOPS = [LAGOON, KAPALULU];
 
 /**
  * Truman's device: an 896 pt window, an 83 pt tab bar, a 48 pt top inset. The
@@ -241,7 +254,7 @@ describe('StopSheet', () => {
     await show(null);
     const heading = StyleSheet.flatten(screen.getByTestId('nearby-band').props.style);
 
-    await show(STOPS[0]);
+    await show(LAGOON);
     const card = StyleSheet.flatten(screen.getByTestId('stop-card-band').props.style);
 
     await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
@@ -391,7 +404,7 @@ describe('StopSheet', () => {
     // nothing else. The peek now shows a row below it, so the name is back at
     // its own size in `BoardHeader` — which keeps this host identical to
     // `/stop/[code]`, and keeps it off the band's cramped single line.
-    await show(STOPS[0]);
+    await show(LAGOON);
 
     const band = within(screen.getByTestId('stop-card-band'));
     expect(band.queryByText('LAGOON DR')).toBeNull();
@@ -408,7 +421,7 @@ describe('StopSheet', () => {
   });
 
   it('replaces the list with the card when a stop is selected', async () => {
-    await show(STOPS[0]);
+    await show(LAGOON);
 
     // The card, not a row that grew: the other stops are gone from the sheet.
     screen.getByLabelText('Back to nearby stops');
@@ -485,7 +498,7 @@ describe('StopSheet', () => {
   });
 
   it('pins the same legend under the card', async () => {
-    await show(STOPS[0]);
+    await show(LAGOON);
     await raise();
 
     screen.getByText(ATTRIBUTION);
@@ -494,7 +507,7 @@ describe('StopSheet', () => {
 
   it('returns to the list from the card', async () => {
     const onBack = jest.fn();
-    await show(STOPS[0], onBack);
+    await show(LAGOON, onBack);
 
     await fireEvent.press(screen.getByLabelText('Back to nearby stops'));
 

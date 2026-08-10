@@ -155,7 +155,7 @@ describe('parseManifest', () => {
   });
 
   it('rejects anything missing a field it cannot do without', () => {
-    for (const key of ['schemaVersion', 'builtAt', 'file', 'bytes', 'sha256']) {
+    for (const key of ['schemaVersion', 'builtAt', 'file', 'bytes', 'sha256'] as const) {
       const { [key]: _dropped, ...rest } = published;
       expect(parseManifest(rest)).toBeNull();
     }

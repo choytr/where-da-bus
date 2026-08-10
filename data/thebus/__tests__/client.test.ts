@@ -92,7 +92,7 @@ describe('createTheBusClient', () => {
     if (!result.ok) return;
     expect(result.board.stopCode).toBe('45');
     expect(result.board.arrivals).toHaveLength(1);
-    expect(result.board.arrivals[0].estimate).toBe('live');
+    expect(result.board.arrivals[0]?.estimate).toBe('live');
   });
 
   it('reads an error body even though it arrives as HTTP 200', async () => {

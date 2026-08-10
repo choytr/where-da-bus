@@ -1,3 +1,4 @@
+import { StyleSheet } from 'react-native';
 import { render, screen } from '@testing-library/react-native';
 import { StopMarker } from '../StopMarker';
 import { TestTheme } from '../../../lib/testing/theme';
@@ -35,16 +36,20 @@ const STOP: StopWithDistance = {
   meters: 120,
 };
 
-function flatten(style: unknown): Record<string, unknown> {
-  if (Array.isArray(style)) {
-    return style.reduce<Record<string, unknown>>(
-      (all, one) => ({ ...all, ...flatten(one) }),
-      {},
-    );
+/**
+ * The marker's own wrapper view — the box MapKit hit-tests and the box
+ * `reactSetFrame:` reads to place the marker's centre.
+ *
+ * It throws rather than returning undefined, because every test here is *about*
+ * that box: one that had quietly gone missing must fail the test rather than
+ * flow into an assertion as `undefined`.
+ */
+function wrapperOf(testID: string) {
+  const wrap = screen.getByTestId(testID).children[0];
+  if (wrap === undefined || typeof wrap === 'string') {
+    throw new Error(`marker ${testID} rendered no wrapper view`);
   }
-  return typeof style === 'object' && style !== null
-    ? (style as Record<string, unknown>)
-    : {};
+  return wrap;
 }
 
 describe('StopMarker', () => {
@@ -70,9 +75,7 @@ describe('StopMarker', () => {
         </TestTheme>,
       );
 
-      const wrap = screen.getByTestId('4104').children[0];
-      if (typeof wrap === 'string') throw new Error('expected the wrapper view');
-      const style = flatten(wrap.props.style);
+      const style = StyleSheet.flatten(wrapperOf('4104').props.style);
 
       expect(style.width).toBe(34);
       expect(style.height).toBe(34);
@@ -116,10 +119,8 @@ describe('StopMarker', () => {
           />
         </TestTheme>,
       );
-      const wrap = screen.getByTestId('4104').children[0];
-      if (typeof wrap === 'string') throw new Error('expected the wrapper view');
-      const tile = wrap.props.children[0];
-      const size = flatten(tile.props.style).width;
+      const tile = wrapperOf('4104').props.children[0];
+      const size = StyleSheet.flatten(tile.props.style).width;
       await view.unmount();
       return size;
     };

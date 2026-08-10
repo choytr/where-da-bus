@@ -6,6 +6,12 @@ import type { Arrival, ArrivalsResult, TheBusClient } from '../../../data/thebus
 import type { Stop } from '../../../data/gtfs/types';
 import { TestTheme } from '../../../lib/testing/theme';
 
+/** This screen never asks for the fleet; throwing keeps that honest. */
+const noFleet: TheBusClient['vehicles'] = () => {
+  throw new Error('this stub serves arrivals only');
+};
+
+
 /**
  * What a rider actually sees in each of §4's three states. The GTFS query
  * layer is native and is doubled; the client is injected, so nothing here
@@ -18,7 +24,7 @@ import { TestTheme } from '../../../lib/testing/theme';
 const mockQueries = {
   nearby: jest.fn(async () => []),
   searchByName: jest.fn(async () => []),
-  searchByCode: jest.fn(async (code: string): Promise<Stop | null> => ({
+  searchByCode: jest.fn(async (_code: string): Promise<Stop | null> => ({
     stop_id: '596',
     stop_code: '596',
     stop_name: 'KING ST + BISHOP ST',
@@ -57,6 +63,7 @@ const arrival = (over: Partial<Arrival> = {}): Arrival => ({
   arrivesAt: new Date('2026-08-02T08:45:00.000Z'),
   estimate: 'live',
   vehicle: '871',
+  shape: null,
   position: { lat: 21.3, lon: -157.85 },
   canceled: false,
   ...over,
@@ -85,10 +92,14 @@ const clientOf = (...results: ArrivalsResult[]): TheBusClient => {
   return {
     arrivals: async () => {
       const result = results[Math.min(call++, results.length - 1)];
+      // Only reachable from `clientOf()` with no results, which is a test that
+      // meant to say something and did not.
+      if (result === undefined) throw new Error('clientOf() was given no results');
       return result.ok
         ? { ...result, board: { ...result.board, serverTime: new Date() } }
         : result;
     },
+    vehicles: noFleet,
   };
 };
 

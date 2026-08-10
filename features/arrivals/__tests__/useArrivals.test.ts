@@ -4,13 +4,23 @@ import { useArrivals } from '../useArrivals';
 import type { ArrivalsResult, TheBusClient } from '../../../data/thebus';
 
 /**
+ * These suites are about the arrival board, and the fleet endpoint is no part
+ * of it. Throwing says so — a stub that answered would let a future test think
+ * it was asserting something about buses when it was not.
+ */
+const noFleet: TheBusClient['vehicles'] = () => {
+  throw new Error('this stub serves arrivals only');
+};
+
+
+/**
  * The §4 state model lives here: loading, data with an age, and error with
  * last-known values are three different things, and the rule that a spinner
  * never replaces cached data is a property of this hook rather than of the
  * screen that renders it.
  */
 
-const boardResult = (stopCode: string, timestamp = '8/1/2026 10:35:40 PM'): ArrivalsResult => ({
+const boardResult = (stopCode: string): ArrivalsResult => ({
   ok: true,
   board: {
     stopCode,
@@ -22,6 +32,7 @@ const boardResult = (stopCode: string, timestamp = '8/1/2026 10:35:40 PM'): Arri
         route: '2',
         headsign: 'WAIKIKI',
         direction: 'Westbound',
+        shape: null,
         arrivesAt: new Date('2026-08-02T08:45:00.000Z'),
         estimate: 'live',
         vehicle: '871',
@@ -65,9 +76,15 @@ const clientReturning = (...results: ArrivalsResult[]): TheBusClient & { calls: 
     calls: 0,
     arrivals: async () => {
       const result = results[Math.min(client.calls, results.length - 1)];
+      // Only reachable from `clientReturning()` with no results at all, which
+      // is a test that meant to say something and did not. Throwing names it;
+      // returning undefined would have the hook render a board of nothing and
+      // the assertion fail somewhere else entirely.
+      if (result === undefined) throw new Error('clientReturning() was given no results');
       client.calls += 1;
       return result;
     },
+    vehicles: noFleet,
   };
   return client;
 };
@@ -133,7 +150,7 @@ describe('useArrivals', () => {
     // effects before it resolves, so a client that answers immediately would
     // have already delivered a board by the first assertion.
     const first = deferred<ArrivalsResult>();
-    const client: TheBusClient = { arrivals: () => first.promise };
+    const client: TheBusClient = { arrivals: () => first.promise, vehicles: noFleet };
     const { result } = await renderHook(() => useArrivals('45', client));
 
     expect(result.current.loading).toBe(true);
@@ -269,6 +286,7 @@ describe('useArrivals', () => {
         asked.push(options?.fresh);
         return boardResult('45');
       },
+  vehicles: noFleet,
     };
     const { result } = await renderHook(() => useArrivals('45', client));
     await flush();
@@ -287,6 +305,7 @@ describe('useArrivals', () => {
     let call = 0;
     const client: TheBusClient = {
       arrivals: async () => (call++ === 0 ? boardResult('45') : pending.promise),
+  vehicles: noFleet,
     };
     const { result } = await renderHook(() => useArrivals('45', client));
 
@@ -322,6 +341,7 @@ describe('useArrivals', () => {
     let call = 0;
     const client: TheBusClient = {
       arrivals: async () => (call++ === 0 ? boardResult('45') : second.promise),
+  vehicles: noFleet,
     };
     const { result, rerender } = await renderHook(({ stop }: { stop: string }) => useArrivals(stop, client), {
       initialProps: { stop: '45' },

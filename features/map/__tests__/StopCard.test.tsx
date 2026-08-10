@@ -6,6 +6,12 @@ import { TestTheme } from '../../../lib/testing/theme';
 import type { Stop } from '../../../data/gtfs/types';
 import type { Arrival, ArrivalsResult, TheBusClient } from '../../../data/thebus';
 
+/** This screen never asks for the fleet; throwing keeps that honest. */
+const noFleet: TheBusClient['vehicles'] = () => {
+  throw new Error('this stub serves arrivals only');
+};
+
+
 /**
  * The card is the full arrival board inside the sheet, so what is under test is
  * that it says the same things the standalone screen says — most of all that
@@ -38,6 +44,7 @@ const arrival = (over: Partial<Arrival> = {}): Arrival => ({
   arrivesAt: new Date('2026-08-02T08:45:00.000Z'),
   estimate: 'live',
   vehicle: '871',
+  shape: null,
   position: { lat: 21.3, lon: -157.85 },
   canceled: false,
   ...over,
@@ -58,8 +65,12 @@ const clientOf = (...results: ArrivalsResult[]): TheBusClient => {
   return {
     arrivals: async () => {
       const result = results[Math.min(call++, results.length - 1)];
+      // Only reachable from `clientOf()` with no results, which is a test that
+      // meant to say something and did not.
+      if (result === undefined) throw new Error('clientOf() was given no results');
       return result.ok ? { ...result, board: { ...result.board, serverTime: new Date() } } : result;
     },
+    vehicles: noFleet,
   };
 };
 
