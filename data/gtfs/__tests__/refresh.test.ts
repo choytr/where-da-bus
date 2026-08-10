@@ -35,7 +35,7 @@ function serving(body: unknown, status = 200): FetchManifest {
  */
 const wholeFeed: DatabaseFacts = {
   schemaVersion: SCHEMA_VERSION,
-  counts: { stops: 3830, routes: 118, stopRoutes: 8629 },
+  counts: { stops: 3830, routes: 118, stopRoutes: 8629, shapes: 532 },
 };
 
 function fakeFiles(options: { downloads?: string; facts?: DatabaseFacts | Error } = {}) {
@@ -74,6 +74,27 @@ function fakeFiles(options: { downloads?: string; facts?: DatabaseFacts | Error 
 
   return { files, contents, removed };
 }
+
+describe('MANIFEST_URL', () => {
+  /**
+   * The other half of a handshake whose failure is silent. `manifestNameFor` in
+   * scripts/build-gtfs/publish.mjs publishes under these exact names; if the two
+   * ever disagreed, `checkForUpdate` would fetch a 404 forever and Settings
+   * would report "could not check" instead of updating.
+   */
+  it('asks for the manifest belonging to this binary’s own schema', () => {
+    expect(MANIFEST_URL.endsWith(`/manifest-v${SCHEMA_VERSION}.json`)).toBe(true);
+  });
+
+  /**
+   * A shared `manifest.json` is what would switch every older install off: they
+   * have that URL compiled in and ignore a manifest of another schema, so a bump
+   * publishing over it reads to them as "up to date", forever.
+   */
+  it('does not share a name with the manifest older binaries read', () => {
+    expect(MANIFEST_URL.endsWith('/manifest.json')).toBe(false);
+  });
+});
 
 describe('checkForUpdate', () => {
   it('reports no update when builtAt matches', async () => {
@@ -134,7 +155,7 @@ describe('parseManifest', () => {
   });
 
   it('rejects anything missing a field it cannot do without', () => {
-    for (const key of ['schemaVersion', 'builtAt', 'file', 'bytes', 'sha256']) {
+    for (const key of ['schemaVersion', 'builtAt', 'file', 'bytes', 'sha256'] as const) {
       const { [key]: _dropped, ...rest } = published;
       expect(parseManifest(rest)).toBeNull();
     }
@@ -239,7 +260,7 @@ describe('installUpdate', () => {
    */
   it('refuses a database too small to be a whole feed, and deletes it', async () => {
     const { files, contents, removed } = fakeFiles({
-      facts: { schemaVersion: SCHEMA_VERSION, counts: { stops: 40, routes: 3, stopRoutes: 90 } },
+      facts: { schemaVersion: SCHEMA_VERSION, counts: { stops: 40, routes: 3, stopRoutes: 90, shapes: 2 } },
     });
 
     await expect(installUpdate(manifest, files)).rejects.toThrow(/too small to be a whole feed/);

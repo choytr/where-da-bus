@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vehicles>
+<timestamp>8/2/2026 11:43:00 AM</timestamp>
+<vehicle><number>252</number><trip>5333993</trip><driver>48170</driver><latitude>21.30397</latitude><longitude>-157.8496</longitude><adherence>4</adherence><last_message>8/2/2026 11:42:40 AM</last_message><route_short_name>1</route_short_name><headsign>KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN</headsign></vehicle>
+<vehicle><number>197</number><trip>5334010</trip><driver>51002</driver><latitude>21.2887</latitude><longitude>-157.8390</longitude><adherence>-3</adherence><last_message>8/2/2026 11:41:12 AM</last_message><route_short_name>A LINE</route_short_name><headsign>KAPOLEI &amp; MAKAKILO</headsign></vehicle>
+<vehicle><number>410</number><trip/><driver>44913</driver><latitude>21.3350</latitude><longitude>-157.8720</longitude><adherence>0</adherence><last_message>8/2/2026 11:39:55 AM</last_message><route_short_name>null</route_short_name><headsign>NOT IN SERVICE</headsign></vehicle>
+<vehicle><number>801</number><trip>4400001</trip><driver>39001</driver><latitude>21.3900</latitude><longitude>-158.0100</longitude><adherence>2</adherence><last_message>4/17/2022 6:15:03 AM</last_message><route_short_name>null</route_short_name><headsign>WAIPAHU TRANSIT CENTER</headsign></vehicle>
+<vehicle><number>333</number><trip>5334100</trip><driver>50110</driver><latitude>0</latitude><longitude>0</longitude><adherence>1</adherence><last_message>8/2/2026 11:42:58 AM</last_message><route_short_name>2</route_short_name><headsign>SCHOOL STREET</headsign></vehicle>
+<vehicle><number>444</number><trip>5334200</trip><driver>50220</driver><latitude>21.3100</latitude><longitude>-157.8600</longitude><adherence>6</adherence><last_message>not a timestamp</last_message><route_short_name>13</route_short_name><headsign>UH MANOA</headsign></vehicle>
+</vehicles>

@@ -6,6 +6,7 @@ import { SettingsScreen } from '../SettingsScreen';
 import { ThemeProvider, type ThemePreference, type ThemeStorage } from '../../../lib/theme';
 import { ATTRIBUTION, DISCLAIMER } from '../../../lib/legal';
 import { TheBusProvider, type ApiKeyStorage } from '../../../data/thebus';
+import type { RefreshResult } from '../../../data/gtfs/dataRefresh';
 
 const KEY = '3f7c1e92-8a4b-4d16-9f03-c5e28b71da40';
 const OTHER = '9b2d4f60-1c3a-4e57-8d09-2a6f4b8c1e35';
@@ -38,7 +39,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
  * under `node_modules/expo/`). What this suite owns is the *reporting* — that
  * each outcome reaches the screen as something different — not the refresh.
  */
-const mockRefresh = jest.fn(async () => ({ state: 'up-to-date' }));
+// Typed against the real `RefreshResult` union rather than inferred from the
+// default, or `mockResolvedValue({ state: 'installed', builtAt })` widens to
+// `{ state: string }` and the `installed` branch cannot be reached at all.
+const mockRefresh = jest.fn(
+  async (..._args: unknown[]): Promise<RefreshResult> => ({ state: 'up-to-date' }),
+);
 jest.mock('../../../data/gtfs/dataRefresh', () => ({
   refreshStopData: (...args: unknown[]) => mockRefresh(...args),
 }));
@@ -92,7 +98,9 @@ function show() {
  */
 function pressAlertButton(label: string) {
   const alert = jest.mocked(Alert.alert);
-  const [[, , buttons]] = alert.mock.calls.slice(-1);
+  const call = alert.mock.calls.at(-1);
+  if (call === undefined) throw new Error('nothing asked for confirmation');
+  const [, , buttons] = call;
   const button = buttons?.find((b) => b.text === label);
   if (button === undefined) throw new Error(`no "${label}" button in the confirmation`);
   button.onPress?.();

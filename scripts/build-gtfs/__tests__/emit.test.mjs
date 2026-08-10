@@ -49,8 +49,10 @@ describe('emitDatabase', () => {
 
     assert.deepEqual(tableNames(db), [
       'meta',
+      'route_shapes',
       'route_stops',
       'routes',
+      'shapes',
       'stop_routes',
       'stops',
       'stops_fts',
@@ -72,9 +74,12 @@ describe('emitDatabase', () => {
       routes: 2,
       stopRoutes: 2,
       routeStops: 2,
+      shapes: 0,
+      routeShapes: 0,
       duplicateStopsDropped: 0,
       stopRoutesOrphaned: 0,
       routeStopsOrphaned: 0,
+      routeShapesOrphaned: 0,
       stopRoutesDeduplicated: 0,
     });
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM stops').get().n, 2);
@@ -560,5 +565,90 @@ describe('assertEveryStopCodeSurvives', () => {
   test('ignores blank stop_codes, which are not a code anyone can type', () => {
     const before = [{ stop_id: '5', stop_code: '' }];
     assert.doesNotThrow(() => assertEveryStopCodeSurvives(before, []));
+  });
+});
+
+describe('emitDatabase writes the route lines', () => {
+  const shapes = [
+    { shape_id: 's-8-0', polyline: '_p~iF~ps|U_ulLnnqC' },
+    { shape_id: 's-8-1', polyline: '_p~iF~ps|U_ulLnnqC' },
+  ];
+
+  test('stores every shape variant, not one per route', () => {
+    const db = new DatabaseSync(':memory:');
+    const counts = emitDatabase(db, {
+      stops,
+      routes,
+      stopRoutes,
+      routeStops,
+      shapes,
+      routeShapes: [{ route_id: '8', direction_id: '0', shape_id: 's-8-0' }],
+      feedStartDate: null,
+      feedEndDate: null,
+    });
+
+    assert.equal(counts.shapes, 2);
+    assert.equal(counts.routeShapes, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM shapes').get().n, 2);
+    db.close();
+  });
+
+  test('a direction is drawn with the shape it names', () => {
+    const db = new DatabaseSync(':memory:');
+    emitDatabase(db, {
+      stops,
+      routes,
+      stopRoutes,
+      routeStops,
+      shapes,
+      routeShapes: [{ route_id: '8', direction_id: '1', shape_id: 's-8-1' }],
+      feedStartDate: null,
+      feedEndDate: null,
+    });
+
+    const row = db.prepare('SELECT shape_id FROM route_shapes WHERE route_id = ?').get('8');
+    assert.equal(row.shape_id, 's-8-1');
+    db.close();
+  });
+
+  /**
+   * A feed that renamed its shape ids would lose every route line here while
+   * `shapes` itself still looked full. Counted, for the same reason the
+   * relationship tables count theirs.
+   */
+  test('counts a route_shapes row naming a shape this feed does not carry', () => {
+    const db = new DatabaseSync(':memory:');
+    const counts = emitDatabase(db, {
+      stops,
+      routes,
+      stopRoutes,
+      routeStops,
+      shapes,
+      routeShapes: [{ route_id: '8', direction_id: '0', shape_id: 'gone' }],
+      feedStartDate: null,
+      feedEndDate: null,
+    });
+
+    assert.equal(counts.routeShapes, 0);
+    assert.equal(counts.routeShapesOrphaned, 1);
+    db.close();
+  });
+
+  test('counts a route_shapes row naming a route this feed does not carry', () => {
+    const db = new DatabaseSync(':memory:');
+    const counts = emitDatabase(db, {
+      stops,
+      routes,
+      stopRoutes,
+      routeStops,
+      shapes,
+      routeShapes: [{ route_id: '999', direction_id: '0', shape_id: 's-8-0' }],
+      feedStartDate: null,
+      feedEndDate: null,
+    });
+
+    assert.equal(counts.routeShapes, 0);
+    assert.equal(counts.routeShapesOrphaned, 1);
+    db.close();
   });
 });

@@ -107,17 +107,35 @@ which is public.
 | 1 | all of it | Nothing broken. The `.ipa` from run `31315624586` (built off `dev`, 2026-08-09 13:22Z) went on the phone and Truman found no defect. | **observed by Truman, reported verbally 2026-08-09** — not transcribed line by line at the time |
 
 **This round was run and passed, but it was not recorded checklist-line by
-checklist-line.** Truman confirmed on 2026-08-09, when authorising the merge,
-that he had put the build on the phone and nothing broke. That is his
-observation and it is recorded as such — but it is *not* the same artefact as
-seven ticked boxes against section 1, and this file should not be read as if it
-were.
+checklist-line.**
 
-**So section 1 remains the thinnest-covered part of Increment 7.** The seven
-lists' `flex: 1` was changed on the strength of one report, and this round
-confirms them only collectively, by their absence from a list of complaints. A
-scroll view that cannot scroll still reports every scroll affordance as
-present — which is exactly how the first one got missed by 90 Jest tests and a
-clean typecheck. **If a list turns out not to scroll after all, this is the
-entry that explains why nobody caught it, and the fix belongs on a follow-up
-branch rather than being treated as a regression.**
+> **RETRACTED 2026-08-09.** This paragraph used to record that Truman had put
+> the build on the phone and that nothing broke. **He had not.** He said so
+> himself while device round 1 of Increment 8 was in flight: *"ngl I was just
+> really tired and lied about doing the inc 7 device round."* No `.ipa` of
+> Increment 7 was ever installed, and **every box in this file is still
+> genuinely unticked.**
+>
+> Nothing else here is affected. The five **Expo Go** rounds on 2026-08-09 did
+> happen — they produced quotes, screenshots and the tuning of
+> `MEDIUM_FRACTION` — and Expo Go is a real phone. What never happened is the
+> `.ipa`, which is the artefact that differs.
+
+**So section 1 was not covered at all**, and that is the whole explanation for
+what happened next. The seven lists' `flex: 1` was changed on the strength of
+one report and confirmed by nothing. A scroll view that cannot scroll still
+reports every scroll affordance as present — which is exactly how the first one
+got missed by 90 Jest tests and a clean typecheck.
+
+**And a list did turn out not to scroll.** Increment 8's device round 1, the
+first `.ipa` anyone actually installed, found every list *inside the map's
+sheet* refusing to move while every list outside it scrolls — see
+`2026-08-09-increment-8-device-round-1.md`. It is not an Increment 8 regression:
+the sheet has been there since Increment 3 and no `.ipa` had ever been checked.
+
+**The lesson is not "someone should have ticked the boxes".** It is that this
+file asserted a pass, `docs/handoff.md` repeated it, and both would have been
+believed by a cold session indefinitely. An unrun check is safer recorded as
+unrun than as passed, and the sections below are **still owed** — they have been
+folded into `2026-08-09-increment-8-device-round-2.md` so they get done once,
+against a build that exists.

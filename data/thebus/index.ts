@@ -1,14 +1,19 @@
 export type {
+  ApiFailure,
   Arrival,
   ArrivalBoard,
   ArrivalEstimate,
   ArrivalsFailure,
   ArrivalsResult,
   Coords,
+  Fleet,
+  FleetResult,
+  Vehicle,
 } from './types';
 export type { FetchLike, HttpResponse, TheBusClient, TheBusClientConfig } from './client';
 export { createTheBusClient } from './client';
 export { parseArrivals } from './parse';
+export { parseVehicles } from './vehicles';
 export { withCache } from './cache';
 export { hawaiiDateTime, hawaiiTimestamp } from './time';
 

@@ -8,7 +8,7 @@ import { formatDistance } from '../stops/StopRow';
 import { LEGEND_GAP } from '../../lib/Attribution';
 import { useTheme } from '../../lib/theme';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
-import type { TheBusClient } from '../../data/thebus';
+import type { Arrival, TheBusClient } from '../../data/thebus';
 
 /**
  * One selected stop, filling the sheet: the **full** arrival board, not a
@@ -27,6 +27,10 @@ import type { TheBusClient } from '../../data/thebus';
  */
 
 const BACK_LABEL = 'Back to nearby stops';
+/**
+ * What the back control goes back *to*. Route mode replaces it, because from a
+ * route's stop list "Nearby" would be a lie about where the card came from.
+ */
 const BACK_TEXT = '‹ Nearby';
 
 export type StopCardProps = {
@@ -35,11 +39,20 @@ export type StopCardProps = {
   meters: number | null;
   routes: RouteSummary[];
   isFavorite: boolean;
+  /** Overrides `‹ Nearby` when the card was opened from something else. */
+  backLabel?: string;
   onBack: () => void;
   onToggleFavorite: (stopId: string) => void;
   onPressRoute: (route: RouteSummary) => void;
   /** Handed down from MapScreen, which reads it from `useTheBus()`. */
   client: TheBusClient;
+  /**
+   * Only the map passes these: tapping an arrival highlights the bus already
+   * drawn behind the sheet, joined on trip id. `/stop/[code]` renders the same
+   * board with neither, and so keeps plain rows.
+   */
+  onSelectArrival?: (arrival: Arrival) => void;
+  selectedTripId?: string | null;
 };
 
 export function StopCard({
@@ -47,10 +60,13 @@ export function StopCard({
   meters,
   routes,
   isFavorite,
+  backLabel,
   onBack,
   onToggleFavorite,
   onPressRoute,
   client,
+  onSelectArrival,
+  selectedTripId = null,
 }: StopCardProps) {
   const { palette } = useTheme();
   const code = stop.stop_code || stop.stop_id;
@@ -80,7 +96,7 @@ export function StopCard({
           onPress={onBack}
           hitSlop={12}
         >
-          <Text style={[styles.back, { color: palette.text }]}>{BACK_TEXT}</Text>
+          <Text style={[styles.back, { color: palette.text }]}>{backLabel ?? BACK_TEXT}</Text>
         </Pressable>
 
         <Pressable
@@ -164,7 +180,14 @@ export function StopCard({
             </Text>
           )
         }
-        renderItem={({ item }) => <ArrivalRow arrival={item} now={now} />}
+        renderItem={({ item }) => (
+          <ArrivalRow
+            arrival={item}
+            now={now}
+            onPress={onSelectArrival}
+            selected={selectedTripId !== null && item.tripId === selectedTripId}
+          />
+        )}
         ListEmptyComponent={
           // §4's states, kept apart at this size as much as at full screen:
           // still asking, asked and there is nothing, and could not ask.

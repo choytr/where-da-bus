@@ -92,7 +92,7 @@ describe('createTheBusClient', () => {
     if (!result.ok) return;
     expect(result.board.stopCode).toBe('45');
     expect(result.board.arrivals).toHaveLength(1);
-    expect(result.board.arrivals[0].estimate).toBe('live');
+    expect(result.board.arrivals[0]?.estimate).toBe('live');
   });
 
   it('reads an error body even though it arrives as HTTP 200', async () => {
@@ -286,5 +286,107 @@ describe('createTheBusClient', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('createTheBusClient.vehicles', () => {
+  const FLEET = readFileSync(join(__dirname, 'fixtures/vehicles.xml'), 'utf8');
+
+  const xml = (body: string, status = 200): HttpResponse => ({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => 'text/xml' },
+    text: async () => body,
+  });
+
+  /**
+   * No `route=`, and that is deliberate rather than an omission. Verified live:
+   * `?route=1` returns the identical 1,184 vehicles, so a route parameter would
+   * spend a request to receive the whole fleet anyway while implying a
+   * narrowing the server never performed.
+   */
+  it('asks for the whole fleet, with the key and nothing else', async () => {
+    const calls: string[] = [];
+    const client = createTheBusClient({
+      appId: APP_ID,
+      fetch: async (url) => {
+        calls.push(url);
+        return xml(FLEET);
+      },
+    });
+
+    await client.vehicles();
+
+    expect(calls).toEqual([`https://api.thebus.org/vehicle/?key=${APP_ID}`]);
+  });
+
+  it('returns the parsed fleet', async () => {
+    const client = createTheBusClient({ appId: APP_ID, fetch: async () => xml(FLEET) });
+
+    const result = await client.vehicles();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.fleet.vehicles.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * The same rule `arrivals` follows, and it matters more here: this endpoint
+   * answers a rejected key with HTTP 200 too.
+   */
+  it('reads a rejected key out of the body of a 200', async () => {
+    const client = createTheBusClient({
+      appId: APP_ID,
+      fetch: async () => xml('<errorMessage>Invalid or unspecified API key</errorMessage>'),
+    });
+
+    expect(await client.vehicles()).toEqual({
+      ok: false,
+      failure: { kind: 'unauthorized' },
+    });
+  });
+
+  it('reads a 404 HTML page as malformed rather than trusting a header', async () => {
+    const client = createTheBusClient({ appId: APP_ID, fetch: async () => html(200) });
+
+    expect(await client.vehicles()).toEqual({ ok: false, failure: { kind: 'malformed' } });
+  });
+
+  it('is unreachable when the request never answers', async () => {
+    const client = createTheBusClient({
+      appId: APP_ID,
+      retryDelayMs: 0,
+      fetch: async () => {
+        throw new Error('offline');
+      },
+    });
+
+    expect(await client.vehicles()).toEqual({ ok: false, failure: { kind: 'unreachable' } });
+  });
+
+  it('tries again after a 5xx, and not after a 4xx', async () => {
+    let fiveHundreds = 0;
+    const onFiveHundred = createTheBusClient({
+      appId: APP_ID,
+      retryDelayMs: 0,
+      fetch: async () => {
+        fiveHundreds += 1;
+        return xml('', 503);
+      },
+    });
+    await onFiveHundred.vehicles();
+
+    let fourHundreds = 0;
+    const onFourHundred = createTheBusClient({
+      appId: APP_ID,
+      retryDelayMs: 0,
+      fetch: async () => {
+        fourHundreds += 1;
+        return xml('', 404);
+      },
+    });
+    await onFourHundred.vehicles();
+
+    expect(fiveHundreds).toBe(2);
+    expect(fourHundreds).toBe(1);
   });
 });

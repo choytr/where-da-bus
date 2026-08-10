@@ -73,8 +73,9 @@ describe('parseArrivals — a real board', () => {
     // "12:21 AM" 22 hours *before* "11:42 PM" instead of 39 minutes after it.
     const times = board().arrivals.map((a) => a.arrivesAt.getTime());
     expect(times).toEqual([...times].sort((x, y) => x - y));
-    expect(new Date(times[0]).toISOString()).toBe('2026-08-02T08:45:00.000Z');
-    expect(new Date(times[times.length - 1]).toISOString()).toBe('2026-08-02T20:53:00.000Z');
+    expect(times.at(0)).toBeDefined();
+    expect(new Date(Number(times.at(0))).toISOString()).toBe('2026-08-02T08:45:00.000Z');
+    expect(new Date(Number(times.at(-1))).toISOString()).toBe('2026-08-02T20:53:00.000Z');
   });
 
   it('keeps route names as strings, since not all of them are numbers', () => {
@@ -83,8 +84,8 @@ describe('parseArrivals — a real board', () => {
 
   it('carries headsign and direction through unchanged', () => {
     const first = board().arrivals[0];
-    expect(first.direction).toBe('Westbound');
-    expect(first.headsign).toBe('KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN');
+    expect(first?.direction).toBe('Westbound');
+    expect(first?.headsign).toBe('KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN');
   });
 
   it('reports nothing as canceled in a normal response', () => {
@@ -240,7 +241,7 @@ describe('parseArrivals — failures', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.board.arrivals).toHaveLength(1);
-    expect(result.board.arrivals[0].id).toBe('1');
+    expect(result.board.arrivals[0]?.id).toBe('1');
   });
 
   it('reads canceled="1" as canceled and "-1" as not', () => {
@@ -256,7 +257,7 @@ describe('parseArrivals — failures', () => {
     const canceledOf = (raw: string) => {
       const r = parseArrivals(make(raw));
       if (!r.ok) throw new Error('should parse');
-      return r.board.arrivals[0].canceled;
+      return r.board.arrivals[0]?.canceled;
     };
     expect(canceledOf('1')).toBe(true);
     // "-1" is the vendor's "was canceled, now reinstated" — a running bus.

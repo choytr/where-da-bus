@@ -5,12 +5,14 @@ import { MapScreen, COMPASS_LAYOUT_OFFSET } from '../MapScreen';
 import { MEDIUM_DETENT, PEEK_DETENT, detentsFor, tabBarOverlapOf, visibleAbove } from '../StopSheet';
 import { centredOn } from '../region';
 import { SEARCH_PLACEHOLDER } from '../SearchBar';
+import { leaveRouteMode } from '../routeMode';
 import type { Place } from '../address';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
 import { NOTICES } from '../../arrivals/board';
 import type { RouteSummary, Stop, StopWithDistance } from '../../../data/gtfs/types';
-import type { ArrivalsResult } from '../../../data/thebus/types';
+import type { RouteDirection } from '../../../data/gtfs/db';
+import type { Arrival, ArrivalsResult, FleetResult, Vehicle } from '../../../data/thebus/types';
 import type { TheBusClient } from '../../../data/thebus';
 import type { LocationState } from '../../stops/useLocation';
 import type { Coords } from '../../../lib/distance';
@@ -134,10 +136,20 @@ jest.mock('react-native-maps', () => {
     </Pressable>
   );
 
+  /**
+   * Reports its coordinate count as text, because the assertion that matters is
+   * that this is **always mounted** and only its coordinates change. A double
+   * that rendered nothing for an empty line could not tell the two apart.
+   */
+  const MockPolyline = ({ coordinates, testID }: any) => (
+    <Text testID={testID}>{`polyline points: ${coordinates?.length ?? 0}`}</Text>
+  );
+
   return {
     __esModule: true,
     default: MockMapView,
     Marker: MockMarker,
+    Polyline: MockPolyline,
   };
 });
 
@@ -214,6 +226,34 @@ const mockQueries = {
   searchRoutes: jest.fn(async (_query: string): Promise<RouteSummary[]> => []),
   stopsByIds: jest.fn(async (): Promise<Stop[]> => []),
   feedEndDate: jest.fn(async (): Promise<string | null> => null),
+  routeById: jest.fn(async (routeId: string): Promise<RouteSummary | null> => ({
+    route_id: routeId,
+    short_name: '1',
+    long_name: 'Kalihi - Waikiki',
+  })),
+  shapeById: jest.fn(async (): Promise<Coords[] | null> => [
+    { lat: 21.33, lon: -157.87 },
+    { lat: 21.31, lon: -157.85 },
+    { lat: 21.28, lon: -157.83 },
+  ]),
+  routeStops: jest.fn(async (): Promise<RouteDirection[]> => [
+    {
+      directionId: '0',
+      shapeId: 's-out',
+      stops: [
+        { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+        { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
+      ],
+    },
+    {
+      directionId: '1',
+      shapeId: 's-back',
+      stops: [
+        { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
+        { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+      ],
+    },
+  ]),
 };
 
 jest.mock('../../../data/gtfs/db', () => ({
@@ -286,12 +326,68 @@ let mockArrivalsResult: ArrivalsResult = {
  * the user and the client is rebuilt whenever it changes. The route reads the
  * real one from `useTheBus()`.
  */
+/**
+ * The fleet the map draws buses from. Held in a `let` so a test can replace it
+ * before rendering, the way `mockArrivalsResult` works.
+ */
+let mockFleetResult: FleetResult = {
+  ok: true,
+  fleet: { serverTime: new Date('2026-08-02T21:43:00Z'), vehicles: [] },
+};
+
 const client: TheBusClient = {
   arrivals: jest.fn(async (stopCode: string, options?: { signal?: AbortSignal }) => {
     mockArrivalCalls.push({ stopCode, signal: options?.signal });
     return mockArrivalsResult;
   }),
+  vehicles: jest.fn(async () => mockFleetResult),
 };
+
+/** A bus that reported `agoMs` before the fleet's own timestamp. */
+function bus(number: string, route: string | null, agoMs = 20_000): Vehicle {
+  const serverTime = new Date('2026-08-02T21:43:00Z');
+  return {
+    number,
+    tripId: `trip-${number}`,
+    route,
+    position: { lat: 21.31, lon: -157.85 },
+    headsign: 'WAIKIKI',
+    adherence: 0,
+    lastMessage: new Date(serverTime.getTime() - agoMs),
+  };
+}
+
+function fleetOf(...vehicles: Vehicle[]): FleetResult {
+  return { ok: true, fleet: { serverTime: new Date('2026-08-02T21:43:00Z'), vehicles } };
+}
+
+/**
+ * An arrival naming a trip and a shape. `shape` is present on every real
+ * arrival; `position` is present on about one in ten, which is why the bus
+ * highlight and the variant line are independent of each other.
+ */
+function arrival(tripId: string, shape: string | null, route = '32'): Arrival {
+  return {
+    id: `a-${tripId}`,
+    tripId,
+    route,
+    headsign: 'WAIKIKI',
+    direction: 'Westbound',
+    arrivesAt: new Date('2026-08-02T22:10:00Z'),
+    estimate: 'scheduled',
+    vehicle: null,
+    position: null,
+    shape,
+    canceled: false,
+  };
+}
+
+function boardOf(...arrivals: Arrival[]): ArrivalsResult {
+  return {
+    ok: true,
+    board: { stopCode: '901', serverTime: new Date('2026-08-02T22:00:00Z'), arrivals },
+  };
+}
 
 /**
  * The opacity of the name drawn under a pin, or null if no marker carries that
@@ -393,11 +489,17 @@ function show() {
 
 describe('MapScreen', () => {
   beforeEach(() => {
+    // Route mode is module state — deliberately, so that changing tab cannot
+    // drop it — which means it also survives a test. One test entering it and
+    // the next rendering the route's pins instead of the anchor's is the price,
+    // and this is the whole of it.
+    leaveRouteMode();
     jest.clearAllMocks();
     mockArrivalCalls.length = 0;
     mockSnapCalls.length = 0;
     mockCameraMoves.length = 0;
     mockRequest.mockResolvedValue(null);
+    mockFleetResult = fleetOf();
     mockNearby.mockResolvedValue([]);
     mockRoutesForStops.mockResolvedValue(new Map());
     // `clearAllMocks` clears call records, not implementations, so the defaults
@@ -1123,9 +1225,15 @@ describe('MapScreen', () => {
       expect(mockNearby).toHaveBeenCalledTimes(1);
     });
 
-    it('opens the route screen by route_id, from a row showing neither', async () => {
+    /**
+     * The increment's whole point: picking a route on the map draws it *here*.
+     * This used to assert a push to `/route/25`, and that assertion is now the
+     * bug — `RouteScreen` is still what the Stops tab opens, and the map keeps
+     * the rider on the map.
+     */
+    it('draws the route on the map instead of leaving it', async () => {
       // `route_id: '25'` is route 32. The row shows the number on the bus and
-      // the tap navigates by the id, and those must not be the same string.
+      // the lookup uses the id, and those must not be the same string.
       mockQueries.searchRoutes.mockResolvedValue([
         { route_id: '25', short_name: '32', long_name: 'Mapunapuna-Airport' },
       ]);
@@ -1138,9 +1246,11 @@ describe('MapScreen', () => {
 
       await fireEvent.press(screen.getByLabelText('Route 32'));
 
-      expect(mockPush).toHaveBeenCalledWith('/route/25');
-      // Closed behind the push, so it is not underneath the route screen on the
-      // way back.
+      await waitFor(() => screen.getByTestId('route-band'));
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockQueries.routeStops).toHaveBeenCalledWith('25');
+      // Closed behind it, so the route is revealed on the map rather than
+      // appearing under a search that is still up.
       expect(screen.queryByLabelText('Find a route by number or name')).toBeNull();
     });
 
@@ -1508,6 +1618,554 @@ describe('MapScreen', () => {
       // Still usable at the end of all that, which is the whole assertion.
       await longPress();
       screen.getByLabelText('pin pending-anchor');
+    });
+  });
+  describe('MapScreen route mode', () => {
+    /**
+     * Getting into route mode the way a rider does — through the search — rather
+     * than by poking the store, so these exercise the wiring as well as the state.
+     */
+    async function showRoute() {
+      const route = { route_id: '25', short_name: '32', long_name: 'Mapunapuna-Airport' };
+      mockQueries.searchRoutes.mockResolvedValue([route]);
+      mockQueries.routeById.mockResolvedValue(route);
+      await show();
+      await fireEvent.press(screen.getByLabelText(SEARCH_PLACEHOLDER));
+      await fireEvent.press(screen.getByLabelText('Search by routes'));
+      await fireEvent.changeText(screen.getByLabelText('Find a route by number or name'), '32');
+      await waitFor(() => screen.getByLabelText('Route 32'));
+      await fireEvent.press(screen.getByLabelText('Route 32'));
+      await waitFor(() => screen.getByTestId('route-band'));
+    }
+
+    it('names the route and where the direction ends up', async () => {
+      await showRoute();
+
+      expect(screen.getByText('Route 32')).toBeTruthy();
+      expect(screen.getByText('Toward WAIKIKI')).toBeTruthy();
+    });
+
+    it('lists the route’s stops in the order it serves them', async () => {
+      await showRoute();
+
+      expect(screen.getByLabelText('Stop 1, KALIHI TRANSIT CENTER')).toBeTruthy();
+      expect(screen.getByLabelText('Stop 2, WAIKIKI')).toBeTruthy();
+    });
+
+    /**
+     * One set of pins, never two. Two overlapping stop sets on one map is how a
+     * rider stops being able to tell what they are looking at.
+     */
+    it('draws the route’s stops as the pins, and not the nearby ones', async () => {
+      mockNearby.mockResolvedValue([stop('7', 'SOMEWHERE ELSE', 40)]);
+      await showRoute();
+
+      // The double labels a marker by its `identifier`, which is the stop id.
+      expect(screen.getByLabelText('pin r1')).toBeTruthy();
+      expect(screen.getByLabelText('pin r2')).toBeTruthy();
+      expect(screen.queryByLabelText('pin 7')).toBeNull();
+    });
+
+    it('flips to the other direction', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('Show the other direction'));
+
+      await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
+      expect(screen.getByLabelText('Stop 1, WAIKIKI')).toBeTruthy();
+    });
+
+    /**
+     * The guard in `flipRoute`, which exists because spamming this control
+     * crashed the app on a device on 2026-08-09 — two marker swaps in flight at
+     * once, 66 annotations leaving and 66 arriving in each.
+     *
+     * **No timer mocking, and none wanted.** Two awaited presses land a few
+     * milliseconds apart, which is far inside `FLIP_LOCKOUT_MS` and is exactly
+     * what a rider drumming the button does. Faking the clock here would test
+     * the mock rather than the window.
+     */
+    it('ignores a second flip while the first is still landing', async () => {
+      await showRoute();
+
+      const control = screen.getByLabelText('Show the other direction');
+      await fireEvent.press(control);
+      await fireEvent.press(control);
+
+      await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
+      // Honouring the second tap would land the rider back where they started.
+      expect(screen.queryByText('Toward WAIKIKI')).toBeNull();
+    });
+
+    it('flips again once the lockout has passed', async () => {
+      await showRoute();
+
+      const control = screen.getByLabelText('Show the other direction');
+      await fireEvent.press(control);
+      await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
+
+      // The clock rather than the timers: the guard compares `Date.now()`, so
+      // this is the one thing that has to move for the window to reopen.
+      const realNow = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(realNow + 10_000);
+      try {
+        await fireEvent.press(control);
+        await waitFor(() => screen.getByText('Toward WAIKIKI'));
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    /**
+     * Truman's second reproduction on 2026-08-09: a flip followed quickly by
+     * the X. The close lands inside the flip's window, and unlike a flip it is
+     * **held and then honoured** rather than dropped — a close that silently
+     * does nothing is a broken app.
+     *
+     * Real timers, because `waitFor` outlasts `SWAP_LOCKOUT_MS` on its own and
+     * the deferral is the behaviour under test rather than the clock.
+     */
+    it('still leaves when the X lands while a flip is in flight', async () => {
+      mockNearby.mockResolvedValue([stop('7', 'SOMEWHERE ELSE', 40)]);
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('Show the other direction'));
+      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+      await waitFor(() => screen.getByTestId('nearby-band'));
+      expect(screen.queryByTestId('route-band')).toBeNull();
+    });
+
+    it('leaves route mode from the X, and puts the nearby stops back', async () => {
+      mockNearby.mockResolvedValue([stop('7', 'SOMEWHERE ELSE', 40)]);
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+      await waitFor(() => screen.getByTestId('nearby-band'));
+      expect(screen.queryByTestId('route-band')).toBeNull();
+      expect(screen.getByLabelText('pin 7')).toBeTruthy();
+      expect(screen.queryByLabelText('pin r1')).toBeNull();
+    });
+
+    /** Truman settled this explicitly: only the X leaves. */
+    it('stays in route mode when the map is panned', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('pan the camera away'));
+
+      expect(screen.getByTestId('route-band')).toBeTruthy();
+    });
+
+    it('stays in route mode when the map is tapped', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('map surface'));
+
+      expect(screen.getByTestId('route-band')).toBeTruthy();
+    });
+
+    /**
+     * *Search this area* replaces the anchor's stop set, which in route mode is
+     * not what the pins are showing — so taking it up would appear to do nothing.
+     */
+    it('does not offer to search this area while a route is showing', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('pan the camera away'));
+
+      expect(screen.queryByLabelText('Search this area')).toBeNull();
+    });
+
+    /**
+     * The other half of the same pair, and it was missed until Truman asked for
+     * it on 2026-08-09. A long press offers *Search here*, which replaces the
+     * anchor's stop set — in route mode the pins are the route's stops, so
+     * taking the offer up leaves the map looking identical and the gesture
+     * reads as broken.
+     */
+    it('drops no pending marker for a long press while a route is showing', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('long press the map'));
+
+      expect(screen.queryByLabelText('pin pending-anchor')).toBeNull();
+    });
+
+    it('takes a long press again once the route is dismissed', async () => {
+      await showRoute();
+      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+      await fireEvent.press(screen.getByLabelText('long press the map'));
+
+      await waitFor(() => screen.getByLabelText('pin pending-anchor'));
+    });
+
+    it('offers to search this area again once the route is dismissed', async () => {
+      await showRoute();
+      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+      await fireEvent.press(screen.getByLabelText('pan the camera away'));
+
+      await waitFor(() => screen.getByLabelText('Search this area'));
+    });
+
+    /**
+     * Eight of Oahu's route/directions call at the same stop twice — 60 and 83
+     * at stop 2190, 40 at 4416/4417, plus 521 and 421 — verified against the
+     * built asset on 2026-08-09. Both markers took `key={stop.stop_id}`, so
+     * React rendered two children with the same key and MapKit was handed two
+     * annotations with the same `identifier`. Truman saw the warning by name.
+     *
+     * The row and the pin disagree on purpose: the bus really does come back,
+     * so the list says so, and the map has nowhere to put a second marker at a
+     * coordinate it has already marked.
+     */
+    describe('a route that calls at the same stop twice', () => {
+      const loop: RouteDirection[] = [
+        {
+          directionId: '0',
+          shapeId: 's-out',
+          stops: [
+            { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+            { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
+            // The same stop again, on the way back round.
+            { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+          ],
+        },
+      ];
+
+      it('draws one pin for it, not two with the same key', async () => {
+        mockQueries.routeStops.mockResolvedValueOnce(loop);
+        await showRoute();
+
+        expect(screen.getAllByLabelText('pin r1')).toHaveLength(1);
+      });
+
+      it('still lists it twice, because the bus really does come back', async () => {
+        mockQueries.routeStops.mockResolvedValueOnce(loop);
+        await showRoute();
+
+        expect(screen.getAllByLabelText(/KALIHI TRANSIT CENTER/)).toHaveLength(2);
+      });
+    });
+
+    it('opens a route stop’s card, with a back control naming the route', async () => {
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('Stop 1, KALIHI TRANSIT CENTER'));
+
+      await waitFor(() => screen.getByTestId('stop-card-band'));
+      expect(screen.getByText('‹ Route 32')).toBeTruthy();
+    });
+
+    it('goes back from a stop’s card to the route’s stop list', async () => {
+      await showRoute();
+      await fireEvent.press(screen.getByLabelText('Stop 1, KALIHI TRANSIT CENTER'));
+      await waitFor(() => screen.getByTestId('stop-card-band'));
+
+      await fireEvent.press(screen.getByText('‹ Route 32'));
+
+      await waitFor(() => screen.getByTestId('route-band'));
+      expect(screen.getByLabelText('Stop 2, WAIKIKI')).toBeTruthy();
+    });
+
+    describe('the live buses', () => {
+      it('draws a fresh bus on the route being shown', async () => {
+        mockFleetResult = fleetOf(bus('252', '32'));
+        await showRoute();
+
+        // The double labels a marker by its `identifier`, which for a bus is
+        // its fleet number — the same key that keeps markers stable across a
+        // poll that replaces the whole set.
+        await waitFor(() => screen.getByLabelText('pin bus-252'));
+      });
+
+      /**
+       * The layer's four states, derived here and worded in `StopSheet`.
+       *
+       * `failure` used to be taken off `useVehicles` and dropped, so a rejected
+       * key, an unreachable API and a route with genuinely no buses running all
+       * rendered as the same empty map. `CLAUDE.md` names that conflation as
+       * the thing that makes a transit app untrustworthy at a stop at night,
+       * and this was the last place in the app still doing it.
+       *
+       * It is also the instrument for the bug Truman reported on 2026-08-09 —
+       * buses absent on first render until he zoomed. A line that goes from
+       * "Looking for buses…" to a count on its own settles whether the zoom
+       * mattered at all.
+       */
+      it('says it is looking while the first fleet is in flight', async () => {
+        // `client` is a module-level fixture, so the held-open reply is put
+        // back before the next test sees it.
+        const answering = client.vehicles;
+        let answer: (result: FleetResult) => void = () => {};
+        client.vehicles = () =>
+          new Promise<FleetResult>((resolve) => {
+            answer = resolve;
+          });
+
+        try {
+          await showRoute();
+
+          expect(screen.getByTestId('bus-layer-state')).toHaveTextContent(
+            'Looking for buses…',
+          );
+
+          await act(async () => {
+            answer(fleetOf(bus('252', '32')));
+          });
+          await waitFor(() =>
+            expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('1 bus'),
+          );
+        } finally {
+          client.vehicles = answering;
+        }
+      });
+
+      it('counts the buses it is drawing, and the late ones', async () => {
+        mockFleetResult = fleetOf(
+          { ...bus('252', '32'), adherence: -12 },
+          { ...bus('253', '32'), adherence: 0 },
+        );
+        await showRoute();
+
+        await waitFor(() =>
+          expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('2 buses · 1 late'),
+        );
+      });
+
+      it('says no buses are running rather than looking forever', async () => {
+        mockFleetResult = fleetOf(bus('300', '13'));
+        await showRoute();
+
+        await waitFor(() =>
+          expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('No buses running'),
+        );
+      });
+
+      /** The pair that must never render alike: one is fixed by waiting, one is not. */
+      it('says it cannot reach TheBus when the fleet fails', async () => {
+        mockFleetResult = { ok: false, failure: { kind: 'unreachable' } };
+        await showRoute();
+
+        await waitFor(() =>
+          expect(screen.getByTestId('bus-layer-state')).toHaveTextContent("Can't reach TheBus"),
+        );
+      });
+
+      it('draws no buses before a route is picked', async () => {
+        mockFleetResult = fleetOf(bus('252', '32'));
+        await show();
+
+        expect(screen.queryByLabelText('pin bus-252')).toBeNull();
+        expect(client.vehicles).not.toHaveBeenCalled();
+      });
+
+      /**
+       * 929 stale vehicles in the daytime sample carried plausible Oahu
+       * coordinates. Unfiltered this layer is a car park, not a map.
+       */
+      it('leaves a bus parked since 2022 off the map', async () => {
+        mockFleetResult = fleetOf(bus('801', '32', 4 * 365 * 24 * 60 * 60_000));
+        await showRoute();
+
+        await waitFor(() => expect(client.vehicles).toHaveBeenCalled());
+        expect(screen.queryByLabelText('pin bus-801')).toBeNull();
+      });
+
+      it('leaves a bus on another route off the map', async () => {
+        mockFleetResult = fleetOf(bus('300', '13'));
+        await showRoute();
+
+        await waitFor(() => expect(client.vehicles).toHaveBeenCalled());
+        expect(screen.queryByLabelText('pin bus-300')).toBeNull();
+      });
+
+      it('stops drawing buses once the route is dismissed', async () => {
+        mockFleetResult = fleetOf(bus('252', '32'));
+        await showRoute();
+        await waitFor(() => screen.getByLabelText('pin bus-252'));
+
+        await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+        await waitFor(() => expect(screen.queryByLabelText('pin bus-252')).toBeNull());
+      });
+
+      it('labels a bus with its fleet number and the age of its report', async () => {
+        mockFleetResult = fleetOf(bus('252', '32'));
+        await showRoute();
+
+        await waitFor(() => screen.getByText('252 · here 15 s ago'));
+      });
+    });
+
+    describe('tapping an arrival', () => {
+      /**
+       * Getting to an arrival: a route stop's pin opens the card, whose board is
+       * the same one `/stop/[code]` renders.
+       */
+      async function openArrivals() {
+        await fireEvent.press(screen.getByLabelText('Stop 1, KALIHI TRANSIT CENTER'));
+        await waitFor(() => screen.getByTestId('stop-card-band'));
+      }
+
+      it('highlights the bus whose trip matches', async () => {
+        mockFleetResult = fleetOf(bus('252', '32'));
+        mockArrivalsResult = boardOf(arrival('trip-252', 's-out'));
+        await showRoute();
+        await waitFor(() => screen.getByLabelText('pin bus-252'));
+        await openArrivals();
+
+        await fireEvent.press(screen.getByLabelText(/Route 32 to WAIKIKI/));
+
+        await waitFor(() =>
+          expect(screen.getByLabelText(/Route 32 to WAIKIKI/).props.accessibilityState.selected)
+            .toBe(true),
+        );
+      });
+
+      /**
+       * Only about one arrival in ten has a bus reporting against it — 23 of 25
+       * in the real capture carry the "0" position sentinel — so the join
+       * failing is the ordinary case, not an error.
+       */
+      it('is not an error when no bus on the map matches', async () => {
+        mockFleetResult = fleetOf(bus('999', '32'));
+        mockArrivalsResult = boardOf(arrival('trip-nothing', 's-out'));
+        await showRoute();
+        await openArrivals();
+
+        await fireEvent.press(screen.getByLabelText(/Route 32 to WAIKIKI/));
+
+        expect(screen.getByLabelText('pin bus-999')).toBeTruthy();
+      });
+
+      /**
+       * The line follows the *arrival*, not the join, because `shape` is on
+       * every arrival while a position is on one in ten. A rider tapping a
+       * short-turn sees the road that bus is on either way.
+       */
+      it('redraws the line as the variant the arrival names', async () => {
+        mockArrivalsResult = boardOf(arrival('trip-252', 's-short-turn'));
+        await showRoute();
+        await openArrivals();
+
+        await fireEvent.press(screen.getByLabelText(/Route 32 to WAIKIKI/));
+
+        await waitFor(() =>
+          expect(mockQueries.shapeById).toHaveBeenCalledWith('s-short-turn'),
+        );
+      });
+
+      it('keeps the representative line for an arrival that names no shape', async () => {
+        mockArrivalsResult = boardOf(arrival('trip-252', null));
+        await showRoute();
+        await openArrivals();
+
+        await fireEvent.press(screen.getByLabelText(/Route 32 to WAIKIKI/));
+
+        expect(mockQueries.shapeById).not.toHaveBeenCalledWith(null);
+        expect(mockQueries.shapeById).toHaveBeenCalledWith('s-out');
+      });
+
+      it('restores the representative line when the route direction changes', async () => {
+        mockArrivalsResult = boardOf(arrival('trip-252', 's-short-turn'));
+        await showRoute();
+        await openArrivals();
+        await fireEvent.press(screen.getByLabelText(/Route 32 to WAIKIKI/));
+        await waitFor(() => expect(mockQueries.shapeById).toHaveBeenCalledWith('s-short-turn'));
+
+        await fireEvent.press(screen.getByText('‹ Route 32'));
+        await waitFor(() => screen.getByTestId('route-band'));
+        await fireEvent.press(screen.getByLabelText('Show the other direction'));
+
+        await waitFor(() => expect(mockQueries.shapeById).toHaveBeenCalledWith('s-back'));
+      });
+    });
+
+    describe('the route line', () => {
+      /**
+       * The rule the map section of `docs/backlog.md` exists for. Route mode
+       * changes this overlay's coordinates, never its presence — mounting a
+       * child inside `MapView` is the seam with a SIGABRT behind it.
+       */
+      it('is mounted with no points before a route is showing', async () => {
+        await show();
+
+        expect(screen.getByTestId('route-line')).toBeTruthy();
+        expect(screen.getByText('polyline points: 0')).toBeTruthy();
+      });
+
+      it('draws the representative shape of the direction being shown', async () => {
+        await showRoute();
+
+        await waitFor(() => screen.getByText('polyline points: 3'));
+        expect(mockQueries.shapeById).toHaveBeenCalledWith('s-out');
+      });
+
+      it('draws the other direction’s shape after a flip', async () => {
+        await showRoute();
+        await waitFor(() => screen.getByText('polyline points: 3'));
+
+        await fireEvent.press(screen.getByLabelText('Show the other direction'));
+
+        await waitFor(() => expect(mockQueries.shapeById).toHaveBeenCalledWith('s-back'));
+      });
+
+      it('is still mounted, with no points, once the route is dismissed', async () => {
+        await showRoute();
+        await waitFor(() => screen.getByText('polyline points: 3'));
+
+        await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+        await waitFor(() => screen.getByText('polyline points: 0'));
+        expect(screen.getByTestId('route-line')).toBeTruthy();
+      });
+
+      /**
+       * It must not fall back to joining the stops up. Measured against the real
+       * shapes: p90 1.3 km out, worst 7.3 km, straight through Kāneʻohe Bay on
+       * the express runs.
+       */
+      it('draws nothing for a direction the feed gave no shape', async () => {
+        mockQueries.routeStops.mockResolvedValue([
+          {
+            directionId: '0',
+            shapeId: null,
+            stops: [
+              { stop_id: 'r1', stop_code: '901', stop_name: 'NO SHAPE HERE', lat: 21.33, lon: -157.87 },
+            ],
+          },
+        ]);
+        await showRoute();
+
+        expect(screen.getByText('polyline points: 0')).toBeTruthy();
+        expect(mockQueries.shapeById).not.toHaveBeenCalled();
+      });
+
+      it('draws nothing when the asset does not carry the shape it names', async () => {
+        mockQueries.shapeById.mockResolvedValue(null);
+        await showRoute();
+
+        expect(screen.getByText('polyline points: 0')).toBeTruthy();
+      });
+    });
+
+    /** A route the feed runs one way has nothing to flip to. */
+    it('offers no flip control for a route with a single direction', async () => {
+      mockQueries.routeStops.mockResolvedValue([
+        {
+          directionId: '0',
+          shapeId: 's-out',
+          stops: [
+            { stop_id: 'r1', stop_code: '901', stop_name: 'ONE WAY ONLY', lat: 21.33, lon: -157.87 },
+          ],
+        },
+      ]);
+      await showRoute();
+
+      expect(screen.queryByLabelText('Show the other direction')).toBeNull();
     });
   });
 });

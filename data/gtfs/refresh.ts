@@ -26,7 +26,28 @@ import type { DatabaseFiles } from './files';
  * get it wrong.
  */
 const RELEASE_BASE = 'https://github.com/choytr/where-da-bus/releases/download/data';
-export const MANIFEST_URL = `${RELEASE_BASE}/manifest.json`;
+
+/**
+ * The manifest describing builds **this binary can read**, named for its schema.
+ *
+ * It used to be a single `manifest.json`, and that is a trap rather than a
+ * simplification. This URL is compiled into every binary that ships, and
+ * `checkForUpdate` below ignores a manifest whose `schemaVersion` is not this
+ * one — so the moment a schema bump publishes a newer manifest at a shared
+ * name, every install of the previous binary stops updating. Not loudly:
+ * `checkForUpdate` returns null, which is also what "you are up to date" looks
+ * like, so Settings would go on saying the data was current while it aged
+ * indefinitely. There is no App Store here to push a correction through.
+ *
+ * So each schema gets its own manifest and they never collide. **`manifest.json`
+ * stays v1's forever**, because binaries already on phones ask for it by that
+ * exact name — but nothing here ever asks for it again, and that asymmetry is
+ * the point rather than an oversight: this file only has to name the manifest
+ * *this* binary can read, and schema versions only go up. Keeping the old name
+ * alive is the publisher's job, and `manifestNameFor` in
+ * `scripts/build-gtfs/publish.mjs` is where it is done.
+ */
+export const MANIFEST_URL = `${RELEASE_BASE}/manifest-v${SCHEMA_VERSION}.json`;
 
 /**
  * What the Action publishes alongside each build.
@@ -216,6 +237,28 @@ export async function installUpdate(
   return { file, builtAt: manifest.builtAt };
 }
 
+/** Every generation this publisher has ever produced, of any schema. */
+const GENERATION_PREFIX = 'gtfs-v';
+
+/**
+ * Whether this binary can open `file` at all.
+ *
+ * **The filename carries the schema, and this is what that is for.** A pointer
+ * is not evidence about the schema of the file it names: upgrading a sideloaded
+ * binary from v1 to v2 leaves a stored pointer at a `gtfs-v1-…` generation that
+ * still exists on disk, and opening it succeeds. Every query added by the newer
+ * schema then fails with "no such table", on a device, with the pointer and the
+ * file and the checksum all perfectly in order.
+ *
+ * So a generation of the wrong schema is treated as **no pointer at all**,
+ * which is the bundled floor — a database this binary definitely can read —
+ * and the next check downloads the right generation rather than comparing
+ * timestamps with one it cannot use.
+ */
+export function isReadableGeneration(file: string): boolean {
+  return file.startsWith(`${GENERATION_PREFIX}${SCHEMA_VERSION}-`);
+}
+
 /**
  * Every generation on disk that is not `keep`, including the `.part` files of
  * abandoned downloads.
@@ -225,10 +268,15 @@ export async function installUpdate(
  * `gtfs.db` and never matches, which is the point — it is the fallback, and
  * sweeping it would take the floor out from under a device whose every
  * download has failed.
+ *
+ * **Every schema's generations, not just this one's.** A binary upgraded from
+ * v1 to v2 can never open the v1 file it downloaded, so leaving it on disk
+ * costs 1.2 MB forever to keep something nothing will read. Safe because the
+ * sweep is sequenced before the refresh at launch, so there is never a
+ * generation on disk that the pointer has not yet been moved onto.
  */
 export function staleGenerations(names: readonly string[], keep: string | null): string[] {
-  const prefix = `gtfs-v${SCHEMA_VERSION}-`;
   return names.filter(
-    (name) => name.startsWith(prefix) && (keep === null || !name.startsWith(keep)),
+    (name) => name.startsWith(GENERATION_PREFIX) && (keep === null || !name.startsWith(keep)),
   );
 }

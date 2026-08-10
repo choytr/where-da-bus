@@ -1,4 +1,10 @@
-import { checkForUpdate, installUpdate, staleGenerations, type FetchManifest } from './refresh';
+import {
+  checkForUpdate,
+  installUpdate,
+  isReadableGeneration,
+  staleGenerations,
+  type FetchManifest,
+} from './refresh';
 import { databaseFiles, type DatabaseFiles } from './files';
 import {
   loadCurrentDatabase,
@@ -51,8 +57,21 @@ const live: RefreshDependencies = {
  */
 let inFlight: Promise<RefreshResult> | null = null;
 
+/**
+ * The pointer, but only if this binary could actually open what it names.
+ *
+ * A generation of another schema is treated as no pointer at all — otherwise a
+ * binary upgraded from v1 to v2 compares timestamps against a v1 build it can
+ * never read, and a v2 generation published in the same run carries the *same*
+ * `builtAt`, so the comparison says "up to date" and the app sits on the
+ * bundled floor until the agency next republishes.
+ */
+function usable(current: CurrentDatabase | null): CurrentDatabase | null {
+  return current !== null && isReadableGeneration(current.file) ? current : null;
+}
+
 async function run(dependencies: RefreshDependencies): Promise<RefreshResult> {
-  const current = await loadCurrentDatabase();
+  const current = usable(await loadCurrentDatabase());
 
   try {
     const manifest = await checkForUpdate(dependencies.fetch, current?.builtAt ?? null);
@@ -93,7 +112,7 @@ export async function sweepStaleGenerations(
   current?: CurrentDatabase | null,
 ): Promise<void> {
   try {
-    const keep = current === undefined ? await loadCurrentDatabase() : current;
+    const keep = usable(current === undefined ? await loadCurrentDatabase() : current);
     for (const name of staleGenerations(files.list(), keep?.file ?? null)) {
       files.remove(name);
     }

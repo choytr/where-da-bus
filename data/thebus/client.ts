@@ -1,6 +1,7 @@
 import { schedule } from '../../lib/schedule';
 import { parseArrivals } from './parse';
-import type { ArrivalsResult } from './types';
+import { parseVehicles } from './vehicles';
+import type { ArrivalsResult, FleetResult } from './types';
 
 /**
  * The one place in the app that talks to the network.
@@ -47,6 +48,27 @@ export interface TheBusClient {
     stopCode: string,
     options?: { signal?: AbortSignal; fresh?: boolean },
   ): Promise<ArrivalsResult>;
+
+  /**
+   * Every bus on Oahu, in one request.
+   *
+   * **No parameters beyond the key, deliberately.** `route=` does not filter —
+   * verified live: `?route=1` returns the identical 1,184 vehicles — so asking
+   * for one route would spend a request to receive the whole fleet anyway while
+   * implying a narrowing the server never performed. Filtering is the caller's,
+   * and `features/map/useVehicles.ts` is where it happens.
+   *
+   * Never rejects. Like `arrivals`, every outcome including an outage comes
+   * back as a result, because "couldn't reach the API" is something the map has
+   * to render rather than something it has to survive.
+   *
+   * **Most of what comes back is dead.** Roughly 950 of those vehicles last
+   * reported years ago and carry entirely plausible Oahu coordinates. Nothing
+   * here filters them: the freshness rule needs `serverTime`, and keeping it in
+   * one place — applied in both directions, so a bus leaves the map the same way
+   * it arrives — is worth more than trimming the array early.
+   */
+  vehicles(options?: { signal?: AbortSignal }): Promise<FleetResult>;
 }
 
 export type TheBusClientConfig = {
@@ -71,6 +93,7 @@ const RETRY_DELAY_MS = 1_000;
 const ATTEMPTS = 2;
 
 const unreachable: ArrivalsResult = { ok: false, failure: { kind: 'unreachable' } };
+const fleetUnreachable: FleetResult = { ok: false, failure: { kind: 'unreachable' } };
 
 function isJson(response: HttpResponse): boolean {
   return response.headers.get('content-type')?.includes('json') ?? false;
@@ -160,5 +183,38 @@ export function createTheBusClient(config: TheBusClientConfig): TheBusClient {
     return unreachable;
   }
 
-  return { arrivals };
+  /**
+   * The fleet, as XML.
+   *
+   * **No content-type check, unlike `arrivals`.** That check exists there to
+   * stop `JSON.parse` throwing on an IIS HTML error page; here `parseVehicles`
+   * recognises its own document instead — a body with neither `<vehicles>` nor
+   * `<errorMessage>` is `malformed` — which classifies the same page without
+   * depending on a header. The vendor documents this endpoint as XML only and
+   * there is no working JSON form.
+   */
+  async function vehicles(options?: { signal?: AbortSignal }): Promise<FleetResult> {
+    const url = `${baseUrl}/vehicle/?key=${encodeURIComponent(appId)}`;
+
+    for (let remaining = ATTEMPTS; remaining > 0; remaining -= 1) {
+      if (options?.signal?.aborted) return fleetUnreachable;
+
+      const response = await attempt(url, options?.signal);
+
+      if (response !== null) {
+        if (response.ok) return parseVehicles(await response.text());
+        // A 4xx is the server's settled answer; only a 5xx and a dropped
+        // connection are worth a second attempt. Same reasoning as `arrivals`.
+        if (response.status >= 400 && response.status < 500) return fleetUnreachable;
+      }
+
+      const last = remaining === 1;
+      if (last || options?.signal?.aborted) break;
+      await new Promise<void>((resolve) => schedule(resolve, retryDelayMs));
+    }
+
+    return fleetUnreachable;
+  }
+
+  return { arrivals, vehicles };
 }

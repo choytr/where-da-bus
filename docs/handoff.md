@@ -7,22 +7,121 @@ up. Update it in place rather than adding a dated section each time.
 `CLAUDE.md` are the record; anything already in them belongs there, not here.
 When an increment ships, its write-up in this file collapses to a pointer.
 
-Last updated: **2026-08-09**. **Increments 1–7 are shipped and merged**, and
-`main` is at Increment 7. Increment 7's whole-diff review came back with one
-cosmetic finding, now in `docs/backlog.md`; its device round passed but was
-recorded only collectively — see the caveat in
-`docs/superpowers/logs/2026-08-09-increment-7-device-round.md`, which matters if
-a list turns out not to scroll.
+Last updated: **2026-08-09**, after the route mode UX pass and the map bug
+hunt that followed it. **Increments 1–8 are shipped and merged**, and `main` is
+at Increment 8 — merged on Truman's explicit permission that evening, which
+kicked off an `.ipa` build.
+
+**The `.ipa` from that merge has not been installed or checked.** Everything in
+Increment 8 was verified in **Expo Go** over a long device session, which is
+what closed the map crash; the `.ipa` is the artefact that differs and it has
+not been on the phone. That distinction has bitten this project before: the
+sheet's lists could not scroll on a real build through two whole increments
+because five clean Expo Go rounds were read as a device round. Increment 7's
+`.ipa` check was owed and never happened either, and is now owed against a
+build that contains both increments.
 
 ---
 
 ## Start here
 
-**Increment 8's grilling is COMPLETE. The next action is to write its spec and
-plan**, from the settled decisions in the *Increment 8* section at the foot of
-this file. Do not re-grill it, and do not re-derive its measurements — several
+**Increment 8 and the UX pass over it are both built, reviewed and pushed.** All
+three deferred items are done, plus two bugs found by reading and one gesture
+Truman asked to have removed. The whole-diff review ran inline and its three
+findings are fixed (`aa83a6e`).
+
+**Nothing is now known to block the merge to `main`**, which still needs
+Truman's explicit permission every time. 712 Jest, 130 `node --test`, clean
+typecheck.
+
+**The next action is that merge decision, and nothing else is queued.** The map
+work of 2026-08-09 is finished and verified on a device: the crash, the undrawn
+buses, and a stop pin under a bus dot needing two taps (`651bb07`) are all
+closed, each confirmed by Truman on the phone rather than by a passing suite.
+Do not open new work before asking him what he wants next — an increment here
+starts with a grilling, not with a plan.
+
+**The SIGABRT is fixed, and so is the undrawn-bus fault.** They were never one
+bug. Both were closed on the evening of 2026-08-09 across `6a04caf`, `4f5717c`
+and `18de45f`; the full write-up is in `docs/backlog.md` under the
+"Never mount, unmount or reorder a child" entry, which is the record. Every
+temporary instrument is out of the source.
+
+### What the crash actually was
+
+**Two wholesale marker swaps in flight at once.** Not a render window, not a
+timer, not `zIndex`. Truman reproduced it twice on purpose: **spamming the
+direction control**, and **a flip followed quickly by the X**. Slow flips and
+single presses never crashed, which is the whole reason four sessions read it as
+intermittent — everyone recorded what was *on screen* and nobody recorded the
+gesture.
+
+Fixed by `swapBusyUntil` in `MapScreen`: one window shared by the controls,
+sized at `CAMERA_MS`. A blocked flip is dropped, a blocked close is deferred and
+then honoured. Two Jest tests cover both.
+
+The undrawn buses were two unrelated things wearing one costume: a lone Route 10
+bus running the *opposite* direction to the line on screen (drawn correctly, just
+nowhere near where anyone was looking), and a real degradation where each
+direction flip knocked the bus dots down a z-level and then off the map
+entirely. The second is fixed by putting the direction in `BusMarker`'s key.
+
+**`TRACKING_ALWAYS` was falsified, not vindicated.** With it removed the dots
+draw on the first open with no gesture, so the 450 ms timer was innocent all
+along — as `StopMarker` running the identical timer without the fault should
+have suggested.
+
+**What made the difference** was hitting the live fleet endpoint from the dev
+machine, using the AppID still in `.env`, and telling Truman the coordinate to
+look at. That turned "the bus isn't drawn" into "the bus is at 21.33185,
+−157.85979 and you are looking at the other direction's line" in one round, with
+no build and no instrument. Reach for it before instrumenting anything about
+vehicles again.
+
+**Measure, never read.** Five wrong claims in this project came from reasoning
+about native source, and every theory in the backlog entry that came from
+reading was wrong. Both fixes here came from Truman's gestures on a device.
+Treat "it stopped reproducing" as provisional until he has abused it over a
+sustained session — the `zIndex` precedent is exactly what that phrase is worth.
+
+### What the UX pass changed
+
+The reframe is the useful part: **route mode drew the street-scale view at every
+scale**, and the two backlog items about the map were one defect rather than
+two. Truman's screenshots are transcribed in
+`docs/superpowers/logs/2026-08-09-route-mode-ux.md`; the reasoning and every
+settled decision are in
+`docs/superpowers/specs/2026-08-09-route-mode-ux-pass.md`.
+
+- `scaleOf` splits `'route'` from `'street'` off **`MAX_SPAN_FOR_LABELS`, not a
+  threshold of its own** — "names are hopeless" and "tiles have fused" are one
+  fact about one set of 34-pt boxes.
+- Stop tiles collapse to 8-pt dots past it. **The wrapper view stays 34 pt**;
+  shrinking it would make forty stops untappable *and* move every one of them.
+- `labels.ts` decides both layers against one collision map, **buses first**.
+- Adherence is the ring on the dot plus a count in the band. `adherence.ts`
+  holds the sign convention: **positive means early**.
+- The route band's second line says what the bus layer is doing, in four
+  states. **It shares that line with the direction** because the band is pinned
+  at `PEEK_BAND` and cannot grow.
+
+`docs/backlog.md` keeps what this pass did not fix: **which** bus is late is
+colour-only, and **test files are not typechecked at all**.
+
+**The device-round checklist is retired as a practice.** Truman ended it on
+2026-08-09: *"drop them / mark them as fine, honestly. We'll fix bugs as I come
+across them."* Do not write another one and do not resurrect the unticked boxes
+in `2026-08-09-increment-8-device-round-2.md` as owed work. What earned its keep
+was the *instrumented* check — one number on screen answered in a glance what
+four rounds of reasoning could not — so instrument, ask for one reading, and
+stop.
+
+Do not re-grill the increment, and do not re-derive its measurements — several
 cost a 73 MB file parse and one overturned a premise this document previously
-asserted.
+asserted. They are all in the spec,
+`docs/superpowers/specs/2026-08-09-increment-8-routes-on-the-map.md`, which is
+their permanent home. The plan carries a *What was built* note per task
+recording where reality disagreed with it.
 
 Nothing is owed on Increment 7. It is merged.
 
@@ -69,9 +168,9 @@ network calls injected so they test without the native module.
   else, so the window is rebuilt from the query radius; a long press names a
   point on a map the rider is already looking at, at a zoom they chose.
 
-**Increment 8 is *routes on the map*, and its grilling is finished** — see the
-section at the foot of this file, which carries every settled decision and the
-measurements behind them.
+**Increment 8 is *routes on the map*, and it is specced and planned** — see the
+pointer at the foot of this file, and the spec, which carries every settled
+decision and the measurements behind them.
 
 ### Address search — built, and untried on a device
 
@@ -97,9 +196,27 @@ native module.
 
 ## Where things stand
 
-`dev` and `main` are level at Increment 7. **539 Jest across 38 suites, 91
-`node --test`, clean typecheck** — verified locally 2026-08-09 immediately
-before the merge.
+`main` is at Increment 7. **`dev` carries all of Increment 8 and the UX pass over
+it.** 693 Jest across 46 suites, 130 `node --test` and a clean typecheck —
+verified locally 2026-08-09. `npm ci` last verified clean before the UX pass,
+which added no dependencies.
+
+**The sheet's lists could not scroll on any real build, for two increments, and
+that is fixed.** The content column was `flex: 1` against a parent that
+`@gorhom/bottom-sheet` leaves unbounded until it has measured its container, so
+a list sized itself to its rendered rows — measured at **2846 pt inside a sheet
+730 pt tall**. `flex: 1` is kept, because it is the library's design and is what
+keeps the pinned legend on screen at every detent; a `maxHeight` off the tallest
+detent now guards the window before the measurement lands. **It was never an
+Expo Go versus `.ipa` difference** — that was a red herring that cost four
+eliminations; a short list fits inside a huge frame and looks fine.
+
+**Three things in that diff would be silently got wrong.** The bundled floor was
+rebuilt and committed with the schema bump, as authorised. `manifest.json` must
+keep describing a **v1** generation forever, because it is compiled into binaries
+already on phones. And a stored pointer says nothing about the *schema* of the
+file it names — `isReadableGeneration` is what stops a v2 binary opening the v1
+generation still sitting on Truman's phone.
 
 **The sheet and the search have both been through Expo Go**, over five rounds on
 2026-08-09, and Truman is happy with them. On the sheet: "Ok I like this a lot
@@ -200,6 +317,12 @@ line by line.
 There is no simulator here and no device on this side. Say which of the two you
 are doing, every time.
 
+**A screenshot is worth more than a description of one, and it does not
+survive.** Three shots on 2026-08-09 overturned a framing two backlog entries
+had held for a day — the clutter was one zoom problem, not two independent
+defects — and neither entry could have been written from the words alone.
+Transcribe them into a log the moment they arrive.
+
 **Reading native source is not measuring, and this includes layout.** Six wrong
 claims so far. The map crash's two recorded causes were both readings; one
 `.ips` file off the phone settled in a single look what six weeks of reasoning
@@ -235,155 +358,47 @@ only because the throwaway probe showed the unbiased reply beside the verdict.
 independent unofficial app against ours. Both of its actionable findings are
 built. Read it before touching the vehicle endpoint or the map.
 
-## Increment 8 — *routes on the map*. Grilled 2026-08-09, settled, unbuilt
+## Increment 8 — *routes on the map*. Specced, planned, unbuilt
 
-**The grilling is finished and every decision below is Truman's.** Do not
-re-open them. The next action is a spec and a plan.
+Grilled 2026-08-09 and **every decision is settled and written down**. The long
+version that used to live here has moved, in full and with its measurements, to:
 
-### What a rider gets
+- `docs/superpowers/specs/2026-08-09-increment-8-routes-on-the-map.md` — what is
+  being built, what was settled and why, the numbers behind it, and what is
+  inference rather than fact.
+- `docs/superpowers/plans/2026-08-09-increment-8-routes-on-the-map.md` — seven
+  tasks, contracts and test names. **Start at Task 1.**
 
-Pick a route on the map and **the map draws it and stays** — it does not
-navigate to `/route/[id]` any more. It draws the route's real road line, that
-route's stops as the map's pins, and the buses actually driving it right now.
+**Four things the next session must not undo, restated because undoing any of
+them is silent:**
 
-- **One direction at a time**, named by where it ends up — reuse
-  `RouteScreen`'s existing `Toward <last stop name>` wording
-  (`features/routes/RouteScreen.tsx:44`), because GTFS's `0`/`1` tells a rider
-  nothing. A flip control switches. **Truman asked for the current direction to
-  be made unmistakable in the UI**; the treatment is his to confirm on device.
-- **The sheet carries the route's full stop list in order** — a third sheet
-  mode. Its band must be exactly `PEEK_BAND` tall like the other two, or the
-  resting sheet twitches (`features/map/peek.ts:4`).
-- **An X leaves route mode, and nothing else does.** Panning does not drop it;
-  leaving the tab and coming back does not drop it. Both were put to him
-  explicitly.
-- **Each bus is labelled with its fleet number and the age of its last report** —
-  e.g. `252 · here 20 s ago`. Truman asked for this by name, after the old
-  DaBus app.
-- **Tapping an arrival highlights the bus already on screen**, joined on trip id.
+- **`assets/db/gtfs.db` gets rebuilt and committed with the `SCHEMA_VERSION`
+  bump, in the same commit.** Truman authorised it; it is the sanctioned
+  exception to `CLAUDE.md`'s ban on rebuilding the floor by hand.
+- **`manifest.json` must keep describing a *v1* generation forever.** That URL is
+  frozen inside binaries already on phones, and publishing a v2 manifest there
+  switches their updates off permanently. Task 2 and the spec explain the whole
+  mechanism.
+- **`<driver>` is an employee number.** The model carries no field for it.
+- **The bus layer and the polyline each get a device round before the end of the
+  increment**, not after it — Tasks 4 and 6. Both are the marker-churn seam with
+  a SIGABRT behind it.
 
-### The data — and a premise this file previously got wrong
-
-**The old claim that shapes cost "an asset several times its size" was wrong,
-and it is why polylines nearly got cut.** 9.8 MB is the raw CSV: full
-precision, redundant columns, all 532 variants. Measured 2026-08-09 as actually
-*stored* — Douglas–Peucker simplified, encoded polyline, against the 1.17 MB
-asset:
-
-| stored | 5 m | 10 m | 20 m |
-|---|---|---|---|
-| all 532 shapes | 201 KiB | **152 KiB** | 116 KiB |
-| 236, one per route+direction | 97 KiB | 73 KiB | 56 KiB |
-
-**Settled: all 532 shapes, keyed by `shape_id`, simplified at 10 m — ~152 KiB.**
-Not the cheaper 236, because **every live arrival carries a `shape` field naming
-the exact variant that bus is running** (`docs/api/README.md:162`, present on
-all 25 rows of `arrivals-mixed.json`). Storing only a representative per
-direction would draw a short-turn or express bus beside a line it is not on.
-The route view draws the representative; the bus view draws the named variant.
-
-**The cheap connect-the-stops line is dead, and was killed by measurement, not
-argument.** Comparing the representative trip's stops against *that same trip's*
-real shape, 236 route/directions, 132,332 points: median deviation 29 m, p90
-**1.3 km**, p99 **5.6 km**, worst **7.3 km** (route 60, both directions).
-**202 of 236 route/directions are ≥150 m wrong at their worst; none is under
-50 m.** It is fine in town and draws straight through Kāneʻohe Bay on the
-express and rural runs. Do not revive it.
-
-**`route_stops` is one representative trip, not a union** — `derive.mjs:150`
-picks the trip visiting the most stops per route+direction. Comparing its stops
-against a *different* trip's shape inflates the error badly; that mistake was
-made and corrected on 2026-08-09.
-
-### The buses — the fleet endpoint, not the arrival's own position
-
-**Settled: every live bus on the route, not the one bus behind an arrival.**
-The spec'd one-bus view is available for only about 1 arrival in 10 — in the
-real 25-arrival capture, **23 of 25 carry the `"0"` position sentinel**, because
-position exists only for `estimated: "1"` and `docs/api/README.md` records 96%
-of sampled arrivals as the undocumented `"2"`. A feature that is a dead end nine
-times out of ten is worse than one that is absent.
-
-- **The fleet endpoint is the only route to fleet-wide positions** and is **XML
-  only** — `docs/api/README.md:215`. Omit `num` and one request returns every
-  bus on Oahu: 1,184 elements, 333 KB, 29 KB gzipped. `route=` does **not**
-  filter; filtering is ours to do client-side.
-- **A freshness filter is mandatory, not hardening.** Most of that response is
-  dead buses carrying *plausible Oahu coordinates* — 929 stale ones in the
-  daytime sample. Unfiltered, it draws ~1,100 ghosts parked since 2022.
-- **Settled: a 5-minute window, applied as one rule in both directions** — a bus
-  is drawn while its last report is fresh and leaves the map when it stops being
-  fresh. The data makes this nearly judgement-free: 232 of 235 live buses
-  reported within five minutes and **the next-freshest was over ten hours old**.
-  Because the age is computed from the bus's own `last_message`, **a failed
-  fetch needs no special case at all** — the labels simply keep counting up and
-  the buses age off on their own. An earlier proposal for a separate two-minute
-  outage timer was dropped; do not reintroduce it.
-- **Poll every 60 s**, matching `features/arrivals/useArrivals.ts:28` and for the
-  same reason recorded there.
-- **`data/thebus/time.ts:89` already parses `<last_message>`'s
-  `M/D/YYYY h:mm:ss AM`**, including the UTC−10 trap that makes `Date.parse`
-  wrong every evening. The age is a subtraction, not new work.
-- **`<driver>` is an employee number and must be dropped at the parse
-  boundary**, not merely left unrendered. It is right there next to
-  `<number>` — the fleet number, which *is* what gets displayed.
-- **17 of 235 live buses report no route**, so some real buses cannot be
-  attributed to the route being viewed and will be left off. Known, accepted.
-
-### The schema bump, and the floor
-
-`SCHEMA_VERSION` goes **1 → 2**. **Truman authorised rebuilding and committing
-the bundled floor** (`assets/db/gtfs.db`, 1.17 MB → ~1.32 MB) so a fresh offline
-install still draws lines. This is the sanctioned exception to `CLAUDE.md`'s ban
-on rebuilding it by hand — the ban is against casual rebuilds, and a bump leaves
-no choice: the queries would otherwise ask the floor for a table it lacks.
-
-**The bump commit and the floor rebuild must land together.** Either alone
-leaves the app asking for something it cannot get. The weekly Action publishes
-**both v1 and v2** generations from here on, so an old sideloaded build keeps
-receiving fresh data — there is no App Store to push a fix through.
-
-### Chosen without asking him, per the working agreement
-
-Tapping a route stop in the sheet centres the map on it, matching Increment 7's
-row-taps-pan / pin-taps-don't rule. Tapping a bus does nothing yet. The XML
-parser is hand-rolled rather than a dependency — the document is flat and Expo
-Go's ceiling makes every package a real cost.
-
-### Deferred, in `docs/backlog.md`
-
-**Where a bus's lateness is shown.** `adherence` gets parsed and carried in the
-model so surfacing it later is a UI change, not a data change. Truman ruled it
-off the bus label — which already carries two facts — and wants it elsewhere on
-the map, but deferred placement until he can see it. Positive means **early**;
-nothing bounds it to ±60.
-
-### The risk to plan around
-
-**Buses move, so markers are added and removed every 60 s** — far more tree
-churn than stops, which change only on a pan. That is the same seam as the
-SIGABRT at `docs/backlog.md:165`, which is fixed but never proven gone. **The
-live-bus layer goes on a device early, not at the end.** The label rules from
-that entry are non-negotiable: labels **always mounted** and hidden with
-`opacity` rather than conditionally rendered, and `position: 'absolute'` so they
-sit outside the marker's frame.
-
-### Unknowable from here — do not assert either
-
-- **How often the arrival→bus highlight lands.** It needs a live call with
-  Truman's AppID, which is in his keychain. Build it to light up when the join
-  succeeds; promise no hit rate.
-- **How any of it looks.** No simulator and no device on this side.
+Two things remain genuinely unknowable from here and must not be asserted: **how
+often the arrival→bus highlight lands** (it needs a live call with Truman's
+AppID) and **how any of it looks** (no simulator, no device on this side).
 
 ## Suggested skills
 
-- **Not `grilling`.** Increment 8's is finished and its decisions are above.
-  Reopening them wastes the session and re-argues settled calls.
-- **`superpowers:writing-plans`** is the next skill, for Increment 8's spec and
-  plan. `superpowers:requesting-code-review` again at that increment's boundary.
-- **`superpowers:systematic-debugging`** — whenever the app's *appearance* or a
-  native-layer bug comes up. It is what stopped a fix being aimed at a cause the
-  backlog merely asserted.
+- **Not `grilling`, not `brainstorming`, not `writing-plans`.** Increment 8 and
+  the UX pass over it are both specced, planned and built. Reopening any of it
+  re-argues settled calls.
+- **`superpowers:requesting-code-review`** is the next skill, over the whole
+  `dev` diff — one review at the increment boundary, which is where the
+  cross-cutting findings live.
+- **`superpowers:systematic-debugging`** if the band's second line shows a bus
+  count over an empty map. That is the only outcome that makes the first-render
+  bug a real defect, and it is a native one.
 - **Not `dispatching-parallel-agents` or `subagent-driven-development`.**
   `CLAUDE.md` is explicit: execute inline, review once at the boundary.
 
@@ -409,6 +424,15 @@ sit outside the marker's frame.
   those before suspecting the app.
 - The API PDFs need `node scripts/pdf-text.mjs <file>`; `Read` cannot open them.
   It breaks lines mid-word, so pipe through `tr -d '\n'` to grep for a phrase.
+- **A stale `.env` sits in the working tree** carrying the retired
+  `EXPO_PUBLIC_THEBUS_APP_ID`, so every `npx expo` command prints
+  `env: export EXPO_PUBLIC_THEBUS_APP_ID`. Increment 4 removed everything that
+  read it and no build injects it. Harmless noise, not a leak — the file is
+  gitignored and CI has no such value.
+- **`npx expo prebuild` rewrites `package.json`**, adding `ios` and `android`
+  scripts. It was run once locally to read `ios/Podfile.properties.json` while
+  chasing the scroll bug; `/ios` was deleted and `package.json` reverted
+  afterwards. If those scripts reappear in a diff, that is where they came from.
 - **The first scheduled `gtfs-data.yml` run is Monday 2026-08-10, 12:00 UTC.**
   Nothing has yet run unattended. Check with
   `gh run list --workflow gtfs-data.yml`. **A run that exits `changed=false` is

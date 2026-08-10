@@ -65,6 +65,39 @@ export type Palette = {
    */
   pin: string;
   pinGlyph: string;
+  /**
+   * The route line on the map.
+   *
+   * **Its own colour rather than `pin`, on Truman's call after device round 1.**
+   * It was `pin`, on the reasoning that a line and the stops on it should read
+   * as one thing; on a device that put a blue line under blue pins on Apple's
+   * blue roads, and the line stopped being findable. Red separates it from the
+   * pins, from the map's own furniture, and from the rider's own location dot.
+   *
+   * Not `canceled` or `warning`, which are also red: a route line is not a
+   * warning about anything, and sharing a token would mean tuning one of them
+   * changes the other.
+   */
+  route: string;
+  /**
+   * How far off schedule a bus is, as the ring around its dot. Amber behind,
+   * violet ahead, and nothing at all when it is on time or has not said.
+   *
+   * **Violet rather than the blue this was first specced as.** Blue is `pin`,
+   * and at street scale the map is full of blue tiles a few points from the bus
+   * dots; a blue ring among them is a ring nobody reads. Amber, violet, `live`
+   * green and `route` red are four hues far enough apart to be told apart at
+   * 22 points in a glance, which is the only thing this encoding has to do.
+   *
+   * Not `warning`, which is red, and not `route`, which is also red: an amber
+   * ring beside a red route line is legible and a red one is not.
+   *
+   * **Never the only encoding.** The route band states the same fact in words —
+   * `7 buses running · 2 late` — so a rider who cannot separate these still
+   * learns how many. Which ones is a real loss and is accepted; see the spec.
+   */
+  late: string;
+  early: string;
 };
 
 const LIGHT: Palette = {
@@ -82,6 +115,9 @@ const LIGHT: Palette = {
   bannerText: '#8a4b08',
   pin: '#0b6bcb',
   pinGlyph: '#ffffff',
+  route: '#d92b2b',
+  late: '#b26a00',
+  early: '#6a4fc9',
 };
 
 const DARK: Palette = {
@@ -99,6 +135,13 @@ const DARK: Palette = {
   bannerText: '#f0c48a',
   pin: '#3b9dff',
   pinGlyph: '#0b1f33',
+  // Lifted for a dark map: the light theme's red reads as brown over Apple's
+  // dark tiles, which is the surface this line is actually drawn on.
+  route: '#ff5a52',
+  // Lifted for the same reason `route` is — these are drawn on Apple's dark
+  // tiles, not on this theme's own background.
+  late: '#f0a33c',
+  early: '#a996f2',
 };
 
 export type Theme = {

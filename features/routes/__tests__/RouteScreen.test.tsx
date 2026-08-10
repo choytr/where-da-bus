@@ -29,10 +29,14 @@ const mockQueries = {
   routeStops: jest.fn(async (): Promise<RouteDirection[]> => [
     {
       directionId: '0',
+      // RouteScreen draws no line — the shape is the map's business. It is here
+      // because the query returns it, not because this screen reads it.
+      shapeId: 's-out',
       stops: [stop('3152', 'KALIHI TRANSIT CENTER'), stop('3223', 'DILLINGHAM BLVD')],
     },
     {
       directionId: '1',
+      shapeId: 's-back',
       stops: [stop('3223', 'DILLINGHAM BLVD'), stop('3152', 'KALIHI TRANSIT CENTER')],
     },
   ]),

@@ -12,6 +12,27 @@ This is a personal project that serves a few of my own interests:
 
 I will not be officially publishing this app, but if you would like to build it for yourself, register for an API key at `api.thebus.org`, build the application, and sideload it using a sideloader like SideStore. Keep in mind I built this project with a minimum iOS version of 18 in mind (this is the last iOS my iPhone XR supports).
 
+### Sideloading
+
+These are basic instructions for how I've been sideloading it on my phone with a Windows machine. More details about the process are in docs/sideloading.md.
+
+#### Setup
+1. Get an api key from `api.thebus.org`.
+1. Install and setup SideStore on your phone. Roughly, the instructions are:
+    - Install iLoader on your computer.
+    - Turn on developer mode on your phone.
+    - Install and turn on LocalDevVPN on your phone.
+    - Use iLoader to install the SideStore app on your phone.
+1. Install Itunes and connect your phone.
+
+#### Installing the .ipa
+1. Get the .ipa file on your phone. There are a few ways to do this, but the easiest I've found is:
+    - Itunes &rarr; File Sharing &rarr; SideStore &rarr; drag and drop the .ipa &rarr; link and sync.
+1. Make sure LocalDevVPN is turned on, as well as developer mode.
+1. Install the .ipa with SideStore on your phone.
+1. Launch the app, paste your key, and you're in!
+1. Resign the app (and SideStore) every 7 days. You don't need the computer to do this, only need LocalDevVPN on.
+
 ## Features
 
 What works today:

@@ -10,6 +10,8 @@ import {
   SEARCH_BY_NAME,
   SEARCH_BY_CODE,
   SEARCH_ROUTES,
+  ROUTE_SHAPES,
+  SHAPE_BY_ID,
   NEARBY_IN_BOX,
   boundingBox,
   routesForStopsSql,
@@ -20,6 +22,7 @@ import {
   FLOOR_COUNTS,
   meetsFloor,
 } from '../sql.ts';
+import { decodePolyline } from '../polyline.ts';
 
 const DB = path.resolve(import.meta.dirname, '../../../assets/db/gtfs.db');
 
@@ -158,6 +161,45 @@ describe('gtfs sql', () => {
     assert.match(row.feed_end_date, /^\d{8}$/);
   });
 
+  test('every route direction the asset lists is drawn with a shape it carries', () => {
+    // The pairing is what matters: a route_shapes row naming a shape_id the
+    // shapes table does not hold draws nothing, and would look from the row
+    // counts alone like a healthy build.
+    const dangling = db
+      .prepare(
+        'SELECT COUNT(*) AS n FROM route_shapes rs ' +
+          'LEFT JOIN shapes s ON s.shape_id = rs.shape_id WHERE s.shape_id IS NULL',
+      )
+      .get();
+    assert.equal(dangling.n, 0);
+  });
+
+  test('most of the feed’s routes can be drawn in both directions', () => {
+    // Not all: a route the feed runs one way has one direction, and the point
+    // of the number is that the table is broadly populated rather than that it
+    // is exhaustive.
+    const routes = db.prepare('SELECT COUNT(*) AS n FROM routes').get().n;
+    const drawn = db
+      .prepare('SELECT COUNT(DISTINCT route_id) AS n FROM route_shapes')
+      .get().n;
+    assert.ok(drawn > routes * 0.9, `only ${drawn} of ${routes} routes have a shape`);
+  });
+
+  test('a route direction resolves to a polyline that decodes to points on Oahu', () => {
+    const direction = db.prepare(ROUTE_SHAPES).get('1');
+    assert.ok(direction, 'expected route 1 to carry a shape');
+
+    const row = db.prepare(SHAPE_BY_ID).get(direction.shape_id);
+    assert.ok(row, 'expected the named shape to be in the shapes table');
+
+    const points = decodePolyline(row.polyline);
+    assert.ok(points.length > 1, 'expected a line rather than a point');
+    for (const point of points) {
+      assert.ok(point.lat > 21.2 && point.lat < 21.8, `lat off Oahu: ${point.lat}`);
+      assert.ok(point.lon > -158.3 && point.lon < -157.6, `lon off Oahu: ${point.lon}`);
+    }
+  });
+
   test('search treats FTS5 operators and punctuation as literal text without throwing', () => {
     // Regression coverage for the FTS5 syntax-error class of bug: none of
     // these should ever reach SQLite as a bare/invalid MATCH expression.
@@ -189,13 +231,16 @@ describe('the floor', () => {
   });
 
   test('rejects a database short on any one table', () => {
-    const ample = { stops: 3800, routes: 120, stopRoutes: 18000 };
+    const ample = { stops: 3800, routes: 120, stopRoutes: 18000, shapes: 532 };
     assert.equal(meetsFloor(ample), true);
     // A truncated upstream zip is the case this exists for: a perfectly valid,
     // perfectly hashed database with forty stops in it.
     assert.equal(meetsFloor({ ...ample, stops: 40 }), false);
     assert.equal(meetsFloor({ ...ample, routes: 4 }), false);
     assert.equal(meetsFloor({ ...ample, stopRoutes: 200 }), false);
+    // A build that derived no shapes draws no route lines at all, while every
+    // other count still looks perfectly healthy.
+    assert.equal(meetsFloor({ ...ample, shapes: 0 }), false);
   });
 });
 

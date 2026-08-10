@@ -120,20 +120,49 @@ wrong, correct the entry rather than only the code.
   a query change in the effect and reset to `NO_RESULTS` on the former — the
   carry-forward exists so a *keystroke* never blanks the list under a thumb,
   which is not what an explicit change of filter is.
-- **Where a bus's lateness is shown is undecided.** Increment 8 will parse
-  `adherence` and carry it in the model, so surfacing it later is a UI change
-  and not a data change. Settled in the increment's grilling: it does **not**
-  go on the bus icon's label, which already carries the fleet number and the
-  age of that bus's last report. Truman wants it elsewhere on the map and
-  deferred the placement until he can see it on a device, so nothing renders it
-  until then. Two traps for whoever does: **positive `adherence` means
-  *early***, and nothing bounds it to ±60 minutes.
+- ~~**Where a bus's lateness is shown is undecided.**~~ **Done**, 2026-08-09, in
+  the route mode UX pass. It is the ring around the bus's dot — amber behind,
+  violet ahead, nothing when on time or unreported — plus a count in the route
+  band's second line. **Not on the arrival rows**, which was the first design:
+  `Arrival` has no `adherence` field, the only join to a `Vehicle` is `tripId`,
+  and ~96% of arrivals are schedule-only, so a row could carry it about one time
+  in twenty-five. `features/map/adherence.ts` holds the thresholds and the
+  sign convention.
+
+- **Which bus is late is colour-only, and that is accepted.** The count in the
+  band states the fact in words, so the map never says something *only* in
+  colour — but a rider who cannot separate amber from violet learns how many are
+  late and not which. Recorded rather than fixed because the honest fix is
+  making buses tappable, which is a feature rather than a UX pass. Whoever picks
+  it up: `BusMarker` currently sets `pointerEvents="none"` on its wrapper and
+  passes no `onPress`.
 - Route chips flicker for one frame when search clears, and stale entries
   persist when the id list is empty.
 - The favorite `Pressable` lacks `accessibilityState={{ selected: isFavorite }}`.
   The label already communicates state, so VoiceOver is correct — cosmetic.
 
 ### Map, from the device rounds
+
+- ~~**Bus labels are unreadable with every stop pin showing.**~~ and
+  ~~**Stop pins cover the route line.**~~ **Both done**, 2026-08-09, in the route
+  mode UX pass — and they turned out to be **one** defect rather than two.
+
+  Truman's screenshots showed route mode is legible at street scale and unusable
+  at route scale, where forty 34-pt tiles fuse into an unbroken chain. Both
+  symptoms were observed only at the wide zoom and neither reproduces at the
+  zoom he was happy with, so the fix is a zoom tier rather than either of the
+  moves listed here before: `scaleOf` in `labels.ts` splits `'route'` from
+  `'street'`, stop tiles collapse to 8-pt dots past the threshold, and both
+  layers' labels go quiet. Buses now go through the same collision map as stop
+  names, claiming first.
+
+  **The `zIndex` rule below was never tested and still stands** — nothing in
+  that pass reintroduced it. The line became visible because the pins got out of
+  its way, not because anything was reordered.
+
+  Full reasoning: `docs/superpowers/specs/2026-08-09-route-mode-ux-pass.md`.
+  The screenshots are transcribed in
+  `docs/superpowers/logs/2026-08-09-route-mode-ux.md`.
 
 - **A bare number in Address mode geocodes to something unrelated, and that is
   accepted.** Truman typed `2469`; `findOnOahu` asked `CLGeocoder` for
@@ -201,8 +230,151 @@ but that'll come later. Functionality first."
   the map" — short of proof, and recorded as such, which is why this entry
   stays.
 
-  **If it returns, do not read native source.** Get another `.ips` off the
-  phone, then look for whatever started mounting children again.
+  **THE CRASH RETURNED ON 2026-08-09, WITH `zIndex` ABSENT THROUGHOUT.** Two
+  more `.ips` files, four minutes apart, both while pressing the route view's
+  **X**: `Expo Go-2026-08-09-142634.ips` and `Expo Go-2026-08-09-143034.ips`.
+  Both are the same stack as the first, frame for frame —
+  `-[__NSArrayM insertObject:atIndex:]` raised on the main thread inside
+  `facebook::react::TelemetryController::pullTransaction`.
+
+  So **the `zIndex` attribution above is disproved.** Removing it correlated
+  with the crash going quiet and nothing more; the entry always said the causal
+  link was unproven, and it is now known to be wrong. The seam is real — that
+  part is `AIRMap.m` and is not in doubt — but *what* provokes it is still open.
+
+  **What is known, and what is not.** Pressing the X makes the largest tree
+  change this app ever makes across that seam: `leaveRouteMode()` unmounts every
+  route stop marker (68 on Route 2), unmounts every bus marker, and mounts the
+  anchor's nearby set — over a cascade of renders, since `routeDetail`,
+  `buses` and `linePoints` each clear in their own effect. That is a candidate
+  and **not** a finding.
+
+  **Duplicate React keys are the leading candidate, and there are two sources.**
+  Found by logging the route-mode exit to Metro, whose output survives the app
+  dying — which is what makes a native abort observable from a machine with no
+  device on it.
+
+  *Stops.* Eight route/directions serve one stop twice, and both markers took
+  `key={stop.stop_id}`. Truman reproduced React's warning on routes 60, 83, 40,
+  521 and 421. Fixed: `routePins` dedupes, `RouteList` keys by call. **These
+  warn and do not crash** — a route's stop list is static once drawn.
+
+  *Buses, which is the one that matters.* The live feed returns **the same fleet
+  number twice**: `605` and `209` both, on Route 10, 2026-08-09, with React
+  reporting *"Encountered two children with the same key"* against `buses.map`
+  in `MapScreen`. Fixed in `useVehicles`, keeping the fresher record.
+
+  Why buses and not stops: this list **churns every sixty seconds and is
+  unmounted wholesale by the X**. React's own warning says duplicate keys mean
+  children "may be duplicated and/or omitted", so its model of what it mounted
+  diverges from what it mounted — and then it issues removal and insertion
+  instructions against that wrong model, into an annotation array that already
+  diverges from React's view by construction. An out-of-range
+  `insertObject:atIndex:` is what that produces.
+
+  It also explains the intermittency, which nothing else did: whether a poll
+  carries a duplicate is a property of the live feed at that moment. The
+  instrumented run shows it directly — presses #1–#6 had `buses=0` and
+  `sinceFleet=never` and all survived; the crash came once buses arrived.
+
+  **Both dedupes are in, both warnings are gone, and IT STILL CRASHES.**
+  Confirmed 2026-08-09: Truman reproduced it again with no `same key` error
+  anywhere in the log, and route 40 — one of the eight — clean. So duplicate
+  keys were two real bugs found on the way and **not** the cause. The paragraphs
+  above are kept because the reasoning was sound and the next person will
+  otherwise re-derive it; they are not a lead.
+
+  **Do not rebuild the `[routeExit]` instrument. It cannot catch this.** It
+  logged the state at press time on the theory that the line had a frame to
+  reach Metro before the abort. It does not: across the whole session every
+  logged press has its `done`, and the fatal ones show up only as the counter
+  resetting to `#1` on relaunch. Whatever kills the process takes the log line
+  with it. Anything that works has to survive outside the JS runtime — the
+  `.ips` files, or a native breakpoint, neither of which this machine can drive.
+
+  **Truman stopped the chase on 2026-08-09** — *"Screw this. Give up, and let's
+  just move on."* — and then reopened it the same day with what looked like the
+  first hard fact the crash had produced:
+
+  > it reliably crashes if I press the close button when the buses have been
+  > fetched (specifically after it changes from "Looking for bus" to "1 bus")
+  > but have not been rendered on the map yet. … the bus icons don't render
+  > until you move/zoom the map a bit. But if it's visible and the button is
+  > pressed, it doesn't crash.
+
+  That reading — **one defect, triggered by a window** — was wrong, and is the
+  last of this entry's theories to fall. Both halves of it dissolved separately
+  on the evening of 2026-08-09. Kept because it was reasonable and because the
+  next person will otherwise re-derive it.
+
+  ### RESOLVED 2026-08-09: two marker swaps in flight
+
+  **The cause is overlap, not timing.** Every control on the route view replaces
+  `MapView`'s markers wholesale — the two directions of Route 2 share *2 stops
+  out of 68*, so a direction flip takes 66 annotations off and puts 66 on in one
+  commit, and the X is larger again. Issue a second such swap while the first is
+  still being applied and the map is handed insertions against a subview array
+  that has already moved underneath it. That is the out-of-range
+  `insertObject:atIndex:`, and it is the seam this section has always described.
+
+  Two reproductions, both by Truman, both deliberate: **spamming the direction
+  control**, and **a flip followed quickly by the X**. Slow flips never crashed.
+  Single presses never crashed. That is why every earlier report read as
+  intermittent — the precondition was a second gesture, not a render state.
+
+  Fixed by `swapBusyUntil` in `features/map/MapScreen.tsx`: one window, shared
+  by the controls, sized at `CAMERA_MS` because the camera move and the swap are
+  started by the same commit. A blocked flip is **dropped** (honouring it would
+  land the rider back where they started); a blocked close is **deferred and
+  then honoured** (a close that silently does nothing is a broken app). Entering
+  route mode is deliberately not gated — reaching it needs a search opened and a
+  result tapped, so the gap is human-scale.
+
+  It cannot be fixed where it lives. Expo Go rules out patching
+  `react-native-maps`, and the swap cannot be made small enough not to matter:
+  holding both directions' stops at once is 134 markers and both sides of every
+  street. Serialising is the only join this app owns.
+
+  ### The undrawn buses were a *different* bug
+
+  **They are not one defect.** The crash did not return once the gate was in,
+  with or without any of the marker changes; the drawing fault survived the gate
+  untouched. Two things were being seen at once and read as one:
+
+  - **A single bus on the wrong line.** Route 10 had one bus, running the
+    direction *opposite* the one on screen. `useVehicles` filters on route and
+    never on direction, so the dot was drawn correctly — just nowhere near the
+    red line being scanned. Confirmed by pulling the live fleet endpoint from
+    the dev machine and telling Truman the coordinate to look at.
+  - **Degradation on flip**, which is real and is fixed. Keyed on the fleet
+    number alone, one flip dropped the bus dots *below* the stop pins and a
+    second took them off the map entirely while the band still read "9 buses".
+    The buses are the children React *preserves* across a flip while `pins` is
+    replaced wholesale underneath them, and the carried-over annotation comes
+    out stale. `BusMarker`'s key now includes the direction, so a flip remounts
+    them; see the comment at the render site.
+
+  **`TRACKING_ALWAYS` is falsified and removed.** With the flag gone the dots
+  draw on the first open with no gesture at all, so the blind 450 ms
+  `tracksViewChanges` timer was never implicated. `StopMarker` uses the same
+  450 ms and never had the fault, which should have been the clue.
+
+  **The structural lead was acted on**: `{buses.map(…)}` now renders *after*
+  `{pins.map(…)}`, so the live layer draws over the reference layer (a route-10
+  dot was photographed sitting behind a stop pin) and the bus array is last, so
+  draining it moves no sibling's index. Worth having on both counts. **It did
+  not by itself stop the crash** and must not be written up as though it did.
+
+  **Still open, and small**: `PendingMarker` is still mounted conditionally,
+  which the rule at the top of this entry forbids. Nothing has crashed from it —
+  long press is disabled in route mode, so it cannot appear during a swap.
+
+  **If it returns, do not read native source.** Get the `.ips` off the phone
+  (Settings → Privacy & Security → Analytics & Improvements → Analytics Data,
+  filed under `Expo Go-…`), and write down what was on screen and *what was
+  pressed, in what order and how fast* before forming any theory. Every report
+  before 2026-08-09 recorded the state and not the gesture, which is exactly the
+  half that turned out to matter.
 
 - **Tapping a pin counts toward Apple Maps' double-tap-to-zoom**, and there is
   no supported way off. `zoomTapEnabled` is *iOS: Google Maps only* per
@@ -215,7 +387,27 @@ but that'll come later. Functionality first."
   within that window does nothing. A proper fix is native and would leave the
   Expo Go loop.
 
+  **`Marker`'s `tappable` is the same trap**, and it caught this project a
+  second time on 2026-08-09: also *iOS: Google Maps only*, so a marker cannot
+  be told to decline a tap on Apple Maps. It came up because buses draw above
+  stops and MapKit gives the tap to the annotation on top, which made a stop pin
+  under a bus dot take two presses. Fixed by routing rather than declining —
+  `BusMarker` takes an `onPress` and hands it to `stopUnderBus`. **Check the
+  `@platform` line on any `react-native-maps` prop before building on it**;
+  roughly a third of them are Google-Maps-only and the types say so in a tag
+  that reads like documentation rather than a constraint.
+
 ## Tests
+
+- ~~**Test files are not typechecked at all.**~~ **Fixed on 2026-08-09.**
+  `tsconfig.json` excluded `**/__tests__/**/*`, so `npm run typecheck` never
+  compiled a single test — which is how adding one field to `RouteView` broke
+  seven `StopSheet` tests that day with a perfectly clean typecheck. Truman:
+  *"I just excluded it so it would work when I ran the typecheck script."* The
+  exclude is now `["node_modules", ".claude"]`; the `.claude` half is
+  load-bearing (subagent worktrees) and stays. Including the tests surfaced 67
+  accumulated errors, all fixed in the same change. **The entries below are what
+  is still weak in the tests, and `tsc` now covers none of them by accident.**
 
 - **`testTimeout: 20000` in `package.json` is load-bearing.** Three tests
   legitimately take 6–8 s on a cold cache and blew Jest's 5 s default. Raising

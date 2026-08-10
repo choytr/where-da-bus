@@ -67,7 +67,7 @@ export const FEED_END_DATE = `
  * agreeing is the entire point, and two constants cannot drift when there is
  * only one.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * The version the *file* claims, as a second assertion after a download.
@@ -91,24 +91,36 @@ export const SCHEMA_VERSION_SQL = `
  * pointer moves — because the two catch different things. The Action catches a
  * bad build before anyone sees it; the app catches a bad build that was
  * published anyway, which is the only case that reaches a rider.
+ *
+ * `shapes` joined the floor with schema v2. The feed carries 532 variants, and
+ * a build that produced none of them would draw no route lines at all while
+ * every other count looked perfectly healthy — which is the precise shape of
+ * failure this floor exists to catch.
  */
-export const FLOOR = { stops: 3000, routes: 100, stopRoutes: 5000 } as const;
+export const FLOOR = { stops: 3000, routes: 100, stopRoutes: 5000, shapes: 400 } as const;
 
 export const FLOOR_COUNTS = `
   SELECT
     (SELECT count(*) FROM stops)       AS stops,
     (SELECT count(*) FROM routes)      AS routes,
-    (SELECT count(*) FROM stop_routes) AS stopRoutes
+    (SELECT count(*) FROM stop_routes) AS stopRoutes,
+    (SELECT count(*) FROM shapes)      AS shapes
 `;
 
-export type TableCounts = { stops: number; routes: number; stopRoutes: number };
+export type TableCounts = {
+  stops: number;
+  routes: number;
+  stopRoutes: number;
+  shapes: number;
+};
 
 /** Whether counts from `FLOOR_COUNTS` describe a database worth switching onto. */
 export function meetsFloor(counts: TableCounts): boolean {
   return (
     counts.stops > FLOOR.stops &&
     counts.routes > FLOOR.routes &&
-    counts.stopRoutes > FLOOR.stopRoutes
+    counts.stopRoutes > FLOOR.stopRoutes &&
+    counts.shapes > FLOOR.shapes
   );
 }
 
@@ -244,6 +256,33 @@ export const ROUTE_STOPS = `
   JOIN stops s ON s.stop_id = rs.stop_id
   WHERE rs.route_id = ?
   ORDER BY rs.direction_id, rs.seq
+`;
+
+/**
+ * The shape each of a route's directions is drawn with. Parameters: (route_id).
+ *
+ * Kept out of `ROUTE_STOPS` on purpose. That query returns one row per stop —
+ * up to a hundred for a long route — and carrying the encoded polyline on every
+ * one of them would repeat a three-kilobyte string a hundred times to deliver
+ * it once. This returns at most two rows, and `SHAPE_BY_ID` fetches the line
+ * itself only when something is about to draw it.
+ */
+export const ROUTE_SHAPES = `
+  SELECT direction_id, shape_id FROM route_shapes WHERE route_id = ?
+`;
+
+/**
+ * One encoded polyline. Parameters: (shape_id).
+ *
+ * Keyed by `shape_id` rather than by route, because **every live arrival names
+ * the exact variant its bus is running** (`arrivals[].shape`). A short-turn or
+ * an express run is a different `shape_id` from the one the route view draws,
+ * and storing only a representative per direction would put a bus beside a line
+ * it is not on. All 532 variants cost ~152 KiB, which is what makes keeping
+ * them the cheap option rather than the thorough one.
+ */
+export const SHAPE_BY_ID = `
+  SELECT polyline FROM shapes WHERE shape_id = ?
 `;
 
 export type BoundingBox = {

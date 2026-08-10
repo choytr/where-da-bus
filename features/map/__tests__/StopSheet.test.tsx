@@ -8,12 +8,24 @@ import {
   PEEK_DETENT,
   MEDIUM_DETENT,
   FULL_DETENT,
+  busLayerFor,
+  type BusLayerState,
+  type RouteView,
 } from '../StopSheet';
 import { PEEK_BAND, PEEK_ROW } from '../peek';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
 import type { StopWithDistance } from '../../../data/gtfs/types';
 import type { ArrivalsResult, TheBusClient } from '../../../data/thebus';
+
+/**
+ * These suites are about the arrival board, and the fleet endpoint is no part
+ * of it. Throwing says so — a stub that answered would let a future test think
+ * it was asserting something about buses when it was not.
+ */
+const noFleet: TheBusClient['vehicles'] = () => {
+  throw new Error('this stub serves arrivals only');
+};
 
 /**
  * The sheet's two modes. What is under test is only which of them is on screen
@@ -66,7 +78,7 @@ const mockArrivalsResult: ArrivalsResult = {
  * module-level `theBus`; passing a stub is both smaller and honest about the
  * dependency, since there is no longer a client to reach for.
  */
-const client: TheBusClient = { arrivals: jest.fn(async () => mockArrivalsResult) };
+const client: TheBusClient = { arrivals: jest.fn(async () => mockArrivalsResult), vehicles: noFleet };
 
 const stop = (id: string, name: string, meters: number): StopWithDistance => ({
   stop_id: id,
@@ -77,7 +89,11 @@ const stop = (id: string, name: string, meters: number): StopWithDistance => ({
   meters,
 });
 
-const STOPS = [stop('5', 'LAGOON DR', 120), stop('6', 'KAPALULU PL', 340)];
+// Named rather than indexed out of STOPS, so a test selecting "the first
+// stop" says which stop it means and cannot be handed `undefined`.
+const LAGOON = stop('5', 'LAGOON DR', 120);
+const KAPALULU = stop('6', 'KAPALULU PL', 340);
+const STOPS = [LAGOON, KAPALULU];
 
 /**
  * Truman's device: an 896 pt window, an 83 pt tab bar, a 48 pt top inset. The
@@ -91,10 +107,22 @@ const INSET_SCENE = WINDOW_HEIGHT - TAB_BAR;
 const OVERLAP = tabBarOverlapOf(INSET_SCENE, WINDOW_HEIGHT, TAB_BAR);
 const DETENTS = detentsFor(INSET_SCENE, OVERLAP, TOP_INSET);
 
+/** A route the sheet can draw, in one direction with two stops. */
+const ROUTE_VIEW: RouteView = {
+  route: { route_id: '25', short_name: '32', long_name: 'Mapunapuna-Airport' },
+  direction: { directionId: '0', shapeId: 's-out', stops: STOPS },
+  stops: STOPS,
+  directionCount: 2,
+  busLayer: { kind: 'running', count: 3, late: 0 },
+  onFlip: jest.fn(),
+  onLeave: jest.fn(),
+};
+
 const show = (
   selectedStop: StopWithDistance | null,
   onBack = jest.fn(),
   overlap = OVERLAP,
+  routeView: RouteView | null = null,
 ) =>
   render(
     <TestTheme>
@@ -112,6 +140,7 @@ const show = (
         client={client}
         detents={DETENTS}
         tabBarOverlap={overlap}
+        routeView={routeView}
       />
     </TestTheme>,
   );
@@ -188,15 +217,187 @@ describe('StopSheet', () => {
    * twitch. Asserted on the two heights rather than by rendering at the peek,
    * because Jest runs no layout.
    */
-  it('gives both modes a top band of the same height', async () => {
+  /**
+   * The regression guard for the bug that made every list in the sheet
+   * unscrollable on a real build for two increments.
+   *
+   * Measured on a device 2026-08-09: with `flex: 1` here, the route list's frame
+   * came back as 2846 pt inside a sheet at most ~730 pt tall. `flex: 1` bounds a
+   * child against its parent, and this parent was not bounded — so the list
+   * sized itself to its rendered rows and scrolled by the 517 pt difference
+   * before stopping.
+   *
+   * Asserted as a relationship against the sheet's own detents rather than as a
+   * literal, so tuning a detent cannot break a test about something else.
+   */
+  it('caps its content column, while still flexing to the sheet', async () => {
+    await show(null);
+
+    const column = StyleSheet.flatten(screen.getByTestId('sheet-content').props.style);
+
+    // `flex: 1` is the library's design and is kept: the sheet gives this
+    // container an animated height, and flexing to it is what keeps the pinned
+    // legend on screen at every detent.
+    expect(column.flex).toBe(1);
+    // The cap only binds before the sheet has measured its container, which is
+    // the window in which the list ran to 2846 pt on a device.
+    expect(typeof column.maxHeight).toBe('number');
+    expect(column.maxHeight).toBeLessThanOrEqual(DETENTS[FULL_DETENT]);
+    expect(column.maxHeight).toBeGreaterThan(DETENTS[MEDIUM_DETENT]);
+  });
+
+  /**
+   * All three, not two. The resting sheet is the handle, one band and one row;
+   * a band of a different height in any mode changes the sheet's height the
+   * moment a rider switches to it, and reads as a twitch.
+   */
+  it('gives all three modes a top band of the same height', async () => {
     await show(null);
     const heading = StyleSheet.flatten(screen.getByTestId('nearby-band').props.style);
 
-    await show(STOPS[0]);
+    await show(LAGOON);
     const card = StyleSheet.flatten(screen.getByTestId('stop-card-band').props.style);
+
+    await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
+    const route = StyleSheet.flatten(screen.getByTestId('route-band').props.style);
 
     expect(heading.height).toBe(PEEK_BAND);
     expect(card.height).toBe(PEEK_BAND);
+    expect(route.height).toBe(PEEK_BAND);
+  });
+
+  describe('route mode', () => {
+    it('names the route and where this direction ends up', async () => {
+      await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
+
+      screen.getByText('Route 32');
+      screen.getByText('Toward KAPALULU PL');
+    });
+
+    it('lists the route’s stops in order, by sequence rather than distance', async () => {
+      await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
+
+      screen.getByLabelText('Stop 1, LAGOON DR');
+      screen.getByLabelText('Stop 2, KAPALULU PL');
+    });
+
+    it('shows the route instead of the nearby list', async () => {
+      await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
+
+      expect(screen.queryByTestId('nearby-band')).toBeNull();
+      expect(screen.queryByTestId('nearby-stops')).toBeNull();
+    });
+
+    it('offers the flip and the dismiss', async () => {
+      const routeView = { ...ROUTE_VIEW, onFlip: jest.fn(), onLeave: jest.fn() };
+      await show(null, jest.fn(), OVERLAP, routeView);
+
+      await fireEvent.press(screen.getByLabelText('Show the other direction'));
+      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+      expect(routeView.onFlip).toHaveBeenCalled();
+      expect(routeView.onLeave).toHaveBeenCalled();
+    });
+
+    /** A control that does nothing is worse than an absent one. */
+    it('offers no flip for a route that runs one way', async () => {
+      await show(null, jest.fn(), OVERLAP, { ...ROUTE_VIEW, directionCount: 1 });
+
+      expect(screen.queryByLabelText('Show the other direction')).toBeNull();
+      screen.getByLabelText('Stop showing this route');
+    });
+
+    /**
+     * The route's stop list presents Data, so it owes the legend like every
+     * other surface. The peek is still the exception, and for the same reason.
+     */
+    /**
+     * The four states that used to be one empty map. The last two are the pair
+     * CLAUDE.md says must never render alike: "no buses coming" is answered by
+     * waiting and "couldn't reach TheBus" never is.
+     */
+    describe('the bus layer’s line', () => {
+      const withLayer = (busLayer: BusLayerState) => ({ ...ROUTE_VIEW, busLayer });
+
+      it('says it is looking before the first fleet arrives', async () => {
+        await show(null, jest.fn(), OVERLAP, withLayer({ kind: 'loading' }));
+
+        expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('Looking for buses…');
+      });
+
+      it('counts the buses it is drawing', async () => {
+        await show(
+          null,
+          jest.fn(),
+          OVERLAP,
+          withLayer({ kind: 'running', count: 7, late: 2 }),
+        );
+
+        expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('7 buses · 2 late');
+      });
+
+      /** `· 0 late` is a sentence about nothing. */
+      it('drops the late count when none of them are', async () => {
+        await show(
+          null,
+          jest.fn(),
+          OVERLAP,
+          withLayer({ kind: 'running', count: 4, late: 0 }),
+        );
+
+        const line = screen.getByTestId('bus-layer-state');
+        expect(line).toHaveTextContent('4 buses');
+        expect(line).not.toHaveTextContent('late');
+      });
+
+      it('says no buses are running rather than staying silent', async () => {
+        await show(null, jest.fn(), OVERLAP, withLayer({ kind: 'none' }));
+
+        expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('No buses running');
+      });
+
+      /**
+       * The distinction the whole state exists for. A rider who cannot tell
+       * these apart cannot tell whether waiting will help.
+       */
+      it('never says an outage the way it says an empty route', async () => {
+        await show(null, jest.fn(), OVERLAP, withLayer({ kind: 'unreachable' }));
+        const outage = screen.getByTestId('bus-layer-state').props.children;
+
+        await show(null, jest.fn(), OVERLAP, withLayer({ kind: 'none' }));
+        const empty = screen.getByTestId('bus-layer-state').props.children;
+
+        expect(outage).not.toEqual(empty);
+      });
+
+      /**
+       * The constraint that shaped this line into sharing one rather than
+       * taking its own. All three modes must match at the top or the resting
+       * sheet twitches the moment a route is picked.
+       */
+      it('leaves the band exactly PEEK_BAND tall in every state', async () => {
+        const states: BusLayerState[] = [
+          { kind: 'loading' },
+          { kind: 'running', count: 12, late: 9 },
+          { kind: 'none' },
+          { kind: 'unreachable' },
+        ];
+
+        for (const busLayer of states) {
+          await show(null, jest.fn(), OVERLAP, withLayer(busLayer));
+          const band = StyleSheet.flatten(screen.getByTestId('route-band').props.style);
+          expect(band.height).toBe(PEEK_BAND);
+        }
+      });
+    });
+
+    it('pins the legend under the route’s stop list', async () => {
+      await show(null, jest.fn(), OVERLAP, ROUTE_VIEW);
+
+      await fireEvent.press(screen.getByLabelText(`settle the sheet at ${MEDIUM_DETENT}`));
+
+      screen.getByTestId('sheet-attribution');
+    });
   });
 
   it('titles the card from BoardHeader, not from its band', async () => {
@@ -204,7 +405,7 @@ describe('StopSheet', () => {
     // nothing else. The peek now shows a row below it, so the name is back at
     // its own size in `BoardHeader` — which keeps this host identical to
     // `/stop/[code]`, and keeps it off the band's cramped single line.
-    await show(STOPS[0]);
+    await show(LAGOON);
 
     const band = within(screen.getByTestId('stop-card-band'));
     expect(band.queryByText('LAGOON DR')).toBeNull();
@@ -221,7 +422,7 @@ describe('StopSheet', () => {
   });
 
   it('replaces the list with the card when a stop is selected', async () => {
-    await show(STOPS[0]);
+    await show(LAGOON);
 
     // The card, not a row that grew: the other stops are gone from the sheet.
     screen.getByLabelText('Back to nearby stops');
@@ -298,7 +499,7 @@ describe('StopSheet', () => {
   });
 
   it('pins the same legend under the card', async () => {
-    await show(STOPS[0]);
+    await show(LAGOON);
     await raise();
 
     screen.getByText(ATTRIBUTION);
@@ -307,12 +508,57 @@ describe('StopSheet', () => {
 
   it('returns to the list from the card', async () => {
     const onBack = jest.fn();
-    await show(STOPS[0], onBack);
+    await show(LAGOON, onBack);
 
     await fireEvent.press(screen.getByLabelText('Back to nearby stops'));
 
     await waitFor(() => {
       expect(onBack).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('busLayerFor', () => {
+  const FETCHED = new Date('2026-08-09T22:00:00Z');
+
+  it('describes what the map is drawing when there are buses', () => {
+    expect(busLayerFor(7, 2, null, FETCHED)).toEqual({ kind: 'running', count: 7, late: 2 });
+  });
+
+  /**
+   * A failed poll deliberately leaves the previous fleet drawn and counting up
+   * rather than clearing it, so the band should still describe the dots on
+   * screen. Their labels carry the age.
+   */
+  it('still counts the buses it is drawing through a failed poll', () => {
+    expect(busLayerFor(3, 0, { kind: 'unreachable' }, FETCHED)).toEqual({
+      kind: 'running',
+      count: 3,
+      late: 0,
+    });
+  });
+
+  /**
+   * **The ordering bug.** `fetchedAt` records the last *success* and survives an
+   * outage, so testing it before `failure` made this say "No buses running"
+   * once the drawn buses aged out — a confident, wrong sentence about a route
+   * that may be perfectly busy, and exactly the pair CLAUDE.md says must never
+   * render alike. Reached by: one good fetch, signal lost, buses age past
+   * FRESH_MS.
+   */
+  it('calls an outage an outage even after a successful fetch', () => {
+    expect(busLayerFor(0, 0, { kind: 'unreachable' }, FETCHED)).toEqual({ kind: 'unreachable' });
+  });
+
+  it('treats a rejected key as unreachable too, having nothing else to offer here', () => {
+    expect(busLayerFor(0, 0, { kind: 'unauthorized' }, FETCHED)).toEqual({ kind: 'unreachable' });
+  });
+
+  it('says a route has nothing running only when a fetch actually came back', () => {
+    expect(busLayerFor(0, 0, null, FETCHED)).toEqual({ kind: 'none' });
+  });
+
+  it('is still looking before the first response lands', () => {
+    expect(busLayerFor(0, 0, null, null)).toEqual({ kind: 'loading' });
   });
 });
