@@ -133,11 +133,12 @@ export const RouteArrows = memo(function RouteArrows({ points, region }: RouteAr
 });
 
 /**
- * Where an arrow sits before the map has reported a camera. Mid-Pacific rather
- * than 0,0 — it is never drawn, and a coordinate off the map is one MapKit has
- * to project anyway.
+ * Where an arrow sits before the map has reported a camera — the same place
+ * `arrows.ts` parks a hidden one, and far out to sea for the same reason: it is
+ * never drawn, and an invisible marker should not be sitting over anything a
+ * rider might be trying to tap.
  */
-const FALLBACK: Coords = { lat: 21.3069, lon: -157.8583 };
+const FALLBACK: Coords = { lat: 19.5, lon: -160.5 };
 
 const styles = StyleSheet.create({
   slot: { width: SLOT, height: SLOT, alignItems: 'center', justifyContent: 'center' },

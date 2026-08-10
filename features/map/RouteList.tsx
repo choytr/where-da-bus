@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router } from 'expo-router';
 import { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import { useTheme } from '../../lib/theme';
 import { showRowMenu } from '../../lib/rowMenu';
@@ -102,7 +103,12 @@ function RouteStopRow({
    */
   const openMenu = () =>
     void showRowMenu([
-      { label: 'Open arrivals', run: () => onPress(stop) },
+      {
+        // `/stop/[code]`, not `onPress` — a tap already opens the card, and an
+        // entry that repeated it would be a menu item that does nothing new.
+        label: 'Open arrivals',
+        run: () => router.push(`/stop/${encodeURIComponent(codeOf(stop))}`),
+      },
       {
         label: favorite ? 'Remove from favorites' : 'Add to favorites',
         run: () => onToggleFavorite(stop.stop_id),

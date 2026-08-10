@@ -469,6 +469,14 @@ but that'll come later. Functionality first."
   annoy him in use.
 - **Camera-follow for a selected bus.** Offered and set aside as fighting the
   route-mode camera, which is already doing framing a rider did not ask for.
+- **The bus popup says "On time" for a bus up to five minutes behind.**
+  `adherenceOf`'s band is asymmetric on purpose — `LATE_MINUTES = 5`,
+  `EARLY_MINUTES = 2` — and until Increment 9 that band only decided whether to
+  draw a ring, which claimed nothing. Now it puts words on screen, and
+  `busDetail.ts`'s own doc argues the opposite case for the unreported state:
+  *a bus that did not report is not a bus that is on time*. Either narrow the
+  band or word it "Roughly on time". **A device question**: whether four
+  minutes behind reads as a lie depends on what the countdown beside it says.
 - **Whether the arrow markers eat taps meant for stop pins.** `RouteArrows`
   wraps each glyph in a 16 pt box and draws it before the pins, which should
   put it under them and out of the way — but MapKit hit-tests annotation views

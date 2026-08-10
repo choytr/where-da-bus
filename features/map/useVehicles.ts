@@ -128,6 +128,12 @@ export function drawsInDirection(
   headsign: string | null,
 ): boolean {
   if (filter === null) return true;
+  // A direction the feed signed no way at all cannot exclude anything, and
+  // `RouteDirection.headsigns` documents empty as *cannot tell*. Without this
+  // the rule below would hide every bus the feed *does* recognise — an empty
+  // map, which is the one outcome this filter must never produce. Unreachable
+  // on the current asset, where all 236 drawable directions are signed.
+  if (filter.showing.length === 0) return true;
   // A bus that told us nothing cannot be attributed, and hiding it would be a
   // claim rather than a filter.
   if (headsign === null) return true;

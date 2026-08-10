@@ -107,6 +107,23 @@ describe('arrowPlacements', () => {
     expect(Number.isFinite(arrow?.at.lon)).toBe(true);
   });
 
+  /**
+   * **Not the camera's center**, which is where they used to park: outside
+   * route mode that stacked all eight invisible markers under the middle of the
+   * screen, and rewrote their coordinates on every pan. If a 16 pt frame turns
+   * out to take a tap a pin wanted, the middle of the screen is the worst place
+   * for it to be.
+   */
+  it('parks hidden arrows off the map, in one fixed place', () => {
+    const here = arrowPlacements([], CLOSE, 2);
+    const elsewhere = arrowPlacements([], { ...CLOSE, latitude: 21.6 }, 2);
+
+    for (const arrow of [...here, ...elsewhere]) {
+      expect(arrow.at).toEqual(here[0]?.at);
+      expect(Math.abs(arrow.at.lat - CLOSE.latitude)).toBeGreaterThan(1);
+    }
+  });
+
   it('hides every arrow when the line is nowhere near the camera', () => {
     const elsewhere: Region = { ...CLOSE, latitude: 21.6, longitude: -158.0 };
 

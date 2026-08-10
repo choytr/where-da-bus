@@ -36,10 +36,16 @@ export type ArrowPlacement = {
   readonly visible: boolean;
 };
 
-/** Somewhere valid for a hidden arrow to sit. Never drawn; see `visible`. */
-function parked(region: Region): Coords {
-  return { lat: region.latitude, lon: region.longitude };
-}
+/**
+ * Where a hidden arrow sits: far out to sea, and **fixed**.
+ *
+ * It was the camera's center, which meant that outside route mode — the common
+ * case — all eight invisible 16 pt markers stacked up under the middle of the
+ * screen, and had their coordinates rewritten on every camera settle. If a
+ * marker's frame turns out to take a tap the pin under it wanted, the middle of
+ * the screen is the worst possible place for that to be true.
+ */
+const PARKED: Coords = { lat: 19.5, lon: -160.5 };
 
 /**
  * Bearing from `from` to `to`, degrees clockwise from north.
@@ -149,7 +155,7 @@ export function arrowPlacements(
   visible: Region,
   count: number,
 ): readonly ArrowPlacement[] {
-  const hidden: ArrowPlacement = { at: parked(visible), bearingDeg: 0, visible: false };
+  const hidden: ArrowPlacement = { at: PARKED, bearingDeg: 0, visible: false };
   if (count <= 0) return [];
 
   const pieces = visibleStretch(line, visible);

@@ -1179,7 +1179,12 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
       const route = await routeByShortName(asked.routeName);
       if (route !== null) enterRouteMode(route.route_id);
       if (asked.stopId === null) return;
-      if (asked.tripId !== null) setPreselect({ stopId: asked.stopId, tripId: asked.tripId });
+      // **Only with a route to draw.** `onSelectArrival` is wired to route
+      // mode, so a trip recorded without one could never be consumed — it
+      // would sit waiting to fire at some later selection of the same stop.
+      if (asked.tripId !== null && route !== null) {
+        setPreselect({ stopId: asked.stopId, tripId: asked.tripId });
+      }
       const [stop] = await stopsByIds([asked.stopId]);
       if (stop !== undefined) selectFromSearchRef.current(stop);
     })();
@@ -1212,6 +1217,21 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    */
   const preselectTripId =
     preselect !== null && preselect.stopId === selectedStop?.stop_id ? preselect.tripId : null;
+
+  /**
+   * An arrival being selected — by the popup's own request or by the rider
+   * tapping a row — **spends the request**.
+   *
+   * Without this the derived `preselectTripId` stays non-null for as long as
+   * the card is open, and `StopCard`'s effect re-runs on every sixty-second
+   * poll (`useArrivals` sets a fresh `board` object each time), quietly
+   * reverting whatever the rider selected in between. It also leaves a stale
+   * trip standing to fire again the next time that stop is opened.
+   */
+  const selectArrival = useCallback((arrival: Arrival) => {
+    setSelectedArrival(arrival);
+    setPreselect(null);
+  }, []);
 
   const toggleFavorite = useCallback(
     async (stopId: string) => {
@@ -1526,7 +1546,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         client={client}
         detents={detents}
         tabBarOverlap={tabBarOverlap}
-        onSelectArrival={routeMode === null ? undefined : setSelectedArrival}
+        onSelectArrival={routeMode === null ? undefined : selectArrival}
         selectedTripId={selectedArrival?.tripId ?? null}
         preselectTripId={preselectTripId}
         routeView={

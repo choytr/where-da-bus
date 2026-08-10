@@ -1,5 +1,5 @@
 import { StyleSheet } from 'react-native';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { StopCard } from '../StopCard';
 import { NOTICES } from '../../arrivals/board';
 import { TestTheme } from '../../../lib/testing/theme';
@@ -193,5 +193,70 @@ describe('StopCard', () => {
     screen.getByText('WAIKIKI');
     screen.getByText('4 min');
     screen.getByText(new RegExp(NOTICES.stale));
+  });
+});
+
+/**
+ * *Show live bus on map* arriving from a long press somewhere else: the card
+ * opens already showing the arrival the rider asked about, which is the state
+ * they would otherwise reach by tapping the row themselves.
+ */
+describe('StopCard’s preselected arrival', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-02T08:40:00.000Z'));
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    jest.useRealTimers();
+  });
+
+  const board = boardOf(arrival({ id: 'a1', tripId: 't1' }), arrival({ id: 'a2', tripId: 't2' }));
+
+  it('selects the trip it was asked for once the board carries it', async () => {
+    const onSelectArrival = jest.fn();
+    await show(clientOf(board), { preselectTripId: 't2', onSelectArrival });
+
+    await waitFor(() => expect(onSelectArrival).toHaveBeenCalledTimes(1));
+    expect(onSelectArrival.mock.calls[0]?.[0].tripId).toBe('t2');
+  });
+
+  /**
+   * **The regression.** `useArrivals` hands out a fresh `board` object on every
+   * sixty-second poll, and `board` has to be a dependency because the request
+   * usually lands before the first board does. Without the latch the effect
+   * re-runs a minute later and puts the requested trip back over whatever the
+   * rider tapped in between — silent, and a minute wide.
+   */
+  it('does not re-select it when the next poll replaces the board', async () => {
+    const onSelectArrival = jest.fn();
+    await show(clientOf(board), { preselectTripId: 't2', onSelectArrival });
+
+    await waitFor(() => expect(onSelectArrival).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+
+    expect(onSelectArrival).toHaveBeenCalledTimes(1);
+  });
+
+  /** A request that arrives before its bus does still has to fire later. */
+  it('fires for a trip that only appears on a later board', async () => {
+    const onSelectArrival = jest.fn();
+    await show(clientOf(boardOf(arrival({ id: 'a1', tripId: 't1' })), board), {
+      preselectTripId: 't2',
+      onSelectArrival,
+    });
+
+    await waitFor(() => expect(screen.getByTestId('stop-card-arrivals')).toBeTruthy());
+    expect(onSelectArrival).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(60_000);
+    });
+
+    await waitFor(() => expect(onSelectArrival).toHaveBeenCalledTimes(1));
   });
 });

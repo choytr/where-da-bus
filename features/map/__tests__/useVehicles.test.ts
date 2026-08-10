@@ -359,6 +359,9 @@ describe('a fleet number the feed reports twice', () => {
  * first is a reason to hide a bus — GTFS is reference data that can be weeks
  * stale, and hiding on ignorance would empty the map rather than tidy it.
  */
+const KALIHI_SIGN = 'KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN';
+const WAIKIKI_SIGN = 'WAIKIKI - KAPIOLANI CC - DIAMOND HEAD';
+
 describe('drawsInDirection', () => {
   const route2 = {
     showing: ['KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN'],
@@ -402,6 +405,19 @@ describe('drawsInDirection', () => {
       known: ['ST LOUIS HTS VIA KAPAHULU', 'MAUNALANI HTS VIA KAPAHULU', 'WAIALAE AVENUE'],
     };
     expect(drawsInDirection(route14, 'WAIALAE AVENUE')).toBe(true);
+  });
+
+  /**
+   * `RouteDirection.headsigns` documents empty as *cannot tell*, and the one
+   * thing this filter must never do is empty the map. Without the guard the
+   * rule below would hide every bus the feed recognises, because none of them
+   * is in a `showing` of nothing.
+   */
+  it('draws everything for a direction the feed signed no way at all', () => {
+    const unsigned = { showing: [], known: [KALIHI_SIGN, WAIKIKI_SIGN] };
+
+    expect(drawsInDirection(unsigned, WAIKIKI_SIGN)).toBe(true);
+    expect(drawsInDirection(unsigned, KALIHI_SIGN)).toBe(true);
   });
 
   /** Exact equality, both sides. A divergence degrades to "unknown", which draws. */

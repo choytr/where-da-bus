@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BottomSheetSectionList } from '@gorhom/bottom-sheet';
 import { ArrivalRow } from '../arrivals/ArrivalRow';
@@ -93,15 +93,30 @@ export function StopCard({
   );
 
   /**
-   * Keyed on the board's identity as well as the trip, so a refresh does not
-   * re-select a row the rider has since tapped away from — and so a board that
-   * arrives *after* the request still honours it.
+   * Applied **once**, and the latch is the whole of it.
+   *
+   * `board` has to be a dependency — the request usually arrives before the
+   * first board does — but `useArrivals` hands out a fresh board object on
+   * every sixty-second poll, so without the latch this effect re-runs a minute
+   * later and puts the requested trip back over whatever the rider has since
+   * tapped. Silent, and a minute wide. Found by Increment 9's whole-diff
+   * review; an earlier comment here claimed keying on the board *prevented*
+   * that, which is exactly backwards.
+   *
+   * Keyed by stop as well as trip, because this component is reused across
+   * stops rather than remounted per stop. A trip the board does not carry does
+   * not latch, so a request that arrives before its bus does still fires later.
    */
+  const applied = useRef<string | null>(null);
   useEffect(() => {
     if (preselectTripId === null || board === null || onSelectArrival === undefined) return;
+    const once = `${stop.stop_id}:${preselectTripId}`;
+    if (applied.current === once) return;
     const wanted = board.arrivals.find((arrival) => arrival.tripId === preselectTripId);
-    if (wanted !== undefined) onSelectArrival(wanted);
-  }, [preselectTripId, board, onSelectArrival]);
+    if (wanted === undefined) return;
+    applied.current = once;
+    onSelectArrival(wanted);
+  }, [preselectTripId, board, onSelectArrival, stop.stop_id]);
 
   const favoriteLabel = isFavorite
     ? `Remove ${stop.stop_name} from favorites`

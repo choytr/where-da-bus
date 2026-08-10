@@ -2491,6 +2491,21 @@ describe('MapScreen', () => {
     });
 
     /**
+     * `route_short_name` is what the live API speaks and the two feeds disagree
+     * about case — `sameRoute` lowercases both sides for exactly this reason.
+     * A miss here is silent: route mode is never entered, so the long-press
+     * entry appears to do nothing at all.
+     */
+    it('finds the route even when the live feed disagrees about case', async () => {
+      showOnMap({ kind: 'arrival', routeName: 'a line', tripId: null, stopId: null });
+
+      await show();
+
+      await waitFor(() => expect(mockQueries.routeByShortName).toHaveBeenCalledWith('a line'));
+      await waitFor(() => screen.getByTestId('route-band'));
+    });
+
+    /**
      * Cleared as it is read. A rider who leaves the Map tab and comes back an
      * hour later must not be thrown to a stop they looked up once.
      */

@@ -204,10 +204,16 @@ export const ROUTE_BY_ID = `
  * `short_name`, verified against the asset. `LIMIT 1` says so rather than
  * trusting it, and the blank name — one route has none — matches nothing,
  * which is right: there is no number for a rider to have come from.
+ *
+ * **`COLLATE NOCASE`, for the same reason `sameRoute` lowercases both sides:**
+ * the two feeds disagree about case, and the lettered routes are where it would
+ * bite — `A LINE`, `W LINE`, `1L`, `PH1`. A miss here is silent rather than
+ * loud, because route mode is simply never entered and the long-press entry
+ * appears to do nothing at all.
  */
 export const ROUTE_BY_SHORT_NAME = `
   SELECT route_id, short_name, long_name FROM routes
-  WHERE short_name = ? AND short_name <> ''
+  WHERE short_name = ? COLLATE NOCASE AND short_name <> ''
   LIMIT 1
 `;
 

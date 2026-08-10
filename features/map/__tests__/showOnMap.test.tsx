@@ -24,6 +24,9 @@ jest.mock('../showOnMap', () => ({ showOnMap: jest.fn() }));
 /** `RouteList` scrolls inside the sheet, and its list throws outside one. */
 jest.mock('@gorhom/bottom-sheet', () => require('@gorhom/bottom-sheet/mock'));
 
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({ router: { push: (href: string) => mockPush(href) } }));
+
 const menu = jest.mocked(showRowMenu);
 const asked = jest.mocked(showOnMap);
 
@@ -72,6 +75,7 @@ function arrival(overrides: Partial<Arrival> = {}): Arrival {
 beforeEach(() => {
   menu.mockClear();
   asked.mockClear();
+  mockPush.mockClear();
 });
 
 describe('StopRow’s long press', () => {
@@ -253,8 +257,11 @@ describe('the route list’s long press', () => {
     // The rider is already on the map; the pin for this stop is on it.
     expect(offered().map((a) => a.label)).toEqual(['Open arrivals', 'Add to favorites']);
 
+    // The arrivals *screen*, not the card — a tap already opens the card, and
+    // an entry that repeated it would be a menu item that does nothing new.
     choose('Open arrivals');
-    expect(onSelect).toHaveBeenCalledWith(stop);
+    expect(mockPush).toHaveBeenCalledWith('/stop/901');
+    expect(onSelect).not.toHaveBeenCalled();
 
     choose('Add to favorites');
     expect(onToggleFavorite).toHaveBeenCalledWith('5');
