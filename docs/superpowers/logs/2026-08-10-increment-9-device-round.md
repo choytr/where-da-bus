@@ -94,8 +94,18 @@ of them been seen working.
 
 ## Round 2, ~03:14 HST — two more on the arrows
 
-`IMG_4670.png` / `IMG_4671.png`, same folder. Route 10 again, the second shot
-with the map rotated (compass shows N off-vertical, needle to the upper right).
+**Two shots, pasted into the conversation and never saved to disk** — so unlike
+round 1 there is no file to go back to, and this transcription is the only
+record. Both are Route 10 in dark mode over Liliha / Nuuanu at 3:14. The first
+is north-up; the second has the map rotated, with MapKit's compass showing `N`
+off-vertical and its needle to the upper right.
+
+What they show: in the north-up shot the arrowheads correctly follow the line —
+one points down-left along Liliha St toward Kuakini, another down-right along
+Nuuanu Ave — so the per-segment bearing is right. In the rotated shot the line
+has turned under them and the arrowheads have not, leaving several pointing
+across the road rather than along it. The arrowheads are solid black triangles
+in both.
 
 > Bottom bar icons look fantastic now.
 >
