@@ -1675,6 +1675,67 @@ describe('MapScreen', () => {
       expect(screen.getByLabelText('Stop 1, WAIKIKI')).toBeTruthy();
     });
 
+    /**
+     * The guard in `flipRoute`, which exists because spamming this control
+     * crashed the app on a device on 2026-08-09 — two marker swaps in flight at
+     * once, 66 annotations leaving and 66 arriving in each.
+     *
+     * **No timer mocking, and none wanted.** Two awaited presses land a few
+     * milliseconds apart, which is far inside `FLIP_LOCKOUT_MS` and is exactly
+     * what a rider drumming the button does. Faking the clock here would test
+     * the mock rather than the window.
+     */
+    it('ignores a second flip while the first is still landing', async () => {
+      await showRoute();
+
+      const control = screen.getByLabelText('Show the other direction');
+      await fireEvent.press(control);
+      await fireEvent.press(control);
+
+      await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
+      // Honouring the second tap would land the rider back where they started.
+      expect(screen.queryByText('Toward WAIKIKI')).toBeNull();
+    });
+
+    it('flips again once the lockout has passed', async () => {
+      await showRoute();
+
+      const control = screen.getByLabelText('Show the other direction');
+      await fireEvent.press(control);
+      await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
+
+      // The clock rather than the timers: the guard compares `Date.now()`, so
+      // this is the one thing that has to move for the window to reopen.
+      const realNow = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(realNow + 10_000);
+      try {
+        await fireEvent.press(control);
+        await waitFor(() => screen.getByText('Toward WAIKIKI'));
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    /**
+     * Truman's second reproduction on 2026-08-09: a flip followed quickly by
+     * the X. The close lands inside the flip's window, and unlike a flip it is
+     * **held and then honoured** rather than dropped — a close that silently
+     * does nothing is a broken app.
+     *
+     * Real timers, because `waitFor` outlasts `SWAP_LOCKOUT_MS` on its own and
+     * the deferral is the behaviour under test rather than the clock.
+     */
+    it('still leaves when the X lands while a flip is in flight', async () => {
+      mockNearby.mockResolvedValue([stop('7', 'SOMEWHERE ELSE', 40)]);
+      await showRoute();
+
+      await fireEvent.press(screen.getByLabelText('Show the other direction'));
+      await fireEvent.press(screen.getByLabelText('Stop showing this route'));
+
+      await waitFor(() => screen.getByTestId('nearby-band'));
+      expect(screen.queryByTestId('route-band')).toBeNull();
+    });
+
     it('leaves route mode from the X, and puts the nearby stops back', async () => {
       mockNearby.mockResolvedValue([stop('7', 'SOMEWHERE ELSE', 40)]);
       await showRoute();

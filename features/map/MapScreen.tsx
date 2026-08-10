@@ -156,6 +156,17 @@ const BANNER_ALLOWANCE = 52;
 const CAMERA_MS = 350;
 
 /**
+ * How long one wholesale marker swap owns the map. See `swapBusyUntil`.
+ *
+ * `CAMERA_MS` rather than a number of its own, and that is the whole argument:
+ * the window that must be protected is the one where the previous swap is still
+ * being applied, and the camera move is exactly as long as that takes because
+ * the same commit starts both. A constant picked independently would be a guess
+ * that drifts out of agreement with the animation it is shadowing.
+ */
+const SWAP_LOCKOUT_MS = CAMERA_MS;
+
+/**
  * How long the map refuses to zoom after a pin is tapped.
  *
  * Tapping two pins in quick succession zoomed the map, because iOS counted the
@@ -842,6 +853,43 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * the route's own, and a card for a stop no longer among the pins would keep
    * polling for it. The same reasoning as `searchFrom`.
    */
+  /**
+   * When the marker swap now in flight will have landed, and the reason any of
+   * this exists.
+   *
+   * **Every control here replaces the map's markers wholesale.** The two
+   * directions of route 2 share *2 stops out of 68*, so a flip takes 66
+   * annotations off and puts 66 on in one commit; the X is larger again,
+   * dropping the whole route and bringing the nearby stops back. Issue a second
+   * one of those while the first is still being applied and the map is handed
+   * insertions against a subview array that has already moved underneath it —
+   * the out-of-range `-[__NSArrayM insertObject:atIndex:]` in `docs/backlog.md`.
+   *
+   * Truman reproduced it two ways on 2026-08-09: spamming the flip control, and
+   * a flip followed quickly by the X. **One window, shared**, because the pair
+   * is what crashes — guarding only the control that happens to be tapped twice
+   * would have fixed the first and left the second.
+   *
+   * This cannot be fixed at the native seam: Expo Go rules out patching
+   * `react-native-maps`. Nor by making the swap small enough not to matter —
+   * holding both directions' stops at once means 134 markers and both sides of
+   * every street, which is a worse map. Serialising the swaps is the only join
+   * this app owns.
+   */
+  const swapBusyUntil = useRef(0);
+  const cancelDeferredLeave = useRef<(() => void) | null>(null);
+
+  /** A close held over the window must not fire into an unmounted screen. */
+  useEffect(() => () => cancelDeferredLeave.current?.(), []);
+
+  /**
+   * Entering is a wholesale swap too, and deliberately does **not** arm the
+   * window. Nothing has crashed from it: reaching this needs a search to be
+   * opened, a result found and tapped, so the gap before any other control can
+   * be reached is human-scale rather than the sub-second one that breaks the
+   * map. Arming it would buy nothing and would silently swallow a flip tapped
+   * immediately after a route opens.
+   */
   const openRoute = useCallback((route: RouteSummary) => {
     setSelectedStop(null);
     setPending(null);
@@ -851,10 +899,44 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   /**
    * The X, and the only thing that leaves route mode. Panning does not, and
    * changing tab does not — both were put to Truman explicitly.
+   *
+   * **Deferred rather than dropped**, which is the difference between this and
+   * `flipRoute`. A rider who taps X has asked to be out of route mode, and a
+   * close that silently does nothing is a broken app; a flip that does nothing
+   * is a flip they get to ask for again. So a close inside the window is held
+   * until the window ends and then honoured, at most one deep.
    */
   const leaveRoute = useCallback(() => {
-    setSelectedStop(null);
-    leaveRouteMode();
+    const swap = () => {
+      swapBusyUntil.current = Date.now() + SWAP_LOCKOUT_MS;
+      setSelectedStop(null);
+      leaveRouteMode();
+    };
+
+    const wait = swapBusyUntil.current - Date.now();
+    if (wait <= 0) {
+      swap();
+      return;
+    }
+    cancelDeferredLeave.current?.();
+    cancelDeferredLeave.current = schedule(() => {
+      cancelDeferredLeave.current = null;
+      swap();
+    }, wait);
+  }, []);
+
+  /**
+   * A flip, unless a swap is still landing.
+   *
+   * **Dropped rather than queued.** A tap that arrives mid-swap is a rider
+   * drumming the button, and honouring it would land them back where they
+   * started; the flip they can see is the one they asked for.
+   */
+  const flipRoute = useCallback(() => {
+    const now = Date.now();
+    if (now < swapBusyUntil.current) return;
+    swapBusyUntil.current = now + SWAP_LOCKOUT_MS;
+    flipDirection();
   }, []);
 
   /**
@@ -1088,9 +1170,26 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
             `-[__NSArrayM insertObject:atIndex:]` in `docs/backlog.md`. Last
             means draining it moves no sibling's index.
           */}
+          {/*
+            TEMPORARY (2026-08-09). The direction is in the key, so a flip
+            unmounts every bus and mounts it again rather than preserving it.
+
+            The hypothesis under test: after a flip the `BusMarker` React state
+            is perfectly fine and it is the *native* annotation that has gone
+            stale — dropped a z-level on the first flip, off the map on the
+            second — because the sibling `pins` array was spliced underneath it.
+            A forced remount re-inserts the annotation from scratch. If the dots
+            come back and stay on top through repeated flips, the React model is
+            innocent and the native array is the thing that drifts. If they
+            still degrade, a remount is not enough and the divergence outlives
+            the children entirely.
+
+            Not a fix even if it works: this re-snapshots every bus on a flip,
+            and it says nothing about why one flip is enough to do the damage.
+          */}
           {buses.map((bus) => (
             <BusMarker
-              key={bus.vehicle.number}
+              key={`${routeMode?.directionIndex ?? 'none'}-${bus.vehicle.number}`}
               bus={bus}
               highlighted={bus === highlightedBus}
               placement={labelled.buses.get(bus.vehicle.number) ?? null}
@@ -1183,7 +1282,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
                 stops: routeStopsInOrder,
                 directionCount: loadedRoute?.directions.length ?? 0,
                 busLayer,
-                onFlip: flipDirection,
+                onFlip: flipRoute,
                 onLeave: leaveRoute,
               }
         }
