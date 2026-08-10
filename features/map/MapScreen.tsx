@@ -1171,21 +1171,25 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
             means draining it moves no sibling's index.
           */}
           {/*
-            TEMPORARY (2026-08-09). The direction is in the key, so a flip
-            unmounts every bus and mounts it again rather than preserving it.
+            **The direction is in the key, and it is not decoration.** It makes
+            a flip unmount every bus and mount it again instead of preserving
+            it, which is the opposite of what a key is normally for.
 
-            The hypothesis under test: after a flip the `BusMarker` React state
-            is perfectly fine and it is the *native* annotation that has gone
-            stale — dropped a z-level on the first flip, off the map on the
-            second — because the sibling `pins` array was spliced underneath it.
-            A forced remount re-inserts the annotation from scratch. If the dots
-            come back and stay on top through repeated flips, the React model is
-            innocent and the native array is the thing that drifts. If they
-            still degrade, a remount is not enough and the divergence outlives
-            the children entirely.
+            Measured on a device, 2026-08-09, keyed on the fleet number alone:
+            one flip dropped the bus dots *below* the stop pins, and a second
+            took them off the map entirely while the band still read "9 buses".
+            Progressive, repeatable, and nothing to do with the SIGABRT — it
+            survived the swap gate that fixed the crash, and the crash never
+            came back once the gate was in.
 
-            Not a fix even if it works: this re-snapshots every bus on a flip,
-            and it says nothing about why one flip is enough to do the damage.
+            The buses are the children React *preserves* across a flip: the two
+            directions of a route share almost no stops, so `pins` is replaced
+            wholesale underneath them, and the annotation that is carried over
+            comes out the far side stale. Remounting it re-inserts it cleanly.
+            Expo Go rules out fixing that where it actually lives.
+
+            The cost is a re-snapshot of the bus layer per flip — a dozen
+            markers, at most once per `SWAP_LOCKOUT_MS`.
           */}
           {buses.map((bus) => (
             <BusMarker

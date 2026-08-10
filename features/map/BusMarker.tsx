@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { memo, useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { schedule } from '../../lib/schedule';
 import { useTheme } from '../../lib/theme';
@@ -46,21 +46,6 @@ const ANCHOR = { x: 0.5, y: 0.5 };
 
 /** Long enough to capture a changed bitmap, short enough not to keep redrawing. */
 const TRACK_MS = 450;
-
-/**
- * TEMPORARY (2026-08-09). Holds `tracksViewChanges` on for the life of the
- * marker, whatever the timer says.
- *
- * The hypothesis under test: bus dots do not draw until the map is panned
- * because the 450 ms timer drops tracking before MapKit has realised the
- * annotation view, leaving it with an empty bitmap — and the SIGABRT on the
- * route view's X lands in exactly that window, when the marker is mounted in
- * React and handed to MapKit but has nothing drawn.
- *
- * If the dots still fail to appear with this true, the timer is innocent and
- * the cause is elsewhere. That falsification is the whole point of the flag.
- */
-const TRACKING_ALWAYS = true;
 
 /**
  * "here 20 s ago" — Truman asked for this by name, after the old DaBus app.
@@ -112,24 +97,6 @@ export const BusMarker = memo(
       return schedule(() => setTracking(false), TRACK_MS);
     }, [label, highlighted, placement, adherence]);
 
-    // ---- TEMPORARY INSTRUMENT (2026-08-09) ----------------------------------
-    // Two facts wanted from one device round, and neither is readable from
-    // source: whether a bus dot draws at all when `tracksViewChanges` is never
-    // dropped, and how long after mount the marker's own view reports a layout.
-    // Remove both this block and `TRACKING_ALWAYS` once they are answered.
-    const mountedAt = useRef(Date.now());
-    const onLayout = useCallback(
-      (event: LayoutChangeEvent) => {
-        const { width, height } = event.nativeEvent.layout;
-        console.log(
-          `[busMarker] ${bus.vehicle.number} laid out ${Date.now() - mountedAt.current} ms ` +
-            `after mount, ${width}x${height}, tracking=${tracking}`,
-        );
-      },
-      [bus.vehicle.number, tracking],
-    );
-    // -------------------------------------------------------------------------
-
     const size = highlighted ? DOT + 6 : DOT;
 
     /**
@@ -149,12 +116,12 @@ export const BusMarker = memo(
         identifier={`bus-${bus.vehicle.number}`}
         coordinate={{ latitude: bus.vehicle.position.lat, longitude: bus.vehicle.position.lon }}
         anchor={ANCHOR}
-        tracksViewChanges={TRACKING_ALWAYS || tracking}
+        tracksViewChanges={tracking}
         // No `title`: a `Marker` with one gets a native callout that MapKit
         // selects by itself, which is a second selection this app cannot see.
         accessibilityLabel={label}
       >
-        <View style={styles.wrap} pointerEvents="none" onLayout={onLayout}>
+        <View style={styles.wrap} pointerEvents="none">
           <View
             style={[
               styles.dot,
