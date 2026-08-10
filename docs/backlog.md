@@ -249,18 +249,39 @@ but that'll come later. Functionality first."
   `buses` and `linePoints` each clear in their own effect. That is a candidate
   and **not** a finding.
 
-  **Duplicate React keys were investigated and are not it.** Eight
-  route/directions serve one stop twice, and both markers took
-  `key={stop.stop_id}`; Truman reproduced React's own "Encountered two children
-  with the same key" warning on routes 60, 83, 40, 521 and 421. It is fixed
-  (`routePins` dedupes, `RouteList` keys by call). But **those routes warn and
-  do not crash**, so this was a real bug found on the way rather than the cause.
+  **Duplicate React keys are the leading candidate, and there are two sources.**
+  Found by logging the route-mode exit to Metro, whose output survives the app
+  dying — which is what makes a native abort observable from a machine with no
+  device on it.
 
-  **The crash is not currently reproducible** — Truman, 2026-08-09: *"Now I
-  can't reproduce the crash and don't remember what I did to trigger it."* So it
-  is recorded, not chased. Do not guess at it, and do not attribute it to
-  whatever was most recently changed; that is exactly how `zIndex` got written
-  down as the cause.
+  *Stops.* Eight route/directions serve one stop twice, and both markers took
+  `key={stop.stop_id}`. Truman reproduced React's warning on routes 60, 83, 40,
+  521 and 421. Fixed: `routePins` dedupes, `RouteList` keys by call. **These
+  warn and do not crash** — a route's stop list is static once drawn.
+
+  *Buses, which is the one that matters.* The live feed returns **the same fleet
+  number twice**: `605` and `209` both, on Route 10, 2026-08-09, with React
+  reporting *"Encountered two children with the same key"* against `buses.map`
+  in `MapScreen`. Fixed in `useVehicles`, keeping the fresher record.
+
+  Why buses and not stops: this list **churns every sixty seconds and is
+  unmounted wholesale by the X**. React's own warning says duplicate keys mean
+  children "may be duplicated and/or omitted", so its model of what it mounted
+  diverges from what it mounted — and then it issues removal and insertion
+  instructions against that wrong model, into an annotation array that already
+  diverges from React's view by construction. An out-of-range
+  `insertObject:atIndex:` is what that produces.
+
+  It also explains the intermittency, which nothing else did: whether a poll
+  carries a duplicate is a property of the live feed at that moment. The
+  instrumented run shows it directly — presses #1–#6 had `buses=0` and
+  `sinceFleet=never` and all survived; the crash came once buses arrived.
+
+  **This is a candidate with a mechanism, not a proven cause**, and it is
+  written down that way on purpose. The evidence is much stronger than `zIndex`
+  ever had — React itself reporting corrupted reconciliation on the exact child
+  list the crashing transaction was mounting — but the only proof is Truman
+  failing to reproduce it over a long session. Until then this entry stays.
 
   **If it returns, do not read native source.** Get the `.ips` off the phone
   (Settings → Privacy & Security → Analytics & Improvements → Analytics Data,

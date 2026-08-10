@@ -214,10 +214,44 @@ export function useVehicles(client: TheBusClient, route: string | null): Vehicle
       .sort((a, b) => a.ageMs - b.ageMs);
   }, [fleet, fetchedAt, route, now]);
 
+  /**
+   * One entry per fleet number, keeping the freshest.
+   *
+   * **The live feed really does return the same bus twice.** Observed on a
+   * device on 2026-08-09: fleet numbers `605` and `209` both appeared twice on
+   * Route 10 within the freshness window, and React reported *"Encountered two
+   * children with the same key"* against `buses.map` in `MapScreen` — because
+   * `BusMarker` is keyed on the fleet number, which is the only stable identity
+   * a bus has.
+   *
+   * **This is not tidiness.** Duplicate keys mean React's model of what it
+   * mounted no longer matches what it mounted — its own warning says children
+   * "may be duplicated and/or omitted" — and the children in question are
+   * `react-native-maps` markers, whose real subview list already diverges from
+   * React's by construction (`AIRMap.m` intercepts them and never calls super).
+   * Issuing removal and insertion instructions against a wrong model, into that
+   * array, is a candidate for the out-of-range
+   * `-[__NSArrayM insertObject:atIndex:]` in `docs/backlog.md` — four `.ips`
+   * files, every one of them while unmounting this exact list via the route
+   * view's X.
+   *
+   * Freshest wins because the list is already sorted that way and because two
+   * records for one fleet number are one bus reported twice; the older reading
+   * is the one that is out of date.
+   */
+  const drawable = useMemo(() => {
+    const seen = new Set<string>();
+    return buses.filter((bus) => {
+      if (seen.has(bus.vehicle.number)) return false;
+      seen.add(bus.vehicle.number);
+      return true;
+    });
+  }, [buses]);
+
   const lateCount = useMemo(
-    () => buses.filter((bus) => adherenceOf(bus.vehicle.adherence) === 'late').length,
-    [buses],
+    () => drawable.filter((bus) => adherenceOf(bus.vehicle.adherence) === 'late').length,
+    [drawable],
   );
 
-  return { buses, failure, fetchedAt, lateCount };
+  return { buses: drawable, failure, fetchedAt, lateCount };
 }

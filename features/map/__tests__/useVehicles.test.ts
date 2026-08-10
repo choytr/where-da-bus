@@ -284,3 +284,62 @@ describe('lateCount', () => {
     expect(result.current.lateCount).toBe(2);
   });
 });
+
+describe('a fleet number the feed reports twice', () => {
+  /**
+   * Observed live on 2026-08-09, on Route 10: fleet numbers `605` and `209`
+   * each came back twice inside the freshness window, and React reported
+   * "Encountered two children with the same key" against `buses.map` in
+   * `MapScreen` — the fleet number being the only stable identity a bus has,
+   * and therefore its marker's key.
+   *
+   * Duplicate keys mean React's model of what it mounted diverges from what it
+   * mounted, and these children are `react-native-maps` markers, whose native
+   * subview list already diverges from React's by construction. That pairing is
+   * the leading candidate for the SIGABRT in `docs/backlog.md`.
+   */
+  it('draws it once', async () => {
+    const client = clientOf(
+      fleetOf(
+        { ...bus('605', '10', 60_000), headsign: 'EWA' },
+        { ...bus('605', '10', 10_000), headsign: 'KAILUA' },
+        bus('209', '10', 20_000),
+      ),
+    );
+
+    const { result } = await renderHook(() => useVehicles(client, '10'));
+
+    await waitFor(() => expect(result.current.buses.length).toBeGreaterThan(0));
+    expect(result.current.buses.map((b) => b.vehicle.number)).toEqual(['605', '209']);
+  });
+
+  /** Two records for one bus are one bus reported twice; the older is out of date. */
+  it('keeps the fresher of the two reports', async () => {
+    const client = clientOf(
+      fleetOf(
+        { ...bus('605', '10', 200_000), headsign: 'STALE' },
+        { ...bus('605', '10', 5_000), headsign: 'FRESH' },
+      ),
+    );
+
+    const { result } = await renderHook(() => useVehicles(client, '10'));
+
+    await waitFor(() => expect(result.current.buses).toHaveLength(1));
+    expect(result.current.buses[0]?.vehicle.headsign).toBe('FRESH');
+  });
+
+  /** The count in the route band reads the drawn list, not the raw one. */
+  it('does not count the duplicate twice when it is late', async () => {
+    const client = clientOf(
+      fleetOf(
+        { ...bus('605', '10', 10_000), adherence: -12 },
+        { ...bus('605', '10', 20_000), adherence: -12 },
+      ),
+    );
+
+    const { result } = await renderHook(() => useVehicles(client, '10'));
+
+    await waitFor(() => expect(result.current.buses).toHaveLength(1));
+    expect(result.current.lateCount).toBe(1);
+  });
+});
