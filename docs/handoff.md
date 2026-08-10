@@ -7,18 +7,19 @@ up. Update it in place rather than adding a dated section each time.
 `CLAUDE.md` are the record; anything already in them belongs there, not here.
 When an increment ships, its write-up in this file collapses to a pointer.
 
-Last updated: **2026-08-09**, after the route mode UX pass. **Increments 1–7 are
-shipped and merged**, and `main` is at Increment 7. Increment 7's whole-diff
-review came back with one cosmetic finding, now in `docs/backlog.md`.
+Last updated: **2026-08-09**, after the route mode UX pass and the map bug
+hunt that followed it. **Increments 1–8 are shipped and merged**, and `main` is
+at Increment 8 — merged on Truman's explicit permission that evening, which
+kicked off an `.ipa` build.
 
-**Increment 7's device round never happened.** This file previously said it
-passed; Truman said on 2026-08-09 that he had not run it. Every box in
-`docs/superpowers/logs/2026-08-09-increment-7-device-round.md` is still unticked
-and those checks are still owed — they are folded into Increment 8's round 2.
-The five **Expo Go** rounds did happen and are not in question; what never
-happened is the `.ipa`, which is the artefact that differs. This is how the
-sheet's lists came to be unable to scroll on a real build through two whole
-increments without anyone noticing.
+**The `.ipa` from that merge has not been installed or checked.** Everything in
+Increment 8 was verified in **Expo Go** over a long device session, which is
+what closed the map crash; the `.ipa` is the artefact that differs and it has
+not been on the phone. That distinction has bitten this project before: the
+sheet's lists could not scroll on a real build through two whole increments
+because five clean Expo Go rounds were read as a device round. Increment 7's
+`.ipa` check was owed and never happened either, and is now owed against a
+build that contains both increments.
 
 ---
 
