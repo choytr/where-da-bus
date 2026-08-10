@@ -560,6 +560,23 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   }, [routeStopsInOrder]);
 
   /**
+   * Which way the drawn direction is signed, and which ways the route is signed
+   * at all.
+   *
+   * Null until the route's directions have loaded, which reads as "no direction
+   * filter" and so draws every bus on the route — the same thing the map did
+   * before Increment 9, for the second or two before the query returns, rather
+   * than an empty map that fills in.
+   */
+  const directionFilter = useMemo(() => {
+    if (direction === null) return null;
+    return {
+      showing: direction.headsigns,
+      known: (loadedRoute?.directions ?? []).flatMap((each) => each.headsigns),
+    };
+  }, [direction, loadedRoute]);
+
+  /**
    * The buses on this route, right now.
    *
    * Keyed on the route's `short_name` rather than its id, because that is what
@@ -569,6 +586,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const { buses, failure: busFailure, fetchedAt: busesFetchedAt, lateCount } = useVehicles(
     client,
     loadedRoute?.route?.short_name ?? null,
+    directionFilter,
   );
 
   /**

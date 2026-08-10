@@ -1,5 +1,11 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
-import { AGE_TICK_MS, FRESH_MS, VEHICLE_POLL_MS, useVehicles } from '../useVehicles';
+import {
+  AGE_TICK_MS,
+  FRESH_MS,
+  VEHICLE_POLL_MS,
+  drawsInDirection,
+  useVehicles,
+} from '../useVehicles';
 import type { FleetResult, TheBusClient, Vehicle } from '../../../data/thebus';
 
 /**
@@ -338,6 +344,150 @@ describe('a fleet number the feed reports twice', () => {
     );
 
     const { result } = await renderHook(() => useVehicles(client, '10'));
+
+    await waitFor(() => expect(result.current.buses).toHaveLength(1));
+    expect(result.current.lateCount).toBe(1);
+  });
+});
+
+/**
+ * Which way a bus is going, from the only thing the fleet feed says about it.
+ *
+ * A vehicle carries a headsign and no direction, so this is the whole basis of
+ * the filter. The two lists exist because "signed the other way" and "signed
+ * something this app has never heard of" are different facts, and only the
+ * first is a reason to hide a bus — GTFS is reference data that can be weeks
+ * stale, and hiding on ignorance would empty the map rather than tidy it.
+ */
+describe('drawsInDirection', () => {
+  const route2 = {
+    showing: ['KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN'],
+    known: [
+      'KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN',
+      'WAIKIKI - KAPIOLANI CC - DIAMOND HEAD',
+      'ALAPAI TRANSIT CENTER',
+    ],
+  };
+
+  it('draws a bus signed the way the map is looking', () => {
+    expect(drawsInDirection(route2, 'KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN')).toBe(true);
+  });
+
+  it('hides a bus signed the other way', () => {
+    // Bus 889 on 2026-08-09, drawn a block off a line headed for Kalihi. Its
+    // position was right and MapKit was right; it was the other way's bus.
+    expect(drawsInDirection(route2, 'WAIKIKI - KAPIOLANI CC - DIAMOND HEAD')).toBe(false);
+  });
+
+  it('draws a bus signed something the feed does not carry', () => {
+    expect(drawsInDirection(route2, 'SOMEWHERE NEW')).toBe(true);
+  });
+
+  it('draws a bus that reported no headsign at all', () => {
+    expect(drawsInDirection(route2, null)).toBe(true);
+  });
+
+  it('draws every bus when the direction is not known yet', () => {
+    expect(drawsInDirection(null, 'WAIKIKI - KAPIOLANI CC - DIAMOND HEAD')).toBe(true);
+  });
+
+  /**
+   * Twelve routes sign both directions alike — a short-turn gets a generic sign
+   * and a street name has no direction. 4.00% of trips, accepted rather than
+   * guessed at, so those buses keep drawing both ways as they always have.
+   */
+  it('draws a bus whose sign both directions share', () => {
+    const route14 = {
+      showing: ['ST LOUIS HTS VIA KAPAHULU', 'WAIALAE AVENUE'],
+      known: ['ST LOUIS HTS VIA KAPAHULU', 'MAUNALANI HTS VIA KAPAHULU', 'WAIALAE AVENUE'],
+    };
+    expect(drawsInDirection(route14, 'WAIALAE AVENUE')).toBe(true);
+  });
+
+  /** Exact equality, both sides. A divergence degrades to "unknown", which draws. */
+  it('does not match a headsign that differs only in case', () => {
+    expect(drawsInDirection(route2, 'waikiki - kapiolani cc - diamond head')).toBe(true);
+  });
+});
+
+describe('useVehicles direction filter', () => {
+  const KALIHI = 'KAHAUIKI KALIHI TRANSIT CNTR SKYLINE STN';
+  const WAIKIKI = 'WAIKIKI - KAPIOLANI CC - DIAMOND HEAD';
+  const toward = (showing: string) => ({ showing: [showing], known: [KALIHI, WAIKIKI] });
+
+  it('drops a bus running the other direction', async () => {
+    const client = clientOf(
+      fleetOf(
+        { ...bus('231', '2', 10_000), headsign: KALIHI },
+        { ...bus('889', '2', 10_000), headsign: WAIKIKI },
+      ),
+    );
+
+    const { result } = await renderHook(() => useVehicles(client, '2', toward(KALIHI)));
+
+    await waitFor(() => expect(result.current.buses).toHaveLength(1));
+    expect(result.current.buses[0]?.vehicle.number).toBe('231');
+  });
+
+  it('keeps a bus whose headsign is unknown', async () => {
+    const client = clientOf(fleetOf({ ...bus('231', '2', 10_000), headsign: 'A NEW SIGN' }));
+
+    const { result } = await renderHook(() => useVehicles(client, '2', toward(KALIHI)));
+
+    await waitFor(() => expect(result.current.buses).toHaveLength(1));
+  });
+
+  it('filters nothing when no headsigns are supplied', async () => {
+    const client = clientOf(
+      fleetOf(
+        { ...bus('231', '2', 10_000), headsign: KALIHI },
+        { ...bus('889', '2', 10_000), headsign: WAIKIKI },
+      ),
+    );
+
+    const { result } = await renderHook(() => useVehicles(client, '2', null));
+
+    await waitFor(() => expect(result.current.buses).toHaveLength(2));
+  });
+
+  /**
+   * The response is the whole island either way, so flipping direction must
+   * re-filter a fleet already in hand rather than spend another request to
+   * receive the same bytes.
+   */
+  it('flips direction without asking for the fleet again', async () => {
+    const client = clientOf(
+      fleetOf(
+        { ...bus('231', '2', 10_000), headsign: KALIHI },
+        { ...bus('889', '2', 10_000), headsign: WAIKIKI },
+      ),
+    );
+
+    const { result, rerender } = await renderHook(
+      ({ showing }: { showing: string }) => useVehicles(client, '2', toward(showing)),
+      { initialProps: { showing: KALIHI } },
+    );
+
+    await waitFor(() => expect(result.current.buses).toHaveLength(1));
+    expect(result.current.buses[0]?.vehicle.number).toBe('231');
+    const before = client.calls();
+
+    await rerender({ showing: WAIKIKI });
+
+    await waitFor(() => expect(result.current.buses[0]?.vehicle.number).toBe('889'));
+    expect(client.calls()).toBe(before);
+  });
+
+  /** The band's count is of what is drawn, so a hidden bus is not counted late. */
+  it('does not count a hidden bus among the late ones', async () => {
+    const client = clientOf(
+      fleetOf(
+        { ...bus('231', '2', 10_000), headsign: KALIHI, adherence: -12 },
+        { ...bus('889', '2', 10_000), headsign: WAIKIKI, adherence: -12 },
+      ),
+    );
+
+    const { result } = await renderHook(() => useVehicles(client, '2', toward(KALIHI)));
 
     await waitFor(() => expect(result.current.buses).toHaveLength(1));
     expect(result.current.lateCount).toBe(1);

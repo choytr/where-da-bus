@@ -86,12 +86,71 @@ function sameRoute(a: string | null, b: string | null): boolean {
 }
 
 /**
+ * Which way the map is looking, in the only terms the fleet feed speaks.
+ *
+ * **A vehicle carries no direction at all** — only a `headsign`, the sign on
+ * the front of the bus — so this is the whole basis for telling one way of a
+ * route from the other. Geometry cannot stand in: both directions of most Oahu
+ * routes run the same streets, so a bus is on the line either way. It is why
+ * the map drew both directions' buses until Increment 9, and why a Route 2 bus
+ * signed `WAIKIKI` appeared a block off a line headed for Kalihi. The position
+ * was right; the bus was simply the other way's.
+ *
+ * **Two lists, because "the other direction's" and "not in the feed at all"
+ * are different facts and only the first is a reason to hide a bus.** GTFS is
+ * reference data that can be weeks stale, and a headsign this app has never
+ * heard of is the app's ignorance rather than the bus's. So `known` is every
+ * sign the route runs under, either way, and a headsign outside it draws.
+ */
+export type DirectionFilter = {
+  /** Headsigns of the direction currently drawn. Several — route 2 has five. */
+  readonly showing: readonly string[];
+  /** Every headsign this route runs under, both directions together. */
+  readonly known: readonly string[];
+};
+
+/**
+ * Whether a bus signed `headsign` belongs on the map right now.
+ *
+ * Exact string equality, in both lists: GTFS `trip_headsign` and the fleet
+ * feed's `headsign` are byte-identical (`KAHAUIKI KALIHI TRANSIT CNTR SKYLINE
+ * STN` appears verbatim in both), so there is nothing to normalise, and a
+ * future divergence in case or spacing degrades to *unknown* — every bus drawn,
+ * which is exactly where this started — rather than to an empty map.
+ *
+ * Twelve routes sign both directions the same way, because a short-turn gets a
+ * generic sign and a street name has no direction. Those headsigns are in
+ * `showing` for both directions, so their buses draw both ways: today's
+ * behaviour, on 4.00% of trips, accepted rather than guessed at.
+ */
+export function drawsInDirection(
+  filter: DirectionFilter | null,
+  headsign: string | null,
+): boolean {
+  if (filter === null) return true;
+  // A bus that told us nothing cannot be attributed, and hiding it would be a
+  // claim rather than a filter.
+  if (headsign === null) return true;
+  if (filter.showing.some((sign) => sign === headsign)) return true;
+  return !filter.known.some((sign) => sign === headsign);
+}
+
+/**
  * `route` is the number on the bus (`short_name`), not a `route_id`, because
  * `route_short_name` is what the fleet response carries. Null means no route is
  * showing, and then nothing is requested at all — the map does not spend a
  * request a minute on a layer nobody is looking at.
+ *
+ * `direction` hides the other way's buses; null applies no direction filter at
+ * all, which is what the map drew before Increment 9. It changes nothing about
+ * the request — the response is the whole island either way, so flipping
+ * direction re-filters a fleet already in hand rather than fetching again.
  */
-export function useVehicles(client: TheBusClient, route: string | null): VehiclesView {
+export function useVehicles(
+  client: TheBusClient,
+  route: string | null,
+  direction: DirectionFilter | null = null,
+): VehiclesView {
   const [fleet, setFleet] = useState<Fleet | null>(null);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
   const [fetchedAt, setFetchedAt] = useState<Date | null>(null);
@@ -205,6 +264,10 @@ export function useVehicles(client: TheBusClient, route: string | null): Vehicle
 
     return fleet.vehicles
       .filter((vehicle) => sameRoute(vehicle.route, route))
+      // The other direction's buses, hidden rather than dimmed: hiding is what
+      // makes the route band's "· 7 buses" a count of what is on screen, and
+      // the flip control is right there.
+      .filter((vehicle) => drawsInDirection(direction, vehicle.headsign))
       .map((vehicle) => ({ vehicle, ageMs: ageOf(vehicle, fleet, fetchedAt, now) }))
       // One rule, applied in both directions: a bus is drawn while its last
       // report is fresh and leaves the map when it stops being fresh.
@@ -212,7 +275,7 @@ export function useVehicles(client: TheBusClient, route: string | null): Vehicle
       // Freshest first, so the bus a rider is most likely to care about draws
       // over the top of a stale-ish one sitting on the same block.
       .sort((a, b) => a.ageMs - b.ageMs);
-  }, [fleet, fetchedAt, route, now]);
+  }, [fleet, fetchedAt, route, direction, now]);
 
   /**
    * One entry per fleet number, keeping the freshest.

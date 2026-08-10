@@ -2001,6 +2001,56 @@ describe('MapScreen', () => {
 
         await waitFor(() => screen.getByText('252 · here 15 s ago'));
       });
+
+      /**
+       * Reported from the Increment 8 `.ipa` as "buses draw off the route
+       * line". They did not: bus 889 was a Route 2 bus signed for Waikiki,
+       * drawn correctly, while the line on screen was headed for Kalihi. The
+       * map was drawing both directions' buses because `useVehicles` filtered
+       * on route and freshness and nothing else.
+       *
+       * Driven through the screen rather than the hook because what the hook
+       * cannot get wrong is *which* two lists it is handed.
+       */
+      describe('the other direction’s buses', () => {
+        const otherWay = { ...bus('889', '32'), headsign: 'KALIHI TRANSIT CENTER' };
+
+        it('are left off the map', async () => {
+          mockFleetResult = fleetOf(bus('252', '32'), otherWay);
+          await showRoute();
+
+          await waitFor(() => screen.getByLabelText('pin bus-252'));
+          expect(screen.queryByLabelText('pin bus-889')).toBeNull();
+        });
+
+        it('are not counted in the route band', async () => {
+          mockFleetResult = fleetOf(bus('252', '32'), otherWay);
+          await showRoute();
+
+          await waitFor(() =>
+            expect(screen.getByTestId('bus-layer-state')).toHaveTextContent('1 bus'),
+          );
+        });
+
+        it('take the map’s place after a flip', async () => {
+          mockFleetResult = fleetOf(bus('252', '32'), otherWay);
+          await showRoute();
+          await waitFor(() => screen.getByLabelText('pin bus-252'));
+
+          await fireEvent.press(screen.getByLabelText('Show the other direction'));
+
+          await waitFor(() => screen.getByLabelText('pin bus-889'));
+          expect(screen.queryByLabelText('pin bus-252')).toBeNull();
+        });
+
+        /** GTFS is reference data, and it can be weeks behind the fleet feed. */
+        it('do not take a bus signed something the asset never heard of with them', async () => {
+          mockFleetResult = fleetOf({ ...bus('300', '32'), headsign: 'A SIGN FROM NEXT WEEK' });
+          await showRoute();
+
+          await waitFor(() => screen.getByLabelText('pin bus-300'));
+        });
+      });
     });
 
     describe('tapping an arrival', () => {
