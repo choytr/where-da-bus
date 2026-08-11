@@ -1,17 +1,17 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { schedule } from '../../lib/schedule';
 import { arrowPlacements } from './arrows';
-import type { Region } from './region';
+import { Z } from './layers';
 import type { Coords } from '../../lib/distance';
 
 /**
  * Which way the route line runs, at a glance.
  *
- * **A fixed pool of markers, mounted once for the life of the map.** Eight
- * exist whether or not a route is showing; outside route mode they sit at the
- * camera's center at opacity zero. Nothing here ever mounts, unmounts or
+ * **A fixed pool of markers, mounted once for the life of the map.** All of
+ * them exist whether or not a route is showing; unused slots park out to sea at
+ * opacity zero. Nothing here ever mounts, unmounts or
  * reorders inside `MapView`, which is the seam with the open SIGABRT behind it
  * — see the map section of `docs/backlog.md`. **Do not implement this as one
  * marker per segment**: that is a wholesale swap on every direction flip, into
@@ -21,10 +21,13 @@ import type { Coords } from '../../lib/distance';
  * is a fixed number of interchangeable slots, and an index is what makes slot 3
  * stay slot 3 while what it draws changes underneath it.
  *
- * **They are drawn before the pins and the buses**, so they sit under both.
- * Their wrapper is deliberately small — an arrowhead is not something anyone
- * aims at, and a wide box would eat taps meant for a stop pin beside it, which
- * is the two-tap problem `stopUnderBus` exists to undo.
+ * **They sit under the pins and the buses by `zIndex`, not by render order.**
+ * MapKit's own documentation says the order of annotations sharing a z-index is
+ * *arbitrary*, and arbitrary is what a rider sees as things swapping over each
+ * other while they pan. `features/map/layers.ts` holds every layer's number.
+ * Their wrapper is deliberately small too — an arrowhead is not something
+ * anyone aims at, and a wide box would eat taps meant for a stop pin beside it,
+ * which is the two-tap problem `stopUnderBus` exists to undo.
  *
  * **The rotation is a view transform, never `Marker`'s `rotation` prop.** That
  * prop is documented `@platform iOS: Google Maps only` in the installed types,
@@ -48,13 +51,15 @@ import type { Coords } from '../../lib/distance';
  */
 
 /**
- * How many. Constant for the life of the map, by construction rather than by
- * discipline: it is what sizes the pool.
+ * How many slots the pool has. Constant for the life of the map, by
+ * construction rather than by discipline: it is what sizes the pool.
  *
- * Eight is a judgement, not a measurement. Enough to read direction anywhere on
- * a route-scale line, few enough not to be clutter at street scale.
+ * Bigger than it was, because the arrows are now spaced along the *road* rather
+ * than across the screen — a 20 km route at 500 m spacing wants forty of them,
+ * and a slot costs an always-mounted marker parked out to sea. What a rider
+ * sees at once is still only what fits on screen.
  */
-export const ARROW_COUNT = 8;
+export const ARROW_COUNT = 40;
 
 /** Small enough not to be a tap target; big enough to read against a 4 pt line. */
 const SLOT = 20;
@@ -78,8 +83,6 @@ const TRACK_MS = 450;
 export type RouteArrowsProps = {
   /** The drawn line's points, or empty when no route is showing. Never null. */
   points: readonly Coords[];
-  /** The settled camera, or null before the map has reported one. */
-  region: Region | null;
   /**
    * Which way the map is turned, degrees clockwise from north.
    *
@@ -122,6 +125,7 @@ const Arrow = memo(function Arrow({
       identifier={`arrow-${slot}`}
       coordinate={{ latitude: at.lat, longitude: at.lon }}
       anchor={ANCHOR}
+      zIndex={Z.arrow}
       tracksViewChanges={tracking}
       // No `rotation` prop: it is Google-Maps-only on iOS. See the header.
       // Not a thing anyone taps. `Marker`'s `tappable` is Google Maps only on
@@ -143,17 +147,13 @@ const Arrow = memo(function Arrow({
   );
 });
 
-export const RouteArrows = memo(function RouteArrows({
-  points,
-  region,
-  heading,
-}: RouteArrowsProps) {
-  // Recomputed when the camera settles, never during a pan: re-snapshotting
-  // eight markers per frame is how a map with custom markers becomes unusable.
-  const placements =
-    region === null
-      ? []
-      : arrowPlacements(points, region, ARROW_COUNT);
+export const RouteArrows = memo(function RouteArrows({ points, heading }: RouteArrowsProps) {
+  /**
+   * **A function of the line alone**, so panning and zooming move nothing.
+   * `points` changes only when the drawn route or direction does, which is the
+   * one moment an arrow is allowed to move.
+   */
+  const placements = useMemo(() => arrowPlacements(points, ARROW_COUNT), [points]);
 
   return (
     <>

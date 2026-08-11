@@ -1,33 +1,26 @@
 import { arrowPlacements, bearingBetween } from '../arrows';
-import type { Region } from '../region';
-import type { Coords } from '../../../lib/distance';
+import { metersBetween, type Coords } from '../../../lib/distance';
 
 /**
  * Where the arrowheads that say which way the line runs go.
  *
- * Arithmetic, tested as arithmetic: `MapPolylineProps` has no arrow support, so
- * these are markers, and the thing that keeps markers out of the seam behind the
- * SIGABRT is that the *count never changes*. That is the invariant most of this
- * file is about.
+ * Arithmetic, tested as arithmetic. Two invariants carry most of this file:
+ * the **count never changes**, because the caller mounts exactly that many
+ * markers once and never again and a marker unmounting inside `MapView` is the
+ * seam behind the SIGABRT; and placement is a function of **the line alone**,
+ * because arrows that moved on every pan were the thing Truman called very
+ * annoying.
  */
 
-/** Downtown Honolulu, spanning about 1 km. */
-const CLOSE: Region = {
-  latitude: 21.3069,
-  longitude: -157.8583,
-  latitudeDelta: 0.01,
-  longitudeDelta: 0.01,
-};
-
-/** The whole route on screen. */
-const WIDE: Region = { ...CLOSE, latitudeDelta: 0.09, longitudeDelta: 0.09 };
-
-/** A line running due east across the middle of `CLOSE`. */
+/** A line running due east, about 4.1 km end to end. */
 const EASTWARD: Coords[] = [
-  { lat: 21.3069, lon: -157.8623 },
+  { lat: 21.3069, lon: -157.8823 },
   { lat: 21.3069, lon: -157.8583 },
-  { lat: 21.3069, lon: -157.8543 },
+  { lat: 21.3069, lon: -157.8423 },
 ];
+
+const lengthOf = (line: readonly Coords[]) =>
+  line.slice(1).reduce((sum, point, i) => sum + metersBetween(line[i]!, point), 0);
 
 describe('bearingBetween', () => {
   it('reads due north as zero', () => {
@@ -42,7 +35,7 @@ describe('bearingBetween', () => {
     expect(bearingBetween({ lat: 21.31, lon: -157.85 }, { lat: 21.3, lon: -157.85 })).toBeCloseTo(180);
   });
 
-  /** Never negative: it is handed to a marker's `rotation`. */
+  /** Never negative: it is handed to a view transform as degrees. */
   it('reads due west as two hundred and seventy rather than minus ninety', () => {
     expect(bearingBetween({ lat: 21.3, lon: -157.84 }, { lat: 21.3, lon: -157.85 })).toBeCloseTo(270, 1);
   });
@@ -64,116 +57,92 @@ describe('bearingBetween', () => {
 describe('arrowPlacements', () => {
   /**
    * **The invariant the whole design rests on.** The caller mounts exactly this
-   * many markers once and never again, so a shorter answer at some zoom would
+   * many markers once and never again, so a shorter answer for any line would
    * be a marker unmounting inside `MapView`.
    */
-  it('returns a constant number of arrows at every zoom', () => {
-    expect(arrowPlacements(EASTWARD, CLOSE, 8)).toHaveLength(8);
-    expect(arrowPlacements(EASTWARD, WIDE, 8)).toHaveLength(8);
-    expect(arrowPlacements([], CLOSE, 8)).toHaveLength(8);
-    expect(arrowPlacements([{ lat: 21.3069, lon: -157.8583 }], CLOSE, 8)).toHaveLength(8);
+  it('returns a constant number of arrows for any line', () => {
+    expect(arrowPlacements(EASTWARD, 8)).toHaveLength(8);
+    expect(arrowPlacements([], 8)).toHaveLength(8);
+    expect(arrowPlacements([{ lat: 21.3069, lon: -157.8583 }], 8)).toHaveLength(8);
+    expect(arrowPlacements(EASTWARD, 40)).toHaveLength(40);
   });
 
   it('points along the line', () => {
-    const arrows = arrowPlacements(EASTWARD, CLOSE, 4);
-
-    for (const arrow of arrows) {
-      expect(arrow.visible).toBe(true);
+    for (const arrow of arrowPlacements(EASTWARD, 8)) {
+      if (!arrow.visible) continue;
       expect(arrow.bearingDeg).toBeCloseTo(90, 1);
     }
   });
 
   /** Reverse the points and every arrowhead turns round. */
   it('points the other way down a reversed line', () => {
-    const arrows = arrowPlacements([...EASTWARD].reverse(), CLOSE, 4);
-
-    for (const arrow of arrows) expect(arrow.bearingDeg).toBeCloseTo(270, 1);
-  });
-
-  it('hides every arrow when there is no line to sit on', () => {
-    const arrows = arrowPlacements([], CLOSE, 8);
-
-    expect(arrows.every((arrow) => !arrow.visible)).toBe(true);
-  });
-
-  /**
-   * Outside route mode there is no line, and the pool still exists. A hidden
-   * arrow needs a coordinate MapKit can project, not a real place.
-   */
-  it('gives a hidden arrow a coordinate anyway', () => {
-    const [arrow] = arrowPlacements([], CLOSE, 1);
-
-    expect(Number.isFinite(arrow?.at.lat)).toBe(true);
-    expect(Number.isFinite(arrow?.at.lon)).toBe(true);
-  });
-
-  /**
-   * **Not the camera's center**, which is where they used to park: outside
-   * route mode that stacked all eight invisible markers under the middle of the
-   * screen, and rewrote their coordinates on every pan. If a 16 pt frame turns
-   * out to take a tap a pin wanted, the middle of the screen is the worst place
-   * for it to be.
-   */
-  it('parks hidden arrows off the map, in one fixed place', () => {
-    const here = arrowPlacements([], CLOSE, 2);
-    const elsewhere = arrowPlacements([], { ...CLOSE, latitude: 21.6 }, 2);
-
-    for (const arrow of [...here, ...elsewhere]) {
-      expect(arrow.at).toEqual(here[0]?.at);
-      expect(Math.abs(arrow.at.lat - CLOSE.latitude)).toBeGreaterThan(1);
+    for (const arrow of arrowPlacements([...EASTWARD].reverse(), 8)) {
+      if (!arrow.visible) continue;
+      expect(arrow.bearingDeg).toBeCloseTo(270, 1);
     }
   });
 
-  it('hides every arrow when the line is nowhere near the camera', () => {
-    const elsewhere: Region = { ...CLOSE, latitude: 21.6, longitude: -158.0 };
-
-    expect(arrowPlacements(EASTWARD, elsewhere, 8).every((a) => !a.visible)).toBe(true);
-  });
-
   /**
-   * **Spacing follows the visible stretch, which is what density-by-zoom is
-   * actually for.** Zoomed out the arrows span the route; zoomed in they span
-   * the few blocks on screen — same eight markers, and the spacing looks even
-   * either way.
+   * **The behaviour Truman asked for.** Placement is a function of the line and
+   * nothing else, so a pan, a zoom or a rotation cannot move an arrowhead off
+   * the piece of road it is marking.
    */
-  it('redistributes along the stretch the camera can see', () => {
-    const long: Coords[] = Array.from({ length: 41 }, (_, i) => ({
-      lat: 21.3069,
-      lon: -157.9 + i * 0.002,
-    }));
-
-    const wide = arrowPlacements(long, WIDE, 4);
-    const close = arrowPlacements(long, CLOSE, 4);
-
-    const spread = (arrows: readonly { at: Coords }[]) => {
-      const lons = arrows.map((a) => a.at.lon);
-      return Math.max(...lons) - Math.min(...lons);
-    };
-
-    expect(spread(close)).toBeLessThan(spread(wide));
+  it('puts an arrow at the same place on the road however the camera moves', () => {
+    // There is no camera argument at all any more — the type is the guarantee,
+    // and this asserts the consequence: same line in, same answer out.
+    expect(arrowPlacements(EASTWARD, 8)).toEqual(arrowPlacements(EASTWARD, 8));
   });
 
-  it('spaces them evenly along a straight visible line', () => {
-    const arrows = arrowPlacements(EASTWARD, CLOSE, 4);
+  it('spaces them evenly by distance travelled', () => {
+    const arrows = arrowPlacements(EASTWARD, 8).filter((a) => a.visible);
+    expect(arrows.length).toBeGreaterThan(2);
+
     const gaps = arrows
       .slice(1)
-      .map((arrow, index) => arrow.at.lon - (arrows[index]?.at.lon ?? 0));
+      .map((arrow, index) => metersBetween(arrows[index]!.at, arrow.at));
 
-    for (const gap of gaps) expect(gap).toBeCloseTo(gaps[0] ?? 0, 6);
+    for (const gap of gaps) expect(gap).toBeCloseTo(gaps[0] ?? 0, 0);
+  });
+
+  /** 500 m apart on a ~4.1 km line is eight of them, and the ninth would fall off. */
+  it('uses only as many slots as the line is long enough for', () => {
+    const arrows = arrowPlacements(EASTWARD, 40, 500);
+    const drawn = arrows.filter((a) => a.visible).length;
+
+    expect(drawn).toBe(Math.floor(lengthOf(EASTWARD) / 500 + 0.5));
+    expect(drawn).toBeLessThan(40);
   });
 
   /**
-   * Half-steps, so no arrow lands on the very end of the visible stretch —
-   * where half the glyph would be off screen and the last one would sit on the
-   * terminus pin.
+   * Widened rather than truncated: an arrow every 500 m for the first stretch
+   * and none after would read as the line ending where the pool ran out.
    */
-  it('keeps the first and last arrows off the ends', () => {
-    const arrows = arrowPlacements(EASTWARD, CLOSE, 4);
-    const first = arrows[0]?.at.lon ?? 0;
-    const last = arrows[arrows.length - 1]?.at.lon ?? 0;
+  it('spreads them wider rather than leaving the far end unmarked', () => {
+    const arrows = arrowPlacements(EASTWARD, 4, 100).filter((a) => a.visible);
 
-    expect(first).toBeGreaterThan(-157.8623);
-    expect(last).toBeLessThan(-157.8543);
+    expect(arrows).toHaveLength(4);
+    // The last one is in the final quarter of a line it would otherwise have
+    // stopped 400 m into.
+    expect(metersBetween(arrows[3]!.at, EASTWARD[2]!)).toBeLessThan(lengthOf(EASTWARD) / 4);
+  });
+
+  it('hides every arrow when there is no line to sit on', () => {
+    expect(arrowPlacements([], 8).every((arrow) => !arrow.visible)).toBe(true);
+  });
+
+  /**
+   * Unused slots still need a coordinate MapKit can project — and one nowhere
+   * near the middle of the screen, where an invisible 16 pt frame would sit
+   * over whatever a rider is trying to tap.
+   */
+  it('parks unused arrows off the map, in one fixed place', () => {
+    const parked = arrowPlacements([], 4);
+
+    for (const arrow of parked) {
+      expect(Number.isFinite(arrow.at.lat)).toBe(true);
+      expect(arrow.at).toEqual(parked[0]?.at);
+      expect(Math.abs(arrow.at.lon - -157.85)).toBeGreaterThan(1);
+    }
   });
 
   /**
@@ -182,18 +151,18 @@ describe('arrowPlacements', () => {
    */
   it('survives a line that repeats a point', () => {
     const doubled: Coords[] = [
-      { lat: 21.3069, lon: -157.8623 },
-      { lat: 21.3069, lon: -157.8623 },
-      { lat: 21.3069, lon: -157.8543 },
+      { lat: 21.3069, lon: -157.8823 },
+      { lat: 21.3069, lon: -157.8823 },
+      { lat: 21.3069, lon: -157.8423 },
     ];
 
-    for (const arrow of arrowPlacements(doubled, CLOSE, 4)) {
+    for (const arrow of arrowPlacements(doubled, 8)) {
       expect(Number.isFinite(arrow.at.lat)).toBe(true);
       expect(Number.isFinite(arrow.bearingDeg)).toBe(true);
     }
   });
 
   it('asks for none and gets none', () => {
-    expect(arrowPlacements(EASTWARD, CLOSE, 0)).toEqual([]);
+    expect(arrowPlacements(EASTWARD, 0)).toEqual([]);
   });
 });

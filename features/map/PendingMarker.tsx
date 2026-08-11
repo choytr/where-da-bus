@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Marker, type MarkerPressEvent } from 'react-native-maps';
+import { Z } from './layers';
 import { schedule } from '../../lib/schedule';
 import { useTheme } from '../../lib/theme';
 import type { Coords } from '../../lib/distance';
@@ -57,6 +58,9 @@ export function PendingMarker({ at, onTake }: PendingMarkerProps) {
       identifier="pending-anchor"
       coordinate={{ latitude: at.lat, longitude: at.lon }}
       anchor={ANCHOR}
+      // Above everything: it is a question waiting for an answer, and the
+      // answer is a tap on it. See `layers.ts`.
+      zIndex={Z.pending}
       /*
         No `zIndex` here either, though this one never changed value.
         `StopMarker` explains what the crash log showed: on Fabric, `zIndex`

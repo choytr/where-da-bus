@@ -4,6 +4,7 @@ import { Marker, type MarkerPressEvent } from 'react-native-maps';
 import { schedule } from '../../lib/schedule';
 import { useTheme } from '../../lib/theme';
 import type { StopWithDistance } from '../../data/gtfs/types';
+import { Z } from './layers';
 import type { LabelPlacement, MapScale } from './labels';
 
 /**
@@ -163,13 +164,17 @@ export const StopMarker = memo(function StopMarker({
       identifier={stop.stop_id}
       coordinate={{ latitude: stop.lat, longitude: stop.lon }}
       anchor={ANCHOR}
+      // The reference layer, under the live one — a **constant**, never
+      // per-selection. See `layers.ts`, and the history below.
+      zIndex={Z.stop}
       /*
-        **No `zIndex`.** It was `selected ? 2 : 1`, and selecting stops quickly
-        crashed the app reliably — the faster the fewer taps — with marker icons
-        blanking out alongside. `Expo Go-2026-08-08-011041.ips` is an uncaught
+        **This used to be `selected ? 2 : 1`, and that is the version that
+        crashed.** Selecting stops quickly crashed the app reliably — the faster
+        the fewer taps — with marker icons blanking out alongside.
+        `Expo Go-2026-08-08-011041.ips` is an uncaught
         `-[__NSArrayM insertObject:atIndex:]` raised on the main thread inside
         React Native's Fabric mounting transaction. SIGABRT. Removing this prop
-        is what made the crash stop reproducing.
+        is what made that reproduction stop.
 
         **What is established, and what is not.** The log is certain: something
         asked the mounting layer to insert a child view at an index its array
@@ -186,8 +191,18 @@ export const StopMarker = memo(function StopMarker({
         well is unread, those sources being prebuild output this project never
         generates. So: correlation, a plausible route, and no proof.
 
-        Do not reintroduce it to make a selected tile draw above its neighbours.
-        Give the tile a form that reads when overlapped instead.
+        **And the removal was later disproved as the fix**: the crash returned
+        on 2026-08-09, twice, with `zIndex` absent from the whole app and the
+        same stack frame for frame (`docs/backlog.md`). So the prop is not the
+        cause of the crash — but the reproduction that was recorded is still the
+        only evidence anyone has, and it exercised a value **changing** across
+        dozens of live annotations.
+
+        Hence the rule that let it come back on 2026-08-10, when a rider
+        reported the layers swapping over each other unpredictably: **a layer
+        constant, assigned once, never reassigned.** Do not make this
+        per-selection again. Give the tile a form that reads when overlapped
+        instead — which is what the larger selected tile already is.
       */
       tracksViewChanges={tracking}
       accessibilityLabel={stop.stop_name}

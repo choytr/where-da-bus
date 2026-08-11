@@ -5,6 +5,7 @@ import { MapScreen, COMPASS_LAYOUT_OFFSET } from '../MapScreen';
 import { MEDIUM_DETENT, PEEK_DETENT, detentsFor, tabBarOverlapOf, visibleAbove } from '../StopSheet';
 import { centeredOn } from '../region';
 import { SEARCH_PLACEHOLDER } from '../SearchBar';
+import { ARROW_COUNT } from '../RouteArrows';
 import { leaveRouteMode } from '../routeMode';
 import { clearMapRequest, showOnMap } from '../showOnMap';
 import type { Place } from '../address';
@@ -155,8 +156,14 @@ jest.mock('react-native-maps', () => {
    * exists to end — so a test has to be able to see the prop distinctly from
    * the name the marker now draws in its own view.
    */
-  const MockMarker = ({ title, onPress, identifier, children }: any) => (
-    <Pressable accessibilityLabel={`pin ${identifier}`} onPress={() => onPress?.(press)}>
+  const MockMarker = ({ title, onPress, identifier, coordinate, children }: any) => (
+    <Pressable
+      accessibilityLabel={`pin ${identifier}`}
+      // Where the marker actually is. A test that wants to assert a marker did
+      // *not* move has nothing else to read.
+      accessibilityHint={JSON.stringify(coordinate)}
+      onPress={() => onPress?.(press)}
+    >
       {title === undefined ? null : <Text>{`native callout: ${title}`}</Text>}
       {children}
     </Pressable>
@@ -2355,22 +2362,42 @@ describe('MapScreen', () => {
        * The pool being *fixed* is what keeps them out of it: eight exist before
        * a route is picked, during it, across a flip, and after the X.
        */
-      it('mounts the same eight arrows whatever the map is showing', async () => {
+      it('mounts the same arrows whatever the map is showing', async () => {
         const arrows = () => screen.getAllByLabelText(/^pin arrow-/);
 
         await show();
-        expect(arrows()).toHaveLength(8);
+        expect(arrows()).toHaveLength(ARROW_COUNT);
 
         await showRoute();
-        expect(arrows()).toHaveLength(8);
+        expect(arrows()).toHaveLength(ARROW_COUNT);
 
         await fireEvent.press(screen.getByLabelText('Show the other direction'));
         await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
-        expect(arrows()).toHaveLength(8);
+        expect(arrows()).toHaveLength(ARROW_COUNT);
 
         await fireEvent.press(bandClose());
         await waitFor(() => expect(screen.queryByTestId('route-band')).toBeNull());
-        expect(arrows()).toHaveLength(8);
+        expect(arrows()).toHaveLength(ARROW_COUNT);
+      });
+
+      /**
+       * **Panning must not move an arrowhead off the piece of road it marks.**
+       * The first version spread them across the visible stretch, so every pan
+       * and every zoom shuffled all of them at once — *"it's very annoying."*
+       */
+      it('leaves the arrows where they are when the camera moves', async () => {
+        await showRoute();
+
+        const positions = () =>
+          screen.getAllByLabelText(/^pin arrow-/).map((arrow) => arrow.props.accessibilityHint);
+        const before = positions();
+        // The fixture route has to actually place some, or this proves nothing.
+        expect(new Set(before).size).toBeGreaterThan(1);
+
+        await fireEvent.press(screen.getByLabelText('zoom in close'));
+        await fireEvent.press(screen.getByLabelText('pan the camera back'));
+
+        expect(positions()).toEqual(before);
       });
 
       /**

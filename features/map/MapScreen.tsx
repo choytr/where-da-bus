@@ -820,6 +820,10 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const onMapPress = useCallback(() => {
     setSelectedStop(null);
     setPending(null);
+    // A tap on the map dismisses everything it can dismiss. Before this the
+    // only way to close a bus popup was to find and re-tap that exact dot,
+    // which is a small target and not where anyone reaches to dismiss.
+    setSelectedBusNumber(null);
   }, []);
 
   /**
@@ -1421,7 +1425,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
             segment, which would be a wholesale swap on every direction flip.
             See `RouteArrows`.
           */}
-          <RouteArrows points={linePoints} region={camera ?? region} heading={heading} />
+          <RouteArrows points={linePoints} heading={heading} />
 
           {pins.map((stop) => (
             <StopMarker
@@ -1437,11 +1441,13 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
           {/*
             After the pins, for two reasons that happen to want the same thing.
 
-            **Buses draw on top.** Later children win on MapKit, and on 2026-08-09
-            a route-10 dot was photographed sitting *behind* the JUDD ST +
-            IHOLENA ST pin — the live layer losing to the reference layer, which
-            is backwards. `zIndex` is not available to fix it; removing it is
-            what made the SIGABRT stop reproducing, and it is not going back in.
+            **Buses draw on top**, and since 2026-08-10 that is `zIndex`'s job
+            rather than this ordering's — see `layers.ts`. Render order alone
+            was never enough: MapKit's own documentation says annotations
+            sharing a z-index are ordered arbitrarily, and on 2026-08-09 a
+            route-10 dot was photographed sitting *behind* the JUDD ST + IHOLENA
+            ST pin. The ordering here is kept anyway, because of the second
+            reason, and because agreeing with the z-index costs nothing.
 
             **And it is the last variable-length array in the list.** Leaving
             route mode empties `buses` and rebuilds `pins` in one commit. While
