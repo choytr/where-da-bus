@@ -1,5 +1,7 @@
+import { StyleSheet } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { RoutePill } from '../RoutePill';
+import { PILL } from '../pill';
 import { TestTheme } from '../../../lib/testing/theme';
 import { ATTRIBUTION } from '../../../lib/legal';
 
@@ -32,6 +34,25 @@ describe('RoutePill', () => {
     );
 
     expect(screen.getByText('Route')).toBeTruthy();
+  });
+
+  /**
+   * The other half of the pair — see `MapScreen.test.tsx`. The two pills are
+   * never on screen together, so what keeps them identical is that both read
+   * this, and nothing else.
+   */
+  it('is sized from the shared pill metric', async () => {
+    await render(
+      <TestTheme>
+        <RoutePill routeName="32" top={100} onClose={() => {}} />
+      </TestTheme>,
+    );
+
+    const pill = StyleSheet.flatten(screen.getByText('Route 32').parent?.props.style);
+
+    expect(pill.height).toBe(PILL.height);
+    expect(pill.borderRadius).toBe(PILL.radius);
+    expect(pill.paddingHorizontal).toBe(PILL.paddingHorizontal);
   });
 
   it('leaves route mode from its own X', async () => {

@@ -1,9 +1,11 @@
 import {
   centeredOn,
   hasDriftedFrom,
+  panScreensBetween,
   regionAround,
   visibleCenter,
   visibleWidthMetres,
+  type Region,
 } from '../region';
 import { metersBetween } from '../../../lib/distance';
 
@@ -184,5 +186,64 @@ describe('visibleWidthMetres', () => {
     // gap between them at a 3 km span is four metres.
     const great = metersBetween(west, east);
     expect(Math.abs(visibleWidthMetres(region) - great) / great).toBeLessThan(0.01);
+  });
+});
+
+/**
+ * *Search this area* is earned two ways, and this is the second: **distance
+ * travelled**, not distance from the anchor. Judging on displacement alone
+ * meant a rider nudging the map around one neighbourhood — the exact gesture
+ * for looking at somewhere properly — never got the offer however long they
+ * spent on it.
+ */
+describe('panScreensBetween', () => {
+  const at = (lat: number, lon: number, delta = 0.01): Region => ({
+    latitude: lat,
+    longitude: lon,
+    latitudeDelta: delta,
+    longitudeDelta: delta,
+  });
+
+  it('is zero for a camera that did not move', () => {
+    expect(panScreensBetween(at(21.3, -157.85), at(21.3, -157.85))).toBe(0);
+  });
+
+  it('counts about one screen for a pan of one screen', () => {
+    const from = at(21.3, -157.85);
+    const across = visibleWidthMetres(from);
+    // A step of one screen's width, expressed back in degrees of longitude.
+    const step = across / (111_320 * Math.cos((21.3 * Math.PI) / 180));
+
+    expect(panScreensBetween(from, at(21.3, -157.85 + step))).toBeCloseTo(1, 1);
+  });
+
+  /**
+   * The point of measuring travel rather than displacement: a wiggle that ends
+   * where it started still adds up.
+   */
+  it('adds up over a wander that returns to where it began', () => {
+    const home = at(21.3, -157.85);
+    const away = at(21.3, -157.84);
+
+    const there = panScreensBetween(home, away);
+    const back = panScreensBetween(away, home);
+
+    expect(there).toBeGreaterThan(0);
+    expect(there + back).toBeCloseTo(there * 2, 5);
+  });
+
+  /** A zoom out must not dilute the pan that came with it. */
+  it('measures against the narrower of the two windows', () => {
+    const close = at(21.3, -157.85, 0.004);
+    const wide = at(21.3, -157.84, 0.05);
+
+    expect(panScreensBetween(close, wide)).toBeGreaterThan(panScreensBetween(wide, close) * 0.99);
+    expect(panScreensBetween(close, wide)).toBeCloseTo(panScreensBetween(wide, close), 5);
+  });
+
+  it('survives a degenerate window rather than dividing by it', () => {
+    const flat = { latitude: 21.3, longitude: -157.85, latitudeDelta: 0, longitudeDelta: 0 };
+
+    expect(panScreensBetween(flat, flat)).toBe(0);
   });
 });

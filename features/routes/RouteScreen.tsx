@@ -12,6 +12,8 @@ import { router } from 'expo-router';
 import { useStopQueries, type RouteDirection } from '../../data/gtfs/db';
 import type { RouteSummary, Stop } from '../../data/gtfs/types';
 import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
+import { showRowMenu } from '../../lib/rowMenu';
+import { showOnMap } from '../map/showOnMap';
 import { useTheme } from '../../lib/theme';
 
 /**
@@ -27,6 +29,14 @@ export const NOTICES = {
   unknownRoute: 'That route is not in the bundled route data.',
   noStops: 'No stops are recorded for this route.',
 } as const;
+
+/**
+ * This screen is a list of names and a sequence; the map is where a route has a
+ * *shape*. Until now the only way from one to the other was the route search's
+ * long-press menu, which is a strange place to have to go back to when you are
+ * already looking at the route.
+ */
+export const SHOW_ON_MAP_LABEL = 'Show route on map';
 
 type Section = { title: string; data: Stop[] };
 
@@ -99,6 +109,21 @@ export function RouteScreen({ routeId }: { routeId: string }) {
             {route === null ? null : (
               <Text style={[styles.routeLong, { color: palette.muted }]}>{route.long_name}</Text>
             )}
+            {route === null ? null : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={SHOW_ON_MAP_LABEL}
+                onPress={() => showOnMap({ kind: 'route', routeId: route.route_id })}
+                style={[styles.showOnMap, { borderColor: palette.border }]}
+              >
+                {/* The line's own colour, matching the map's route pill, so the
+                    two read as the same idea in two places. */}
+                <View style={[styles.dash, { backgroundColor: palette.route }]} />
+                <Text style={[styles.showOnMapText, { color: palette.text }]}>
+                  {SHOW_ON_MAP_LABEL}
+                </Text>
+              </Pressable>
+            )}
           </View>
         }
         renderSectionHeader={({ section }) => (
@@ -117,6 +142,16 @@ export function RouteScreen({ routeId }: { routeId: string }) {
             accessibilityLabel={`Arrivals at ${item.stop_name}`}
             onPress={() =>
               router.push(`/stop/${encodeURIComponent(item.stop_code || item.stop_id)}`)
+            }
+            // The same menu every other stop row in the app carries. A tap here
+            // opens arrivals, so the map is what the long press is for.
+            onLongPress={() =>
+              void showRowMenu([
+                {
+                  label: 'Show stop on map',
+                  run: () => showOnMap({ kind: 'stop', stopId: item.stop_id }),
+                },
+              ])
             }
             style={[styles.row, { borderBottomColor: palette.border }]}
           >
@@ -152,6 +187,19 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
   routeName: { fontSize: 20, fontWeight: '700' },
   routeLong: { fontSize: 14, marginTop: 2 },
+  showOnMap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  showOnMapText: { fontSize: 14, fontWeight: '600' },
+  dash: { width: 14, height: 3, borderRadius: 2 },
   sectionHeader: {
     fontSize: 12,
     fontWeight: '700',

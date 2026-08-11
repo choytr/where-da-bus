@@ -4,6 +4,7 @@ import { BottomSheetSectionList } from '@gorhom/bottom-sheet';
 import { ArrivalRow } from '../arrivals/ArrivalRow';
 import { BoardHeader } from '../arrivals/BoardHeader';
 import { NOTICES, describe, useArrivalBoard } from '../arrivals/board';
+import { useReportingTrips } from '../arrivals/reportingBuses';
 import { PEEK_BAND } from './peek';
 import { formatDistance } from '../stops/StopRow';
 import { LEGEND_GAP } from '../../lib/Attribution';
@@ -91,6 +92,9 @@ export function StopCard({
     code,
     client,
   );
+  // The same gate the arrivals screen applies: a row must not offer a bus the
+  // map will not draw. See `reportingBuses.ts`.
+  const reportingTrips = useReportingTrips(client, code);
 
   /**
    * Applied **once**, and the latch is the whole of it.
@@ -228,6 +232,7 @@ export function StopCard({
             arrival={item}
             now={now}
             stopId={stop.stop_id}
+            reportingTrips={reportingTrips}
             onPress={onSelectArrival}
             selected={selectedTripId !== null && item.tripId === selectedTripId}
           />

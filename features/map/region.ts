@@ -137,6 +137,35 @@ export function hasDriftedFrom(
 }
 
 /**
+ * How far the camera has been *pushed around*, as a fraction of a screen.
+ *
+ * **Distance travelled, not distance from the anchor**, and the difference is
+ * the whole reason this exists. Judging the offer on displacement means a rider
+ * who nudges the map back and forth over one neighbourhood — the exact gesture
+ * for "let me look at this bit properly" — never gets it, while someone who
+ * flies across the island and back gets nothing either. Truman, 2026-08-10:
+ *
+ * > "So a user can wiggle in the same area and hit 'search this area' to
+ * > fine-tune their search for stops in an area instead of having to fly way
+ * > off just to get the prompt to re-appear."
+ *
+ * Measured in screens rather than metres for the same reason
+ * `hasDriftedFrom` is: a quarter of a screen means the same thing at every
+ * zoom, where a fixed distance would fire constantly at city scale and never
+ * down a street.
+ */
+export function panScreensBetween(from: Region, to: Region): number {
+  const moved = metersBetween(
+    { lat: from.latitude, lon: from.longitude },
+    { lat: to.latitude, lon: to.longitude },
+  );
+  // Against the *narrower* of the two windows, so a zoom out cannot dilute the
+  // pan that came with it.
+  const across = Math.min(visibleWidthMetres(from), visibleWidthMetres(to));
+  return across === 0 ? 0 : moved / across;
+}
+
+/**
  * Guarded against a degenerate cosine. Oahu is nowhere near a pole, but a zero
  * here would produce Infinity and a map showing nothing at all.
  */

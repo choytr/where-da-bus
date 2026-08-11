@@ -6,10 +6,17 @@ import { TestTheme } from '../../../lib/testing/theme';
 import type { Stop } from '../../../data/gtfs/types';
 import type { Arrival, ArrivalsResult, TheBusClient } from '../../../data/thebus';
 
-/** This screen never asks for the fleet; throwing keeps that honest. */
-const noFleet: TheBusClient['vehicles'] = () => {
-  throw new Error('this stub serves arrivals only');
-};
+/**
+ * **This screen does ask for the fleet**, since 2026-08-10: a row must not
+ * offer *Show live bus on map* for a bus the map cannot draw, and only the
+ * fleet endpoint knows. See `features/arrivals/reportingBuses.ts`. An empty
+ * one means "nothing is reporting", which is a real state and the one that
+ * gates the entry off.
+ */
+const noFleet: TheBusClient['vehicles'] = async () => ({
+  ok: true,
+  fleet: { serverTime: new Date('2026-08-02T22:00:00Z'), vehicles: [] },
+});
 
 
 /**

@@ -1,10 +1,11 @@
 import { Dimensions, StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
-import { MapScreen, COMPASS_LAYOUT_OFFSET } from '../MapScreen';
+import { MapScreen, COMPASS_LAYOUT_OFFSET, SEARCH_AREA_LABEL } from '../MapScreen';
 import { MEDIUM_DETENT, PEEK_DETENT, detentsFor, tabBarOverlapOf, visibleAbove } from '../StopSheet';
 import { centeredOn } from '../region';
 import { SEARCH_PLACEHOLDER } from '../SearchBar';
+import { PILL } from '../pill';
 import { ARROW_COUNT } from '../RouteArrows';
 import { leaveRouteMode } from '../routeMode';
 import { clearMapRequest, showOnMap } from '../showOnMap';
@@ -770,6 +771,47 @@ describe('MapScreen', () => {
     });
     // Re-anchored to the screen center, so the offer is answered and retires.
     expect(screen.queryByLabelText('Search this area')).toBeNull();
+  });
+
+  /**
+   * **Earned by wandering, not only by leaving.** Judging the offer on
+   * displacement alone meant a rider nudging the map around one neighbourhood
+   * never got it, however long they spent — *"so a user can wiggle in the same
+   * area and hit 'search this area' to fine-tune their search."*
+   */
+  it('offers to search this area after enough panning about, even back where it started', async () => {
+    await show();
+    expect(screen.queryByLabelText(SEARCH_AREA_LABEL)).toBeNull();
+
+    // Out and back, twice. Each leg is a screen and a bit; the round trip ends
+    // where it began, so displacement never earns this.
+    for (let i = 0; i < 2; i += 1) {
+      await fireEvent.press(screen.getByLabelText('pan the camera away'));
+      await fireEvent.press(screen.getByLabelText('pan the camera back'));
+    }
+
+    screen.getByLabelText(SEARCH_AREA_LABEL);
+  });
+
+  /**
+   * The two floating pills are meant to look like the same object and were a
+   * couple of points apart — the route pill 32 tall, this one about 35.
+   *
+   * They cannot be compared side by side, because they are never on screen
+   * together: *Search this area* is suppressed in route mode, which is the only
+   * time the route pill exists. So each is checked against the shared `PILL`
+   * instead, here and in `RoutePill.test.tsx`, which is the thing that actually
+   * has to hold.
+   */
+  it('sizes Search this area from the shared pill metric', async () => {
+    await show();
+    await fireEvent.press(screen.getByLabelText('pan the camera away'));
+
+    const area = StyleSheet.flatten(screen.getByLabelText(SEARCH_AREA_LABEL).props.style);
+
+    expect(area.height).toBe(PILL.height);
+    expect(area.borderRadius).toBe(PILL.radius);
+    expect(area.paddingHorizontal).toBe(PILL.paddingHorizontal);
   });
 
   it('keeps offering to search this area after the camera drifts back', async () => {

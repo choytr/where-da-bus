@@ -1,7 +1,9 @@
 import { StyleSheet } from 'react-native';
-import { cleanup, render, screen } from '@testing-library/react-native';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider, type Metrics } from 'react-native-safe-area-context';
-import { NOTICES, RouteScreen } from '../RouteScreen';
+import { NOTICES, RouteScreen, SHOW_ON_MAP_LABEL } from '../RouteScreen';
+import { showOnMap } from '../../map/showOnMap';
+import { showRowMenu, type RowAction } from '../../../lib/rowMenu';
 import type { RouteDirection } from '../../../data/gtfs/db';
 import type { RouteSummary, Stop } from '../../../data/gtfs/types';
 import { TestTheme } from '../../../lib/testing/theme';
@@ -43,6 +45,12 @@ const mockQueries = {
     },
   ]),
 };
+
+jest.mock('../../map/showOnMap', () => ({ showOnMap: jest.fn() }));
+jest.mock('../../../lib/rowMenu', () => ({ showRowMenu: jest.fn(async () => {}) }));
+
+const asked = jest.mocked(showOnMap);
+const menu = jest.mocked(showRowMenu);
 
 jest.mock('../../../data/gtfs/db', () => ({
   useStopQueries: () => mockQueries,
@@ -123,5 +131,49 @@ describe('RouteScreen', () => {
 
     screen.getByText(NOTICES.noStops);
     expect(screen.queryByText(NOTICES.unknownRoute)).toBeNull();
+  });
+});
+
+/**
+ * This screen is a list of names and a sequence; the map is where a route has a
+ * shape. Until 2026-08-10 the only way across was the route *search's*
+ * long-press menu, which is a strange place to go back to when you are already
+ * looking at the route.
+ */
+describe('RouteScreen’s ways onto the map', () => {
+  beforeEach(() => {
+    asked.mockClear();
+    menu.mockClear();
+  });
+
+  it('offers to draw the whole route on the map', async () => {
+    await show();
+
+    await fireEvent.press(await screen.findByLabelText(SHOW_ON_MAP_LABEL));
+
+    expect(asked).toHaveBeenCalledWith({ kind: 'route', routeId: '1' });
+  });
+
+  it('offers no such control for a route the asset does not carry', async () => {
+    mockQueries.routeById.mockResolvedValueOnce(null);
+    await show();
+
+    await screen.findByText(NOTICES.unknownRoute);
+    expect(screen.queryByLabelText(SHOW_ON_MAP_LABEL)).toBeNull();
+  });
+
+  /** A tap opens arrivals, so the map is what the long press is for. */
+  it('offers a stop on the map from a long press', async () => {
+    await show();
+
+    // The route calls at this stop in both directions, so there are two rows.
+    const [row] = await screen.findAllByLabelText('Arrivals at KALIHI TRANSIT CENTER');
+    await fireEvent(row!, 'longPress');
+
+    const actions: readonly RowAction[] = menu.mock.calls.at(-1)?.[0] ?? [];
+    expect(actions.map((a) => a.label)).toEqual(['Show stop on map']);
+
+    actions[0]?.run();
+    expect(asked).toHaveBeenCalledWith({ kind: 'stop', stopId: '3152' });
   });
 });

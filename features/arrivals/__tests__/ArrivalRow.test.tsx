@@ -51,18 +51,20 @@ describe('ArrivalRow', () => {
   });
 
   /**
-   * The arrivals screen has no map behind it to point at, so a row there stays
-   * a row. Announcing a button that leads nowhere is worse than announcing
-   * nothing at all.
+   * **Every row is a button now.** It used to be plain text on the arrivals
+   * screen, on the grounds that there was no map behind it to point at — but
+   * since 2026-08-10 a tap there *takes* the rider to the map, so announcing a
+   * button is announcing something true. Truman: *"directly tapping an arrival
+   * row should show live bus on map, not just the long-press menu."*
    */
-  it('is not a button when nothing can be done with it', async () => {
+  it('is a button wherever it appears', async () => {
     await render(
       <TestTheme>
         <ArrivalRow stopId="1" arrival={live} now={NOW} />
       </TestTheme>,
     );
 
-    expect(row().props.accessibilityRole).toBe('text');
+    expect(row().props.accessibilityRole).toBe('button');
   });
 
   it('is a button when the map can highlight its bus', async () => {

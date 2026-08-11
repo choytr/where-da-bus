@@ -234,6 +234,140 @@ describe('ArrivalRow’s long press', () => {
 
     expect(offered().map((a) => a.label)).toEqual(['Show route on map']);
   });
+
+  /**
+   * **The two feeds have to agree.** An arrival calling itself live is a claim
+   * about the ETA; whether the map can draw the bus is the fleet's answer, and
+   * on 2026-08-10 at 02:18 HST they disagreed for every reporting vehicle on
+   * the island. Offering an entry that leads to "No buses running" is the thing
+   * being fixed.
+   */
+  it('offers no live bus when the fleet is not reporting that trip', async () => {
+    await render(
+      <TestTheme>
+        <ArrivalRow
+          arrival={arrival()}
+          now={new Date('2026-08-10T20:00:00Z')}
+          stopId="5"
+          reportingTrips={new Map()}
+        />
+      </TestTheme>,
+    );
+
+    await longPress();
+
+    expect(offered().map((a) => a.label)).toEqual(['Show route on map']);
+  });
+
+  /** Reporting, but as a deadhead — `useVehicles` will not draw it either. */
+  it('offers no live bus when the fleet reports that trip on no route', async () => {
+    await render(
+      <TestTheme>
+        <ArrivalRow
+          arrival={arrival()}
+          now={new Date('2026-08-10T20:00:00Z')}
+          stopId="5"
+          reportingTrips={new Map([['trip-1', null]])}
+        />
+      </TestTheme>,
+    );
+
+    await longPress();
+
+    expect(offered().map((a) => a.label)).toEqual(['Show route on map']);
+  });
+
+  it('offers the live bus when the fleet agrees', async () => {
+    await render(
+      <TestTheme>
+        <ArrivalRow
+          arrival={arrival()}
+          now={new Date('2026-08-10T20:00:00Z')}
+          stopId="5"
+          reportingTrips={new Map([['trip-1', '32']])}
+        />
+      </TestTheme>,
+    );
+
+    await longPress();
+
+    expect(offered().map((a) => a.label)).toContain('Show live bus on map');
+  });
+});
+
+/**
+ * A tap, not a long press. The menu is for choosing; a tap does the obvious
+ * thing — *"directly tapping an arrival row should show live bus on map, not
+ * just the long-press menu."*
+ */
+describe('tapping an arrival row', () => {
+  const tap = async () => fireEvent.press(screen.getByLabelText(/Route 32 to AIRPORT/));
+
+  it('shows the live bus when there is one', async () => {
+    await render(
+      <TestTheme>
+        <ArrivalRow
+          arrival={arrival()}
+          now={new Date('2026-08-10T20:00:00Z')}
+          stopId="5"
+          reportingTrips={new Map([['trip-1', '32']])}
+        />
+      </TestTheme>,
+    );
+
+    await tap();
+
+    expect(asked).toHaveBeenCalledWith({
+      kind: 'arrival',
+      routeName: '32',
+      tripId: 'trip-1',
+      stopId: '5',
+    });
+  });
+
+  it('falls back to the route when no bus is reporting', async () => {
+    await render(
+      <TestTheme>
+        <ArrivalRow
+          arrival={arrival({ estimate: 'scheduled', vehicle: null })}
+          now={new Date('2026-08-10T20:00:00Z')}
+          stopId="5"
+        />
+      </TestTheme>,
+    );
+
+    await tap();
+
+    expect(asked).toHaveBeenCalledWith({
+      kind: 'arrival',
+      routeName: '32',
+      tripId: null,
+      stopId: '5',
+    });
+  });
+
+  /**
+   * The map is the exception: there a tap selects the arrival, which draws the
+   * bus larger in place. Going somewhere would be going where you already are.
+   */
+  it('leaves the map’s own card to handle its taps', async () => {
+    const onPress = jest.fn();
+    await render(
+      <TestTheme>
+        <ArrivalRow
+          arrival={arrival()}
+          now={new Date('2026-08-10T20:00:00Z')}
+          stopId="5"
+          onPress={onPress}
+        />
+      </TestTheme>,
+    );
+
+    await tap();
+
+    expect(onPress).toHaveBeenCalled();
+    expect(asked).not.toHaveBeenCalled();
+  });
 });
 
 describe('the route list’s long press', () => {

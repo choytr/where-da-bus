@@ -24,6 +24,7 @@ import { useVehicles, type BusOnMap } from './useVehicles';
 import {
   centeredOn,
   hasDriftedFrom,
+  panScreensBetween,
   regionAround,
   visibleCenter,
   type Region,
@@ -40,6 +41,7 @@ import {
 } from './StopSheet';
 import { SearchBar, SEARCH_BAR_ALLOWANCE } from './SearchBar';
 import { RoutePill, ROUTE_PILL_ALLOWANCE } from './RoutePill';
+import { PILL } from './pill';
 import { SearchOverlay } from './SearchOverlay';
 import { enterRouteMode, flipDirection, leaveRouteMode, useRouteMode } from './routeMode';
 import { clearMapRequest, useMapRequest, type MapRequest } from './showOnMap';
@@ -97,7 +99,7 @@ const SETTINGS_LABEL = 'Turn on location in Settings';
  */
 const LOCATION_DENIED = 'Location is off for this app. Tap ⌖ to turn it on in Settings.';
 const LOCATION_ERROR = 'Could not get your location. Tap ⌖ to try again.';
-const SEARCH_AREA_LABEL = 'Search this area';
+export const SEARCH_AREA_LABEL = 'Search this area';
 
 /**
  * How far the camera has to be carried from the anchor before *Search this
@@ -109,6 +111,18 @@ const SEARCH_AREA_LABEL = 'Search this area';
  * one-line change.
  */
 const DRIFT_FRACTION = 0.25;
+
+/**
+ * How far the camera has to be *pushed around*, in screens, before *Search this
+ * area* appears — however close to the anchor it ends up.
+ *
+ * Larger than `DRIFT_FRACTION`, because this counts every wobble rather than
+ * one displacement: a rider reading the map moves it a little constantly, and
+ * the control should arrive as a considered offer rather than the moment a
+ * thumb slips. A guess, to be tuned on a device, and the counter resets every
+ * time the anchor moves.
+ */
+const PAN_SCREENS_FOR_OFFER = 1.5;
 
 /**
  * How far below the safe area the map's chrome starts — the search bar, and
@@ -279,6 +293,23 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * thing that can answer it.
    */
   const [offeredFor, setOfferedFor] = useState<Coords | null>(null);
+  /**
+   * How much the camera has been pushed around since the anchor last moved, in
+   * screens. **Travelled, not displaced** — see `panScreensBetween`.
+   */
+  const panned = useRef(0);
+  const lastCamera = useRef<Region | null>(null);
+
+  /**
+   * Any anchor move spends the wandering that earned the offer — ⌖, a long
+   * press, a searched address, a stop picked out of the search, or *Search this
+   * area* itself. Keyed on `anchor`, which is a fresh object every time it
+   * moves, so no path can forget to do it.
+   */
+  useEffect(() => {
+    panned.current = 0;
+    lastCamera.current = null;
+  }, [anchor]);
   /** A fix is in flight, so ⌖ says so rather than looking inert. */
   const [locating, setLocating] = useState(false);
   /** Whether the fullscreen search is over the map. */
@@ -327,10 +358,27 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         // The heading only turns the arrowheads. Failing to read it must leave
         // them pointing at the last known angle, not take the map down.
         .catch(() => {});
+
+      /**
+       * **Two ways to earn the offer, and the second is the one Truman asked
+       * for.** Displacement alone means a rider nudging the map around one
+       * neighbourhood — the exact gesture for looking at somewhere properly —
+       * never gets it, however long they spend. Distance *travelled* does, so a
+       * wiggle in place eventually offers to re-search where they are looking.
+       *
+       * Displacement is kept as well, because it is the faster of the two for
+       * the case it was written for: one deliberate sweep across town should
+       * not have to be paid for twice.
+       */
+      const previous = lastCamera.current;
+      if (previous !== null) panned.current += panScreensBetween(previous, region);
+      lastCamera.current = region;
+
       // Against the *visible* center, not the window's — the window's center is
       // under the sheet on purpose, see `regionAround`.
       if (
-        hasDriftedFrom(anchor, region, DRIFT_FRACTION, visibleAbove(detents, detent, mapHeight))
+        hasDriftedFrom(anchor, region, DRIFT_FRACTION, visibleAbove(detents, detent, mapHeight)) ||
+        panned.current > PAN_SCREENS_FOR_OFFER
       ) {
         setOfferedFor(anchor);
       }
@@ -1639,13 +1687,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recenterGlyph: { fontSize: 22, lineHeight: 26 },
+  // Sized from `PILL`, not by eye — this and the route pill are meant to look
+  // like the same object and were a couple of points apart.
   searchArea: {
     position: 'absolute',
     alignSelf: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 18,
+    height: PILL.height,
+    justifyContent: 'center',
+    paddingHorizontal: PILL.paddingHorizontal,
+    borderRadius: PILL.radius,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  searchAreaText: { fontSize: 14, fontWeight: '600' },
+  searchAreaText: { fontSize: PILL.fontSize, fontWeight: '600' },
 });

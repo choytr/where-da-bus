@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../lib/theme';
+import { PILL } from './pill';
 
 /**
  * What the map is showing, said on the map.
@@ -34,15 +35,13 @@ import { useTheme } from '../../lib/theme';
 
 const LEAVE_ROUTE_LABEL = 'Stop showing this route';
 
-const PILL_HEIGHT = 32;
-
 /**
  * The pill's height plus the gap under it, which is what the banner and ⌖ have
  * to clear when a route is showing. The same shape as
  * `SearchBar`'s `SEARCH_BAR_ALLOWANCE`: everything at the map's top edge is
  * stacked by pushing what follows it down, so the common case stays tight.
  */
-export const ROUTE_PILL_ALLOWANCE = PILL_HEIGHT + 10;
+export const ROUTE_PILL_ALLOWANCE = PILL.height + 10;
 
 export type RoutePillProps = {
   /**
@@ -88,18 +87,18 @@ const styles = StyleSheet.create({
   // taking touches meant for the map on either side of it.
   row: { position: 'absolute', left: 12, right: 12, alignItems: 'center' },
   pill: {
-    height: PILL_HEIGHT,
+    height: PILL.height,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 12,
-    borderRadius: PILL_HEIGHT / 2,
+    paddingHorizontal: PILL.paddingHorizontal,
+    borderRadius: PILL.radius,
     borderWidth: StyleSheet.hairlineWidth,
     opacity: 0.95,
   },
   // A stub of the line's own colour, so the pill and the thing it names read as
   // one. The same reasoning that made the line red in the first place.
   dash: { width: 14, height: 3, borderRadius: 2 },
-  text: { fontSize: 14, fontWeight: '600' },
+  text: { fontSize: PILL.fontSize, fontWeight: '600' },
   close: { fontSize: 15 },
 });

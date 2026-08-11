@@ -4,6 +4,7 @@ import { countdown, hawaiiClock } from './format';
 import { useTheme } from '../../lib/theme';
 import { showRowMenu } from '../../lib/rowMenu';
 import { showOnMap } from '../map/showOnMap';
+import { hasDrawableBus, type ReportingTrips } from './reportingBuses';
 
 export type ArrivalRowProps = {
   arrival: Arrival;
@@ -23,25 +24,27 @@ export type ArrivalRowProps = {
    * resolving the code it was given.
    */
   stopId: string | null;
+  /**
+   * Which trips the fleet endpoint is actually reporting, so this row cannot
+   * offer a bus the map will not draw. Null while unknown — see
+   * `reportingBuses.ts`.
+   */
+  reportingTrips?: ReportingTrips;
 };
 
 /**
  * Whether *Show live bus on map* is worth offering for this arrival.
  *
- * **One fact with three spellings.** Sampled live on 2026-08-10 across 300
- * arrivals: the arrivals carrying a `vehicle`, the ones marked `estimated="1"`,
- * and the ones carrying a real position were the *same* 19. So this needs no
- * request — an `Arrival` already knows — and testing two of the three is belt
- * and braces rather than two conditions.
+ * **It is a minority**: 6.3% of 300 arrivals at 00:40 HST, nearer one in ten by
+ * day. That is exactly why the entry is **absent** rather than greyed out. A
+ * row that is permanently disabled reads as broken; a row that is not there
+ * reads as this bus not being tracked, which the status line already says in
+ * words.
  *
- * It is a minority: 6.3% at 00:40 HST, and nearer one in ten by day. That is
- * exactly why the entry is **absent** rather than greyed out. A row that is
- * permanently disabled reads as broken; a row that is not there reads as this
- * bus not being tracked, which the status line already says in words.
+ * The test itself moved into `reportingBuses.ts` once it stopped being
+ * answerable from the `Arrival` alone — see there for why the two feeds
+ * disagree and what it costs to make them agree.
  */
-export function hasReportingBus(arrival: Arrival): boolean {
-  return arrival.estimate === 'live' && arrival.vehicle !== null;
-}
 
 /**
  * One bus, on one row.
@@ -63,6 +66,7 @@ export function ArrivalRow({
   onPress,
   selected = false,
   stopId,
+  reportingTrips = null,
 }: ArrivalRowProps) {
   const { palette } = useTheme();
   const isLive = arrival.estimate === 'live';
@@ -73,30 +77,38 @@ export function ArrivalRow({
    * because it *takes* the rider to the map rather than pointing at one behind
    * the sheet.
    */
+  const showsLiveBus = hasDrawableBus(arrival, reportingTrips) && stopId !== null;
+
+  const showLiveBus = () =>
+    showOnMap({ kind: 'arrival', routeName: arrival.route, tripId: arrival.tripId, stopId });
+
+  // Null trip: the route, without singling out a bus. Every arrival can answer
+  // this one, which is why it is the entry that is always there.
+  const showRoute = () =>
+    showOnMap({ kind: 'arrival', routeName: arrival.route, tripId: null, stopId });
+
   const openMenu = () =>
     void showRowMenu([
-      ...(hasReportingBus(arrival) && stopId !== null
-        ? [
-            {
-              label: 'Show live bus on map',
-              run: () =>
-                showOnMap({
-                  kind: 'arrival',
-                  routeName: arrival.route,
-                  tripId: arrival.tripId,
-                  stopId,
-                }),
-            },
-          ]
-        : []),
-      {
-        // Null trip: the route, without singling out a bus. Every arrival can
-        // answer this one, which is why it is the entry that is always here.
-        label: 'Show route on map',
-        run: () =>
-          showOnMap({ kind: 'arrival', routeName: arrival.route, tripId: null, stopId }),
-      },
+      ...(showsLiveBus ? [{ label: 'Show live bus on map', run: showLiveBus }] : []),
+      { label: 'Show route on map', run: showRoute },
     ]);
+
+  /**
+   * A tap does the thing the menu's first entry does.
+   *
+   * **The map is the exception**, and it passes `onPress`: there a tap selects
+   * the arrival, which draws the bus larger and keeps its number at any zoom —
+   * the same answer, in place, without going anywhere. Everywhere else there is
+   * no map behind the sheet to point at, so the tap takes the rider to one.
+   */
+  const handlePress = () => {
+    if (onPress !== undefined) {
+      onPress(arrival);
+      return;
+    }
+    if (showsLiveBus) showLiveBus();
+    else showRoute();
+  };
 
   /**
    * Deliberately short and parallel with the live case, because this is the
@@ -111,9 +123,7 @@ export function ArrivalRow({
       : `Live · Bus ${arrival.vehicle}`
     : 'Scheduled · no GPS';
 
-  // Always a `Pressable` now: even where a tap does nothing — `/stop/[code]`
-  // has no map behind it to point at — a long press does. The role below still
-  // says which, so VoiceOver is not told a tap leads somewhere it does not.
+  // Always a `Pressable`, and every row now does something on a tap.
   const Row = Pressable;
 
   return (
@@ -122,15 +132,16 @@ export function ArrivalRow({
       // than sit alongside them: without it VoiceOver reads the countdown, the
       // clock, the route and the status as four separate unlabelled items.
       accessible
-      accessibilityRole={onPress === undefined ? 'text' : 'button'}
+      accessibilityRole="button"
       accessibilityState={onPress === undefined ? undefined : { selected }}
-      onPress={onPress === undefined ? undefined : () => onPress(arrival)}
+      onPress={handlePress}
       onLongPress={openMenu}
       accessibilityLabel={
         `Route ${arrival.route} to ${arrival.headsign}, ` +
         `${countdown(arrival.arrivesAt, now)}, at ${hawaiiClock(arrival.arrivesAt)}, ` +
         (isLive ? 'tracked live' : 'scheduled, not tracked') +
-        (arrival.canceled ? ', canceled' : '')
+        (arrival.canceled ? ', canceled' : '') +
+        (onPress === undefined ? `. ${showsLiveBus ? 'Shows the bus' : 'Shows the route'} on the map` : '')
       }
       style={[
         styles.row,

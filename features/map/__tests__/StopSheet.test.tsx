@@ -19,13 +19,16 @@ import type { StopWithDistance } from '../../../data/gtfs/types';
 import type { ArrivalsResult, TheBusClient } from '../../../data/thebus';
 
 /**
- * These suites are about the arrival board, and the fleet endpoint is no part
- * of it. Throwing says so — a stub that answered would let a future test think
- * it was asserting something about buses when it was not.
+ * **The card asks for the fleet now**, to gate *Show live bus on map* on what
+ * the map can actually draw — see `features/arrivals/reportingBuses.ts`. This
+ * used to throw, on the grounds that the board had no business asking. Empty is
+ * "nothing is reporting", which is a real state and the one that gates the
+ * entry off.
  */
-const noFleet: TheBusClient['vehicles'] = () => {
-  throw new Error('this stub serves arrivals only');
-};
+const noFleet: TheBusClient['vehicles'] = async () => ({
+  ok: true,
+  fleet: { serverTime: new Date('2026-08-02T22:00:00Z'), vehicles: [] },
+});
 
 /**
  * The sheet's two modes. What is under test is only which of them is on screen
