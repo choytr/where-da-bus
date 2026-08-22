@@ -1,4 +1,9 @@
-# Increment 9 — device round, 2026-08-10, ~02:00 HST
+# Increment 9 — device rounds
+
+Three rounds: two on **2026-08-10** and one on **2026-08-21**. Kept in one
+file because they are one conversation about one increment.
+
+## Round 1 — 2026-08-10, ~02:00 HST
 
 Two screenshots, `~/wheredabus-device/screenshots/2026-08-10/IMG_4668.png` and
 `IMG_4669.png`, transcribed here because **images do not survive a context
@@ -127,8 +132,9 @@ each settle — one native round trip at the cadence the labeller already runs
 at, with a `catch` that leaves the arrows at their last angle, because a
 heading that cannot be read is not a reason to take the map down.
 
-**Still to confirm on a device:** whether `onRegionChangeComplete` fires for a
-gesture that *only* rotates, with no pan or zoom. If it does not, the arrows
+**Confirmed in round 3, and the answer is yes:** `onRegionChangeComplete` does
+fire for a gesture that only rotates. The original worry, kept for the
+reasoning: If it does not, the arrows
 will lag a rotation until the next pan. There is no other hook — `onRegionChange`
 is per-frame — so this is the design either way; what is unknown is how often
 it is briefly wrong.
@@ -139,3 +145,47 @@ against is the **line**, not the map, and the line is a saturated red in both
 themes — so the arrow is now a plain white constant. Third colour attempt:
 route red vanished into the line, background made a hole, white is what every
 transit map draws on a coloured route.
+
+---
+
+## Round 3 — 2026-08-21, in Expo Go
+
+Eleven days after rounds 1 and 2. **No screenshots**; this is the whole record.
+Truman was on Expo Go, not the `.ipa`, so everything on `dev` was live.
+
+What he confirmed working: the arrows stay put while panning and keep their
+rotation through a rotate gesture, snapping when he lets go; the popup's stop
+line is reachable and does something; a map tap deselects the bus; the new
+*Search this area* behaviour; the pill sizes; the tab icons.
+
+**That the arrows snap on release answers an open question**: the rotate-only
+gesture *does* fire `onRegionChangeComplete`, so the heading is never stale for
+longer than the gesture. Nothing more to do there.
+
+What he asked for, and what was done:
+
+- **The popup should name the bus's *next* stop, not the one it is covering.**
+  Built as `features/map/nextStop.ts`. It gives up the covered-pin guarantee
+  from `651bb07` — a pin under a dot is again only reachable by nudging the
+  map — which he asked for explicitly.
+- **Tapping an arrival row did nothing.** `/stop/[code]` is pushed onto the
+  *root* stack over the tab bar, so `navigate('/')` changed the tab underneath
+  a screen still covering it. `showOnMap` dismisses first now.
+- **"It looks like it's using different data than the live bus on the map."**
+  It is not: both read the fleet endpoint. The map only starts fetching when
+  route mode opens, so there is a request's delay before the dot appears, and
+  the band says *"Looking for buses…"* through it. Not a defect; recorded
+  because it will look like one again.
+- **The sheet takes too weak a swipe.** `SHEET_DRAG_THRESHOLD` in
+  `StopSheet.tsx`; `activeOffsetY` is the only knob the library exposes.
+
+**And two crashes, eight minutes apart** — see `docs/backlog.md`, which carries
+the analysis. The important half: one was the familiar route-view X, the other
+was *panning after waking the phone*, which presses nothing. **Ask whether a
+route was showing** before theorising.
+
+**Truman's standing instruction from this round:** *"UI/UX stuff should be best
+left to me to tweak, so I'll just have you do everything else. Just get stuff
+working well and reliably and I'll tweak it to my preferences when I have the
+time."* The tuning knobs left named for him: `SHEET_DRAG_THRESHOLD`,
+`ARROW_SPACING_METERS`, `PAN_SCREENS_FOR_OFFER`.

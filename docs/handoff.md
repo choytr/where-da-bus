@@ -7,98 +7,80 @@ up. Update it in place rather than adding a dated section each time.
 `CLAUDE.md` are the record; anything already in them belongs there, not here.
 When an increment ships, its write-up in this file collapses to a pointer.
 
-Last updated: **2026-08-10**, after Increment 9 was built end to end. All seven
-tasks are implemented, committed and pushed to `dev`; CI is green; `npm ci` is
-clean. **Nothing is half-built, and nothing has been on a phone yet.**
+Last updated: **2026-08-21**. Increment 9 is built and has been through
+**three device rounds**; everything from them is fixed and pushed to `dev`.
+`main` is still at Increment 8.
 
 ---
 
 ## Start here
 
-**The next action is the device round, and it is Truman's.** An `.ipa` covering
-all of Increment 9 is built and waiting:
-`gh run list --workflow ios-ipa.yml` — run `31381336090` and later. Everything
-below is written on the assumption that nobody has looked at it yet.
+**The next action is a device round on `dev`'s current head**, in Expo Go —
+that is the loop Truman is using, and everything on `dev` is live in it the
+moment Metro reloads. Nothing in the last commit has been seen on a phone.
 
-**Increment 9 is code-complete and unverified.** Spec:
-`docs/superpowers/specs/2026-08-09-increment-9-show-on-map.md`. Plan:
-`docs/superpowers/plans/2026-08-09-increment-9-show-on-map.md`, which now
-carries a *What was built* note per task recording where reality disagreed with
-the contract. Read those two before touching any of it; every decision in them
-is Truman's and none is open.
+**Increment 9's spec and plan are still the record for *why*:**
+`docs/superpowers/specs/2026-08-09-increment-9-show-on-map.md` and its plan,
+which carries a *What was built* note per task. The device rounds are
+`docs/superpowers/logs/2026-08-10-increment-9-device-round.md` — three of them,
+transcribed, because the screenshots do not survive a compaction.
 
-### What shipped, in one line each
+### The one thing that is actually open
 
-- **`route_directions` in the asset, `SCHEMA_VERSION` 2 → 3**, and the bundled
-  floor rebuilt and committed with it. 333 headsign triples.
-- **The other direction's buses are hidden**, which is what the "buses draw off
-  the route line" report actually was.
-- **Tapping a bus opens a popup** — fleet number, lateness *in words*, age — and
-  hands a covered stop down on the next press.
-- **Eight arrows along the route line**, a fixed pool, redistributed by arc
-  length along the visible stretch.
-- **A pill under the search bar** naming the route.
-- **Long-press any row to get it on the map**, on `ActionSheetIOS`.
-- **Tab icons, the arrivals screen's meta block, and the search filter reset.**
+**The SIGABRT, and it got worse.** Two more on 2026-08-21, eight minutes apart,
+in Expo Go. Same faulting stack as the previous four, frame for frame:
+`-[__NSArrayM insertObject:atIndex:]` inside
+`TelemetryController::pullTransaction`. Full analysis in `docs/backlog.md`
+under the map section; the logs are in `~/wheredabus-device/crashes/2026-08-21/`
+and are **not** in this repo.
 
-### What is owed, and in what order
+**Two things a cold session must not skip:**
 
-1. **The device round.** Two were planned — after Task 4 and after Task 6 — and
-   both were overtaken by the work finishing; the build on the shelf covers
-   both. **The SIGABRT is open**, and the arrows and the direction filter both
-   land in its code path, so this is not optional. If it fires, get the `.ips`
-   and **write down the gesture** — every report before 2026-08-09 recorded the
-   state and not the gesture, and the gesture turned out to be the half that
+1. **Ask whether a route was showing during the second crash.** It happened
+   while *panning after waking the phone* — nothing pressed, nothing flipped.
+   If a route was up, waking refetches the fleet and bus markers come and go,
+   which is a tree change and keeps the leading theory alive. If not, the
+   theory is dead. **Do not theorise before asking**; every earlier report
+   recorded the state and not the gesture, and the gesture was the half that
    mattered.
-2. **Three things that can only be answered on a phone**, all recorded in
-   `docs/backlog.md`: whether the 16 pt arrow markers eat taps meant for stop
-   pins, whether the bus popup is readable at street scale, and whether text
-   glyphs are acceptable as tab icons.
-3. **Merging `dev` into `main` needs Truman's explicit permission.** The v3
-   generation is already published — `gtfs-v3-20260810T105656Z.db` and
-   `manifest-v3.json`, run `31381337991` — so that item is closed.
+2. **Two changes landed in that seam on 2026-08-10 and are unexcluded**:
+   marker `zIndex` came back as a per-layer constant (`features/map/layers.ts`)
+   and the arrow pool went from 8 always-mounted markers to 40. Neither is
+   implicated by evidence and the crash long predates both — but the rate is
+   visibly higher than it was. Each is a one-constant bisect in Expo Go.
 
-**Do not re-grill Increment 9, and do not re-open what its spec records as
-settled.** In particular: the route pill needs no attribution work (ruled on
-twice), long press gets no discoverability hint, opposite-direction buses are
-hidden entirely, and the twelve ambiguous routes keep today's behaviour.
+### Truman's standing instruction, from 2026-08-21
 
-### What the crash actually was
+> "UI/UX stuff should be best left to me to tweak, so I'll just have you do
+> everything else. Just get stuff working well and reliably and I'll tweak it
+> to my preferences when I have the time."
 
-**Two wholesale marker swaps in flight at once.** Not a render window, not a
-timer, not `zIndex`. Truman reproduced it twice on purpose: **spamming the
-direction control**, and **a flip followed quickly by the X**. Slow flips and
-single presses never crashed, which is the whole reason four sessions read it as
-intermittent — everyone recorded what was *on screen* and nobody recorded the
-gesture.
+So: correctness and reliability are yours, pixel choices are his. The knobs
+left named for him are `SHEET_DRAG_THRESHOLD` (`StopSheet.tsx`),
+`ARROW_SPACING_METERS` (`arrows.ts`) and `PAN_SCREENS_FOR_OFFER`
+(`MapScreen.tsx`). Do not tune them unprompted.
 
-Fixed by `swapBusyUntil` in `MapScreen`: one window shared by the controls,
-sized at `CAMERA_MS`. A blocked flip is dropped, a blocked close is deferred and
-then honoured. Two Jest tests cover both.
+### What Increment 9 shipped
 
-The undrawn buses were two unrelated things wearing one costume: a lone Route 10
-bus running the *opposite* direction to the line on screen (drawn correctly, just
-nowhere near where anyone was looking), and a real degradation where each
-direction flip knocked the bus dots down a z-level and then off the map
-entirely. The second is fixed by putting the direction in `BusMarker`'s key.
+`route_directions` and `SCHEMA_VERSION` 3; the other direction's buses hidden;
+a popup on a tapped bus with lateness in words and its **next stop**; arrows
+along the route line; a route pill; long-press-anything-to-see-it-on-the-map;
+tab icons, the arrivals meta block, the search filter reset. Then three device
+rounds' worth of fixes on top — see the log.
 
-**`TRACKING_ALWAYS` was falsified, not vindicated.** With it removed the dots
-draw on the first open with no gesture, so the 450 ms timer was innocent all
-along — as `StopMarker` running the identical timer without the fault should
-have suggested.
+### Two consequences of `dev` sitting unmerged
 
-**What made the difference** was hitting the live fleet endpoint from the dev
-machine, using the AppID still in `.env`, and telling Truman the coordinate to
-look at. That turned "the bus isn't drawn" into "the bus is at 21.33185,
-−157.85979 and you are looking at the other direction's line" in one round, with
-no build and no instrument. Reach for it before instrumenting anything about
-vehicles again.
+- **The weekly Action publishes from `main`, which is schema v2.**
+  `manifest-v3.json` has been frozen since 2026-08-10. It has not mattered yet
+  — the upstream feed has not changed, so the 2026-08-17 run correctly
+  published nothing — but the day it does change, **v3 binaries stop getting
+  data updates until `dev` reaches `main`.**
+- **The committed floor expired on 2026-08-22** (`feed_end_date` 20260822).
+  The published generations are valid to 20261205, so a phone that refreshes is
+  fine; a fresh install that cannot reach GitHub sits on a floor Settings calls
+  out of date. That is the design working, not a bug.
 
-**Measure, never read.** Five wrong claims in this project came from reasoning
-about native source, and every theory in the backlog entry that came from
-reading was wrong. Both fixes here came from Truman's gestures on a device.
-Treat "it stopped reproducing" as provisional until he has abused it over a
-sustained session — the `zIndex` precedent is exactly what that phrase is worth.
+**Merging `dev` into `main` needs Truman's explicit permission, every time.**
 
 ### Increments 7 and 8 — shipped, and collapsed to pointers
 
@@ -134,21 +116,18 @@ Re-measure that pair if an SDK bump moves the compass; recompute nothing else.
 
 ## Where things stand
 
-`main` is at Increment 8. **`dev` carries all of Increment 9.** 811 Jest across
-51 suites, 145 `node --test`, a clean typecheck and a clean `npm ci` — all
-verified locally on 2026-08-10, and CI green on every push.
+`main` is at Increment 8 (`59c95d5`). **`dev` carries all of Increment 9 and
+three device rounds over it.** 851 Jest across 52 suites, 145 `node --test`, a
+clean typecheck and a clean `npm ci` — verified locally 2026-08-21, CI green on
+every push.
 
 **A v3 generation is published**: `gtfs-v3-20260810T105656Z.db` and
-`manifest-v3.json`, from run `31381337991`. `manifest.json` still describes a
-v1 generation and must keep doing so forever — it is compiled into binaries
-already on phones. There is deliberately **no** `manifest-v2.json` from this
-run, so the Increment 8 build on Truman's phone keeps reading the v2 generation
-it already has until the v3 `.ipa` replaces it.
+`manifest-v3.json`. `manifest.json` still describes a **v1** generation and must
+keep doing so forever — it is compiled into binaries already on phones.
 
-**The bundled floor was rebuilt and committed with the schema bump**, which is
-the sanctioned exception to the never-rebuild rule. Note the published v3
-database is built from a *newer* feed than the committed floor — 560 shapes
-against 532 — which is the design working, not a discrepancy.
+**The most recent `.ipa` is run `31450027479`, from `7bc16e1`** — which is now
+two commits behind. Expo Go is the loop in use; build a fresh one with
+`gh workflow run ios-ipa.yml --ref dev` when a standalone install is wanted.
 
 ## Read these, in this order
 
@@ -257,15 +236,19 @@ built. Read it before touching the vehicle endpoint or the map.
 
 ## Suggested skills
 
-- **Nothing, until the `.ipa` has been on the phone.** Increment 9 is built and
-  its whole-diff review has run; what it needs is a rider, not a session.
 - **Not `grilling`, not `brainstorming`, not `writing-plans`** for Increment 9.
   It was grilled on 2026-08-09 and every decision is written down.
-- **Not `superpowers:systematic-debugging` for the SIGABRT.** It is open and
-  deliberately unchased; chasing it is the thing Truman asked not to spend
-  another evening on. If it fires on this build, record the **gesture**.
+- **`superpowers:systematic-debugging` is now arguably right for the SIGABRT**,
+  and that is a change. It was deliberately unchased on 2026-08-09 — *"let's
+  just log it and not spend another evening tracking another stupid crash"* —
+  but it has since gone from four reports across weeks to two in eight minutes,
+  and it now reproduces without a marker swap. **Ask Truman before opening
+  it**: he called the halt and only he can lift it.
 - **Not `dispatching-parallel-agents` or `subagent-driven-development`.**
   `CLAUDE.md` is explicit: execute inline, review once at the boundary.
+- **What Increment 10 should be has not been discussed.** If Truman opens one,
+  `grilling` comes first — he asks to have his own thinking attacked before
+  anything is specced.
 
 ## Environment notes
 

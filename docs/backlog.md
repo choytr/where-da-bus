@@ -508,24 +508,13 @@ but that'll come later. Functionality first."
   *a bus that did not report is not a bus that is on time*. Either narrow the
   band or word it "Roughly on time". **A device question**: whether four
   minutes behind reads as a lie depends on what the countdown beside it says.
-- **"Show live bus on map" can be offered for a bus the map cannot draw.**
-  `hasReportingBus` reads the `Arrival`, which carries `estimated="1"` and a
-  vehicle number; whether the *map* can draw that bus depends on the **fleet**
-  feed attributing it to a route, and the two disagree. Measured 2026-08-10 at
-  02:18 HST: 32 vehicles reporting within 15 minutes, **0 of them carrying a
-  route** — all `route_short_name: "null"`, `trip: "null_trip"` — while the
-  arrivals endpoint simultaneously reported bus 261 as live on Route 2. The
-  menu entry then draws the route and opens the card, and no bus dot appears.
-  Daytime is the normal case (218 of 235 fresh vehicles carry a route at 11:43
-  HST), so this is a night-time artefact. Deciding it *properly* would need the
-  fleet in hand before the menu opens, which the spec deliberately ruled out —
-  "no request" was the point. Recorded rather than fixed.
 - **Whether the arrow markers eat taps meant for stop pins.** `RouteArrows`
-  wraps each glyph in a 16 pt box and draws it before the pins, which should
-  put it under them and out of the way — but MapKit hit-tests annotation views
-  by frame, and this project has been wrong six times about native behaviour
-  read rather than measured. **A device question**, and one to ask while the
-  Increment 9 build is on the phone.
+  wraps each arrowhead in a 20 pt box and gives it the lowest `zIndex`, which
+  should put it under everything tappable — but MapKit hit-tests annotation
+  views by frame, and this project has been wrong six times about native
+  behaviour read rather than measured. **Still a device question**, and now a
+  larger one: the pool is 40 markers rather than 8, since they are spaced along
+  the road instead of across the screen.
 ## Tests
 
 - ~~**Test files are not typechecked at all.**~~ **Fixed on 2026-08-09.**
