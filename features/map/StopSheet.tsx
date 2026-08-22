@@ -287,6 +287,24 @@ export type RouteView = {
   onLeave: () => void;
 };
 
+/**
+ * How far a vertical drag has to travel before the sheet takes the gesture, in
+ * points either way.
+ *
+ * **Raised from the library's default because the sheet was too eager.** Truman,
+ * 2026-08-21: *"I want to make it so that it takes more strength to swipe up to
+ * mid and fullscreen. Both take too weak of a swipe right now."* A sheet that
+ * springs to full height on a flick meant for the map is a sheet that covers
+ * the thing you were looking at.
+ *
+ * This is the one knob `@gorhom/bottom-sheet` exposes for it: where the
+ * *destination* lands is a velocity projection inside the library, reachable
+ * only by replacing `gestureEventsHandlersHook` wholesale. Making the gesture
+ * start later is the supported lever, and it is a number to turn by feel —
+ * which is Truman's to turn.
+ */
+export const SHEET_DRAG_THRESHOLD: [number, number] = [-18, 18];
+
 export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSheet(
   {
     stops,
@@ -426,6 +444,9 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
       backgroundStyle={{ backgroundColor: palette.background }}
       handleIndicatorStyle={{ backgroundColor: palette.muted }}
       animationConfigs={animationConfigs}
+      // How far a drag has to travel before the sheet starts following it. See
+      // `SHEET_DRAG_THRESHOLD`.
+      activeOffsetY={SHEET_DRAG_THRESHOLD}
       backdropComponent={renderBackdrop}
       onChange={handleDetentChange}
     >

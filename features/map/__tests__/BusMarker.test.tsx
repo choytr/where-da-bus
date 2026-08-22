@@ -41,9 +41,9 @@ const noop = () => {};
 const plain = {
   highlighted: false,
   selected: false,
-  stopUnder: null,
+  nextStop: null,
   onPress: noop,
-  onPressStopUnder: noop,
+  onPressNextStop: noop,
 } as const;
 
 describe('BusMarker', () => {
@@ -215,7 +215,7 @@ describe('BusMarker’s label placement', () => {
  * lateness being communicated by ring colour alone.
  */
 describe('BusMarker’s popup', () => {
-  const stopUnder = {
+  const nextStop = {
     stop_id: 'r1',
     stop_code: '901',
     stop_name: 'KALIHI TRANSIT CENTER',
@@ -284,17 +284,19 @@ describe('BusMarker’s popup', () => {
     expect(screen.getByTestId('bus-popup-252')).toBeTruthy();
   });
 
-  it('names the stop it is covering', async () => {
+  it('names the stop the bus is heading for', async () => {
     await render(
       <TestTheme>
-        <BusMarker bus={busOnMap(20_000)} {...plain} selected stopUnder={stopUnder} placement="below" />
+        <BusMarker bus={busOnMap(20_000)} {...plain} selected nextStop={nextStop} placement="below" />
       </TestTheme>,
     );
 
-    expect(within(screen.getByTestId('bus-popup-252')).getByText('KALIHI TRANSIT CENTER')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('bus-popup-252')).getByText('Next: KALIHI TRANSIT CENTER'),
+    ).toBeTruthy();
   });
 
-  it('names no stop when the dot covers nothing', async () => {
+  it('names no stop at the end of the run, where there is no next one', async () => {
     await render(
       <TestTheme>
         <BusMarker bus={busOnMap(20_000)} {...plain} selected placement="below" />
@@ -305,12 +307,10 @@ describe('BusMarker’s popup', () => {
   });
 
   /**
-   * The second tap. Before Increment 9 the bus gave its tap away entirely, so a
-   * stop pin under a dot was reachable and the bus was not; now the first tap is
-   * the bus's own and the covered stop is one tap further on. Nothing becomes
-   * unreachable.
+   * The second tap: "where is this bus going next" and "when does it get there"
+   * are one press apart.
    */
-  it('hands a press to the covered stop once the popup is open', async () => {
+  it('hands a press to the next stop once the popup is open', async () => {
     const onPress = jest.fn();
     const onPressStopUnder = jest.fn();
     await render(
@@ -319,21 +319,21 @@ describe('BusMarker’s popup', () => {
           bus={busOnMap(20_000)}
           highlighted={false}
           selected
-          stopUnder={stopUnder}
+          nextStop={nextStop}
           placement="below"
           onPress={onPress}
-          onPressStopUnder={onPressStopUnder}
+          onPressNextStop={onPressStopUnder}
         />
       </TestTheme>,
     );
 
     await fireEvent.press(screen.getByTestId('bus-252'), { stopPropagation: () => {} });
 
-    expect(onPressStopUnder).toHaveBeenCalledWith(stopUnder);
+    expect(onPressStopUnder).toHaveBeenCalledWith(nextStop);
     expect(onPress).not.toHaveBeenCalled();
   });
 
-  it('takes the press itself when it is covering nothing', async () => {
+  it('takes the press itself when it has no next stop to offer', async () => {
     const onPress = jest.fn();
     const onPressStopUnder = jest.fn();
     await render(
@@ -342,10 +342,10 @@ describe('BusMarker’s popup', () => {
           bus={busOnMap(20_000)}
           highlighted={false}
           selected
-          stopUnder={null}
+          nextStop={null}
           placement="below"
           onPress={onPress}
-          onPressStopUnder={onPressStopUnder}
+          onPressNextStop={onPressStopUnder}
         />
       </TestTheme>,
     );
@@ -356,8 +356,8 @@ describe('BusMarker’s popup', () => {
     expect(onPressStopUnder).not.toHaveBeenCalled();
   });
 
-  /** The first tap is always the bus's own, covered stop or not. */
-  it('takes the first press even when a stop is underneath', async () => {
+  /** The first tap is always the bus's own, next stop or not. */
+  it('takes the first press even when a next stop is known', async () => {
     const onPress = jest.fn();
     const onPressStopUnder = jest.fn();
     await render(
@@ -366,10 +366,10 @@ describe('BusMarker’s popup', () => {
           bus={busOnMap(20_000)}
           highlighted={false}
           selected={false}
-          stopUnder={stopUnder}
+          nextStop={nextStop}
           placement="below"
           onPress={onPress}
-          onPressStopUnder={onPressStopUnder}
+          onPressNextStop={onPressStopUnder}
         />
       </TestTheme>,
     );

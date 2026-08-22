@@ -260,6 +260,30 @@ but that'll come later. Functionality first."
   link was unproven, and it is now known to be wrong. The seam is real — that
   part is `AIRMap.m` and is not in doubt — but *what* provokes it is still open.
 
+  **TWO MORE ON 2026-08-21, IN EXPO GO, EIGHT MINUTES APART.**
+  `Expo Go-2026-08-21-134106.ips` and `-134857.ips` (in
+  `~/wheredabus-device/crashes/2026-08-21/`, not in this repo). Both are
+  `EXC_CRASH`/`SIGABRT` with the identical faulting stack — `objc_exception_throw`
+  → `-[__NSArrayM insertObject:atIndex:]` → three Expo Go frames →
+  `TelemetryController::pullTransaction`, on `com.apple.main-thread`. Frame for
+  frame the same as all four earlier ones.
+
+  **The second one is new evidence and weakens the leading theory.** The first
+  was the route view's X, which is the familiar gesture. The second was
+  *panning*, after waking the phone from sleep — no control pressed, no
+  direction flipped. If nothing mounted or unmounted, "a wholesale marker swap
+  provokes it" cannot be the whole story. **The unanswered question is whether a
+  route was showing at the time**: waking the app refetches the fleet, and bus
+  markers appearing or disappearing on that refetch *is* a tree change in the
+  seam. Ask before theorising further.
+
+  **Two changes landed in this seam on 2026-08-10 and are unexcluded**: marker
+  `zIndex` came back as a per-layer constant (`features/map/layers.ts`), and the
+  arrow pool went from 8 always-mounted markers to 40. Neither is implicated by
+  evidence; both are new, and the crash rate is visibly higher than the "four
+  reports across several sessions" it used to be. A bisect in Expo Go is cheap
+  — each is one constant — and is the next thing to do if it keeps happening.
+
   **What is known, and what is not.** Pressing the X makes the largest tree
   change this app ever makes across that seam: `leaveRouteMode()` unmounts every
   route stop marker (68 on Route 2), unmounts every bus marker, and mounts the

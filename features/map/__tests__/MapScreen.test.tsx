@@ -316,10 +316,16 @@ const mockPush = jest.fn();
 /** `showOnMap` navigates rather than pushes: the Map tab is one screen. */
 const mockNavigate = jest.fn();
 
+/** True when a pushed screen is covering the tabs — see `showOnMap`. */
+let mockCanDismiss = false;
+const mockDismissAll = jest.fn();
+
 jest.mock('expo-router', () => ({
   router: {
     push: (href: string) => mockPush(href),
     navigate: (href: string) => mockNavigate(href),
+    canDismiss: () => mockCanDismiss,
+    dismissAll: () => mockDismissAll(),
   },
 }));
 
@@ -549,6 +555,8 @@ describe('MapScreen', () => {
     clearMapRequest();
     mockHeading = 0;
     mockNavigate.mockClear();
+    mockDismissAll.mockClear();
+    mockCanDismiss = false;
     jest.clearAllMocks();
     mockArrivalCalls.length = 0;
     mockSnapCalls.length = 0;
@@ -2228,7 +2236,13 @@ describe('MapScreen', () => {
           expect(screen.queryByTestId('stop-card-band')).toBeNull();
         });
 
-        it('offers the covered stop in the popup', async () => {
+        /**
+         * **The stop it is heading for, not the one it is sitting on.** The
+         * popup named the *covered* stop until 2026-08-21, which was a fact
+         * about the map rather than about the bus. The fixture bus sits at
+         * KALIHI, so the answer is the stop after it.
+         */
+        it('names the stop the bus is heading for', async () => {
           mockFleetResult = fleetOf({
             ...bus('252', '32'),
             position: { lat: 21.33, lon: -157.87 },
@@ -2238,10 +2252,11 @@ describe('MapScreen', () => {
 
           await openPopup();
 
-          expect(within(popup()).getByText('KALIHI TRANSIT CENTER')).toBeTruthy();
+          expect(within(popup()).getByText('Next: WAIKIKI')).toBeTruthy();
+          expect(within(popup()).queryByText(/KALIHI/)).toBeNull();
         });
 
-        it('takes the covered stop on the next press', async () => {
+        it('opens that stop on the next press', async () => {
           mockFleetResult = fleetOf({
             ...bus('252', '32'),
             position: { lat: 21.33, lon: -157.87 },
@@ -2255,14 +2270,35 @@ describe('MapScreen', () => {
           await waitFor(() => screen.getByTestId('stop-card-band'));
         });
 
-        it('offers no stop when the dot is covering nothing', async () => {
-          mockFleetResult = fleetOf(bus('252', '32'));
+        /**
+         * A bus past the last stop has no next one, and inventing one would be
+         * worse than saying nothing. So would answering for a bus that is
+         * nowhere near the drawn line.
+         */
+        it('names no stop at the end of the run', async () => {
+          mockFleetResult = fleetOf({
+            ...bus('252', '32'),
+            position: { lat: 21.28, lon: -157.83 },
+          });
           await showRoute();
           await waitFor(() => screen.getByLabelText('pin bus-252'));
 
           await openPopup();
 
-          expect(within(popup()).queryByText(/KALIHI/)).toBeNull();
+          expect(within(popup()).queryByText(/^Next:/)).toBeNull();
+        });
+
+        it('names no stop for a bus nowhere near the line', async () => {
+          mockFleetResult = fleetOf({
+            ...bus('252', '32'),
+            position: { lat: 21.45, lon: -158.0 },
+          });
+          await showRoute();
+          await waitFor(() => screen.getByLabelText('pin bus-252'));
+
+          await openPopup();
+
+          expect(within(popup()).queryByText(/^Next:/)).toBeNull();
         });
 
         it('closes the popup when the same bus is pressed again', async () => {
@@ -2561,6 +2597,30 @@ describe('MapScreen', () => {
 
       expect(mockNavigate).toHaveBeenCalledWith('/');
       expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    /**
+     * `/stop/[code]` and `/route/[id]` are pushed onto the *root* stack, over
+     * the tab bar. Switching tabs underneath one changed the map and left the
+     * rider looking at the screen that was covering it — which read as the tap
+     * doing nothing at all.
+     */
+    it('pops the screen covering the map before switching to it', async () => {
+      mockCanDismiss = true;
+
+      showOnMap({ kind: 'stop', stopId: '5' });
+
+      expect(mockDismissAll).toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith('/');
+    });
+
+    it('dismisses nothing when the row was already inside the Map tab', async () => {
+      mockCanDismiss = false;
+
+      showOnMap({ kind: 'stop', stopId: '5' });
+
+      expect(mockDismissAll).not.toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith('/');
     });
 
     it('opens the card on a stop asked for from another screen', async () => {

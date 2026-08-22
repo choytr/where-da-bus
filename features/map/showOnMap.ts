@@ -91,8 +91,18 @@ export function clearMapRequest(): void {
  *
  * The request is set *before* the navigation so the map, which may be mounting
  * for the first time, reads it on its first render rather than after a frame in
- * its default state. `navigate` rather than `push`: the Map tab is one screen
- * and asking for it twice must not stack two of it.
+ * its default state.
+ *
+ * **Dismissing comes first, and leaving it out made this look broken.**
+ * `/stop/[code]` and `/route/[id]` are pushed onto the *root* stack, over the
+ * tab bar — so `navigate('/')` switched the tab underneath a screen that was
+ * still covering it, and a rider tapping an arrival saw nothing happen at all
+ * (Truman, 2026-08-21). `dismissAll` pops back to the tabs first; `canDismiss`
+ * guards it, because there is nothing to pop when the row was already inside
+ * the Map tab's own sheet.
+ *
+ * `navigate` rather than `push`: the Map tab is one screen and asking for it
+ * twice must not stack two of it.
  */
 export function showOnMap(request: MapRequest): void {
   // Route mode is entered here rather than in `MapScreen` for the one request
@@ -100,5 +110,6 @@ export function showOnMap(request: MapRequest): void {
   // the map is already drawing the right route on its very first frame.
   if (request.kind === 'route') enterRouteMode(request.routeId);
   set(request);
+  if (router.canDismiss()) router.dismissAll();
   router.navigate('/');
 }

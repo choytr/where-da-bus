@@ -15,7 +15,8 @@ import type BottomSheet from '@gorhom/bottom-sheet';
 import { schedule } from '../../lib/schedule';
 import { useAnchoredStops } from './useAnchoredStops';
 import { StopMarker } from './StopMarker';
-import { labelledMapIds, scaleOf, stopUnderBus } from './labels';
+import { labelledMapIds, scaleOf } from './labels';
+import { isOnLine, nextStopAlong } from './nextStop';
 import { PendingMarker } from './PendingMarker';
 import { RouteLine } from './RouteLine';
 import { RouteArrows } from './RouteArrows';
@@ -985,22 +986,25 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   );
 
   /**
-   * The stop the selected bus is drawn over, if any — the extra line in its
-   * popup, and what a second tap takes.
+   * Where the selected bus is heading next — the extra line in its popup, and
+   * what a second tap takes.
    *
-   * **Only for the selected bus.** Answering this needs the settled camera, so
-   * asking it for every bus would re-render the whole layer on every pan, which
-   * is the cost this component is shaped to avoid. One bus's prop changing when
-   * the camera settles is one marker re-snapshotted.
+   * **A fact about the bus, not about the camera.** It used to be the stop the
+   * dot was *covering*, which changed as the rider zoomed; this is derived from
+   * the route's own line, so it is the same answer at every scale. Only for the
+   * selected bus: it walks the whole shape, which is not work to do for every
+   * dot on every poll.
+   *
+   * Null when the bus is nowhere near the drawn line — the other direction's
+   * bus, or one the feed has misplaced — because projecting it would produce a
+   * confident answer about a road it is not on.
    */
-  const stopUnderSelectedBus = useMemo(() => {
-    if (selectedBus === null) return null;
-    return stopUnderBus(selectedBus.vehicle.position, pins, camera ?? region, {
-      width: windowWidth,
-      height: mapHeight,
-      visibleHeight: mapHeight,
-    });
-  }, [selectedBus, pins, camera, region, windowWidth, mapHeight]);
+  const nextStopForSelectedBus = useMemo(() => {
+    if (selectedBus === null || linePoints.length < 2) return null;
+    const at = selectedBus.vehicle.position;
+    if (!isOnLine(linePoints, at)) return null;
+    return nextStopAlong(linePoints, routeStopsInOrder, at);
+  }, [selectedBus, linePoints, routeStopsInOrder]);
 
   /**
    * A tap on a bus, which is now the bus's own.
@@ -1037,22 +1041,25 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   }, []);
 
   /**
-   * The popup's covered-stop line, taken. Selecting the stop closes the popup.
+   * The popup's next-stop line, taken. Selecting the stop closes the popup.
    *
-   * The pressed stop is not read off the argument: `stopUnderSelectedBus` is
-   * the only stop `BusMarker` can offer, and it is a `StopWithDistance`, which
-   * is what `select` wants. Taking it from the ref keeps the distance rather
-   * than looking the row up again to recover it.
+   * The pressed stop is not read off the argument: `nextStopForSelectedBus` is
+   * the only stop `BusMarker` can offer, and it comes out of
+   * `routeStopsInOrder`, which carries the distance `select` wants. Taking it
+   * from the ref keeps that rather than looking the row up again.
    */
-  const stopUnderPressRef = useRef<() => void>(() => {});
-  stopUnderPressRef.current = () => {
-    if (stopUnderSelectedBus === null) return;
+  const nextStopPressRef = useRef<() => void>(() => {});
+  nextStopPressRef.current = () => {
+    const stop = nextStopForSelectedBus;
+    if (stop === null) return;
+    const withDistance = routeStopsInOrder.find((row) => row.stop_id === stop.stop_id);
+    if (withDistance === undefined) return;
     setSelectedBusNumber(null);
     holdZoomOff();
-    selectRef.current(stopUnderSelectedBus, { pan: false });
+    selectRef.current(withDistance, { pan: false });
   };
-  const onPressStopUnder = useCallback(() => {
-    stopUnderPressRef.current();
+  const onPressNextStop = useCallback(() => {
+    nextStopPressRef.current();
   }, []);
 
   /**
@@ -1532,10 +1539,10 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
               highlighted={bus === highlightedBus}
               selected={bus === selectedBus}
               placement={labelled.buses.get(bus.vehicle.number) ?? null}
-              // Null for every bus but the selected one; see `stopUnderSelectedBus`.
-              stopUnder={bus === selectedBus ? stopUnderSelectedBus : null}
+              // Null for every bus but the selected one; see the memo.
+              nextStop={bus === selectedBus ? nextStopForSelectedBus : null}
               onPress={onBusPress}
-              onPressStopUnder={onPressStopUnder}
+              onPressNextStop={onPressNextStop}
             />
           ))}
 
