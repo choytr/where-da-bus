@@ -84,6 +84,50 @@ describe('routeMode', () => {
     expect(result.current).toEqual({ routeId: '13', directionIndex: 0 });
   });
 
+  /**
+   * The round-4 bug, in one test. Every entry point opened at direction 0 while
+   * the map hides the other direction's buses by design, so a rider tapping a
+   * live arrival travelling the other way got a map that had deliberately
+   * hidden the bus the row promised.
+   */
+  it('opens a route in the direction the caller names', async () => {
+    const { result } = await renderHook(() => useRouteMode());
+
+    await act(async () => enterRouteMode('25', 1));
+
+    expect(result.current).toEqual({ routeId: '25', directionIndex: 1 });
+  });
+
+  /**
+   * And it has to work on the route already showing, which is where the early
+   * return used to make this unfixable by tapping again: a rider whose first
+   * tap opened the wrong way could tap a second row on the same route forever
+   * and never turn the map round.
+   */
+  it('turns the route already showing when the caller names a direction', async () => {
+    const { result } = await renderHook(() => useRouteMode());
+    await act(async () => enterRouteMode('25'));
+
+    await act(async () => enterRouteMode('25', 1));
+
+    expect(result.current?.directionIndex).toBe(1);
+  });
+
+  /**
+   * The other half of the same rule: *no* opinion still means no opinion. The
+   * route chips and the search results pass nothing, and must not drag a rider
+   * off the direction they turned to themselves.
+   */
+  it('still keeps the direction when the caller names none', async () => {
+    const { result } = await renderHook(() => useRouteMode());
+    await act(async () => enterRouteMode('25'));
+    await act(async () => flipDirection());
+
+    await act(async () => enterRouteMode('25'));
+
+    expect(result.current?.directionIndex).toBe(1);
+  });
+
   it('does nothing when asked to flip or leave with no route showing', async () => {
     const { result } = await renderHook(() => useRouteMode());
 

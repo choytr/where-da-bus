@@ -56,15 +56,31 @@ export function useRouteMode(): RouteMode | null {
 }
 
 /**
- * Draw `routeId`, starting at its first direction.
+ * Draw `routeId`, in `directionIndex` if the caller knows which way it means.
  *
  * Re-entering the route already showing is a no-op rather than a reset, so
  * tapping the same route chip twice does not flip a rider back to the direction
- * they just turned away from.
+ * they just turned away from. **A caller that names a direction is exempt**,
+ * and leaving it out was the bug behind "I tap a live arrival and there is no
+ * bus on the map": every entry point hardcoded direction 0, the map hides the
+ * other direction's buses by design, so a rider tapping an arrival travelling
+ * the other way got a map that had deliberately hidden the very bus the row
+ * promised. Tapping a second row on the same route could not correct it either,
+ * because the route already matched and this returned early.
+ *
+ * Omitting the argument keeps the old behaviour exactly, which is what the
+ * route chips and the search results want: they mean *this route*, and have no
+ * opinion about which way.
  */
-export function enterRouteMode(routeId: string): void {
-  if (current?.routeId === routeId) return;
-  set({ routeId, directionIndex: 0 });
+export function enterRouteMode(routeId: string, directionIndex?: number): void {
+  if (current?.routeId === routeId) {
+    // Already showing, and the caller does not care which way: leave the
+    // rider's own choice of direction alone.
+    if (directionIndex === undefined || current.directionIndex === directionIndex) return;
+    set({ routeId, directionIndex });
+    return;
+  }
+  set({ routeId, directionIndex: directionIndex ?? 0 });
 }
 
 /** The other direction. A route with only one is the consumer's clamp to make. */

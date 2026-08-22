@@ -70,6 +70,12 @@ export type StopCardProps = {
    * reasonable place to land, and it is why this is not an error.
    */
   preselectTripId?: string | null;
+  /**
+   * The trip of a row that promised a live bus the map has not got, so that row
+   * can say so. Only the map knows this — it is the one holding the drawn
+   * buses. See `ArrivalRow`'s `busMissing`.
+   */
+  busMissingTripId?: string | null;
 };
 
 export function StopCard({
@@ -85,6 +91,7 @@ export function StopCard({
   onSelectArrival,
   selectedTripId = null,
   preselectTripId = null,
+  busMissingTripId = null,
 }: StopCardProps) {
   const { palette } = useTheme();
   const code = stop.stop_code || stop.stop_id;
@@ -235,6 +242,7 @@ export function StopCard({
             reportingTrips={reportingTrips}
             onPress={onSelectArrival}
             selected={selectedTripId !== null && item.tripId === selectedTripId}
+            busMissing={busMissingTripId !== null && item.tripId === busMissingTripId}
           />
         )}
         ListEmptyComponent={

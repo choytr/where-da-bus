@@ -47,6 +47,17 @@ export type MapRequest =
       readonly routeName: string;
       readonly tripId: string | null;
       /**
+       * The sign on the front of the bus, which is what tells the map **which
+       * way** to open.
+       *
+       * Every entry point used to open at direction 0, and the map hides the
+       * other direction's buses by design — so half the live rows led to a map
+       * that had deliberately hidden the bus they promised. `directionIndexFor`
+       * turns this into a direction; null, or a sign the asset does not carry,
+       * leaves the direction alone rather than guessing.
+       */
+      readonly headsign: string | null;
+      /**
        * The stop the arrival was read at, whose card the map opens so the rider
        * lands on the board they came from. Null while that row is still being
        * resolved on `/stop/[code]`, in which case the route is drawn and no

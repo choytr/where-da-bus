@@ -424,12 +424,17 @@ function fleetOf(...vehicles: Vehicle[]): FleetResult {
  * arrival; `position` is present on about one in ten, which is why the bus
  * highlight and the variant line are independent of each other.
  */
-function arrival(tripId: string, shape: string | null, route = '32'): Arrival {
+function arrival(
+  tripId: string,
+  shape: string | null,
+  route = '32',
+  headsign = 'WAIKIKI',
+): Arrival {
   return {
     id: `a-${tripId}`,
     tripId,
     route,
-    headsign: 'WAIKIKI',
+    headsign,
     direction: 'Westbound',
     arrivesAt: new Date('2026-08-02T22:10:00Z'),
     estimate: 'scheduled',
@@ -1178,7 +1183,18 @@ describe('MapScreen', () => {
       expect(mockSnapCalls).toEqual([MEDIUM_DETENT]);
     });
 
-    it('does not lower the sheet when a stop is selected at full height', async () => {
+    /**
+     * **This test asserted the opposite until 2026-08-21, and the reversal is
+     * Truman's.** The original reasoning was that dropping the sheet takes back
+     * height the rider asked for and moves the row out from under the thumb
+     * that just touched it. On a device that turned out not to be what happens:
+     * selecting a stop replaces the whole nearby list with that stop's card, so
+     * there is no row left under the thumb either way — and a sheet that stays
+     * at full height leaves the rider looking at the card for a stop while the
+     * map showing it is completely hidden. "If the sheet is fullscreen it stays
+     * fullscreen, it should bring it down to half."
+     */
+    it('lowers the sheet to medium when a stop is selected at full height', async () => {
       await show();
       await waitFor(() => {
         screen.getByLabelText('pin 5');
@@ -1191,8 +1207,7 @@ describe('MapScreen', () => {
       await waitFor(() => {
         screen.getByLabelText('Back to nearby stops');
       });
-      // Selecting took back none of the height the rider had asked for.
-      expect(mockSnapCalls).toEqual([]);
+      expect(mockSnapCalls).toEqual([MEDIUM_DETENT]);
     });
 
     it('says no buses are due rather than looking like a failure', async () => {
@@ -2648,7 +2663,7 @@ describe('MapScreen', () => {
     });
 
     it('draws the route an arrival was for, from its number on the bus', async () => {
-      showOnMap({ kind: 'arrival', routeName: '32', tripId: null, stopId: null });
+      showOnMap({ kind: 'arrival', routeName: '32', tripId: null, headsign: 'WAIKIKI', stopId: null });
 
       await show();
 
@@ -2665,7 +2680,13 @@ describe('MapScreen', () => {
       mockArrivalsResult = boardOf(arrival('trip-252', 's-out'));
       mockFleetResult = fleetOf(bus('252', '32'));
 
-      showOnMap({ kind: 'arrival', routeName: '32', tripId: 'trip-252', stopId: 'r1' });
+      showOnMap({
+        kind: 'arrival',
+        routeName: '32',
+        tripId: 'trip-252',
+        headsign: 'WAIKIKI',
+        stopId: 'r1',
+      });
       await show();
 
       await waitFor(() =>
@@ -2676,13 +2697,202 @@ describe('MapScreen', () => {
     });
 
     /**
+     * **The round-4 bug, end to end.** `enterRouteMode` hardcoded direction 0
+     * and the map hides the other direction's buses by design, so a rider
+     * tapping a live arrival signed the other way got a map that had
+     * deliberately hidden the very bus the row promised — which is exactly what
+     * Truman reported as "rows that say live bus but don't correspond to any on
+     * the map".
+     *
+     * Direction 1 ends at KALIHI TRANSIT CENTER, so the band names it.
+     */
+    it('opens the direction the bus is signed for, not always the first', async () => {
+      // Set here rather than left to the default: earlier tests in this file
+      // replace `routeStops` with a single-direction route and the
+      // implementation outlives them (`clearAllMocks` clears calls, not
+      // implementations). A test about *which* direction opens has to state
+      // both of them.
+      mockQueries.routeStops.mockResolvedValue([
+        {
+          directionId: '0',
+          shapeId: 's-out',
+          headsigns: ['WAIKIKI'],
+          stops: [
+            { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+            { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
+          ],
+        },
+        {
+          directionId: '1',
+          shapeId: 's-back',
+          headsigns: ['KALIHI TRANSIT CENTER'],
+          stops: [
+            { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
+            { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+          ],
+        },
+      ]);
+      showOnMap({
+        kind: 'arrival',
+        routeName: '32',
+        tripId: null,
+        headsign: 'KALIHI TRANSIT CENTER',
+        stopId: null,
+      });
+
+      await show();
+
+      await waitFor(() => screen.getByText('Toward KALIHI TRANSIT CENTER'));
+      expect(screen.queryByText('Toward WAIKIKI')).toBeNull();
+    });
+
+    /**
+     * GTFS here is reference data that can be weeks stale, so a sign the asset
+     * has never heard of is the app's ignorance rather than the bus's. It draws
+     * the route the way it always did rather than refusing to open at all.
+     */
+    it('still draws the route when the asset does not carry the sign', async () => {
+      // Set here rather than left to the default: earlier tests in this file
+      // replace `routeStops` with a single-direction route and the
+      // implementation outlives them (`clearAllMocks` clears calls, not
+      // implementations). A test about *which* direction opens has to state
+      // both of them.
+      mockQueries.routeStops.mockResolvedValue([
+        {
+          directionId: '0',
+          shapeId: 's-out',
+          headsigns: ['WAIKIKI'],
+          stops: [
+            { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+            { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
+          ],
+        },
+        {
+          directionId: '1',
+          shapeId: 's-back',
+          headsigns: ['KALIHI TRANSIT CENTER'],
+          stops: [
+            { stop_id: 'r2', stop_code: '902', stop_name: 'WAIKIKI', lat: 21.28, lon: -157.83 },
+            { stop_id: 'r1', stop_code: '901', stop_name: 'KALIHI TRANSIT CENTER', lat: 21.33, lon: -157.87 },
+          ],
+        },
+      ]);
+      showOnMap({
+        kind: 'arrival',
+        routeName: '32',
+        tripId: null,
+        headsign: 'KAPOLEI TRANSIT CENTER',
+        stopId: null,
+      });
+
+      await show();
+
+      await waitFor(() => screen.getByTestId('route-band'));
+      expect(screen.getByText('Toward WAIKIKI')).toBeTruthy();
+    });
+
+    /**
+     * "Tapping the arrival row with a live bus should center and trigger its
+     * icon on the map" — Truman, round 4. The row already made the dot bigger;
+     * the popup is a separate selection and the tap never set it.
+     */
+    it('opens the popup of the bus an arrival was asked for', async () => {
+      // `routeById` decides what `useVehicles` filters the fleet on, and its
+      // default short_name is '1'. The bus below is on 32.
+      mockQueries.routeById.mockResolvedValue({
+        route_id: 'id-for-32',
+        short_name: '32',
+        long_name: 'Mapunapuna-Airport',
+      });
+      mockQueries.stopsByIds.mockResolvedValue([stop('r1', 'KALIHI TRANSIT CENTER')]);
+      mockArrivalsResult = boardOf(arrival('trip-252', 's-out'));
+      mockFleetResult = fleetOf(bus('252', '32'));
+
+      showOnMap({
+        kind: 'arrival',
+        routeName: '32',
+        tripId: 'trip-252',
+        headsign: 'WAIKIKI',
+        stopId: 'r1',
+      });
+      await show();
+
+      await waitFor(() =>
+        expect(
+          StyleSheet.flatten(screen.getByTestId('bus-popup-252').props.style).opacity,
+        ).toBe(1),
+      );
+    });
+
+    /**
+     * The residual disagreement, once the direction is right: the row's offer is
+     * gated on a fleet snapshot up to two minutes old and the map draws from one
+     * at most a minute old, so a bus can stop reporting in between. Truman's
+     * standing requirement is that these two never disagree *silently*.
+     */
+    it('says so when the bus a row promised is not on the map', async () => {
+      mockQueries.routeById.mockResolvedValue({
+        route_id: 'id-for-32',
+        short_name: '32',
+        long_name: 'Mapunapuna-Airport',
+      });
+      mockQueries.stopsByIds.mockResolvedValue([stop('r1', 'KALIHI TRANSIT CENTER')]);
+      mockArrivalsResult = boardOf({
+        ...arrival('trip-261', 's-out'),
+        estimate: 'live',
+        vehicle: '261',
+      });
+      // The fleet answered — so this is a bus gone dark, not a fetch in flight —
+      // and it carries nothing on route 32.
+      mockFleetResult = fleetOf(bus('999', '99'));
+
+      showOnMap({
+        kind: 'arrival',
+        routeName: '32',
+        tripId: 'trip-261',
+        headsign: 'WAIKIKI',
+        stopId: 'r1',
+      });
+      await show();
+
+      await waitFor(() => screen.getByText(/Bus 261 stopped reporting/));
+    });
+
+    /**
+     * Until the fleet has answered at all, every arrival has no bus. That is
+     * loading, and `CLAUDE.md` is explicit that it must never render like the
+     * bus having gone.
+     */
+    it('does not call a bus gone while the fleet is still being fetched', async () => {
+      mockQueries.stopsByIds.mockResolvedValue([stop('r1', 'KALIHI TRANSIT CENTER')]);
+      mockArrivalsResult = boardOf({
+        ...arrival('trip-261', 's-out'),
+        estimate: 'live',
+        vehicle: '261',
+      });
+      mockFleetResult = { ok: false, failure: { kind: 'unreachable' } };
+
+      showOnMap({
+        kind: 'arrival',
+        routeName: '32',
+        tripId: 'trip-261',
+        headsign: 'WAIKIKI',
+        stopId: 'r1',
+      });
+      await show();
+
+      await waitFor(() => screen.getByText(/Live · Bus 261/));
+      expect(screen.queryByText(/Bus 261 stopped reporting/)).toBeNull();
+    });
+
+    /**
      * `route_short_name` is what the live API speaks and the two feeds disagree
      * about case — `sameRoute` lowercases both sides for exactly this reason.
      * A miss here is silent: route mode is never entered, so the long-press
      * entry appears to do nothing at all.
      */
     it('finds the route even when the live feed disagrees about case', async () => {
-      showOnMap({ kind: 'arrival', routeName: 'a line', tripId: null, stopId: null });
+      showOnMap({ kind: 'arrival', routeName: 'a line', tripId: null, headsign: 'WAIKIKI', stopId: null });
 
       await show();
 

@@ -44,6 +44,7 @@ import { SearchBar, SEARCH_BAR_ALLOWANCE } from './SearchBar';
 import { RoutePill, ROUTE_PILL_ALLOWANCE } from './RoutePill';
 import { PILL } from './pill';
 import { SearchOverlay } from './SearchOverlay';
+import { directionIndexFor } from './direction';
 import { enterRouteMode, flipDirection, leaveRouteMode, useRouteMode } from './routeMode';
 import { clearMapRequest, useMapRequest, type MapRequest } from './showOnMap';
 import { useStopQueries, NEARBY_RADIUS_METERS, type RouteDirection } from '../../data/gtfs/db';
@@ -172,6 +173,24 @@ const BANNER_ALLOWANCE = 52;
 
 /** Long enough to read as travel rather than a cut, short enough not to wait. */
 const CAMERA_MS = 350;
+
+/**
+ * How much ground to show around a bus a rider tapped an arrival for.
+ *
+ * **Street zoom, and that is a measured claim rather than a taste.** `labels.ts`
+ * splits `'route'` from `'street'` at a `longitudeDelta` of 0.022, and
+ * `regionAround` turns a radius r into `2 · 1.15 · r / 111320 / cos(21.3°)`
+ * degrees — so anything under about 990 m lands in the street tier, where stop
+ * tiles keep their labels instead of collapsing to dots. 500 m is comfortably
+ * inside it: the bus, and a couple of blocks either side of it.
+ *
+ * `NEARBY_RADIUS_METERS` is what every other framing uses, and it does *not*
+ * work here — 1500 m puts the camera the wrong side of that threshold, so
+ * "center on the bus" would arrive at route scale with every label gone.
+ *
+ * A comfort knob, so it is named: Truman turns it.
+ */
+const BUS_FRAME_METERS = 500;
 
 /**
  * How long one wholesale marker swap owns the map. See `swapBusyUntil`.
@@ -504,11 +523,11 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * sheet is settled on — the same parameter, for the same reason, as `panTo`'s.
    */
   const frameOn = useCallback(
-    (center: Coords, against: number = detent) => {
+    (center: Coords, against: number = detent, radiusMeters: number = NEARBY_RADIUS_METERS) => {
       map.current?.animateToRegion(
         regionAround(
           center,
-          NEARBY_RADIUS_METERS,
+          radiusMeters,
           visibleAbove(detents, against, mapHeight),
         ),
         CAMERA_MS,
@@ -760,6 +779,74 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   );
 
   /**
+   * Tapping a live arrival takes the rider **to the bus**: centered, at street
+   * zoom, with its popup open.
+   *
+   * **Two selections, and the tap only ever set one.** `selectedArrival` draws
+   * the bus larger and keeps its fleet number at any zoom; `selectedBusNumber`
+   * is what opens the popup with the lateness and the next stop. A rider who
+   * taps a row expecting *that bus* gets both here, which is what Truman asked
+   * for in the round-4 pass: "tapping the arrival row with a live bus should
+   * center and trigger its icon on the map."
+   *
+   * **An effect rather than a line inside `selectArrival`**, because the bus is
+   * routinely not there yet. Arriving from `/stop/[code]` sets the route,
+   * selects the stop and preselects the trip, while the fleet request that will
+   * produce the bus has only just gone out — so a join attempted at selection
+   * time misses, and the rider gets a card with no bus and no explanation. This
+   * fires whenever the join *lands*, however late.
+   *
+   * The ref is what keeps it a one-shot per arrival. `frameOn` and `detent`
+   * both change identity as the camera settles, so without it the map would
+   * drag itself back onto the bus every time the rider panned away.
+   */
+  const centeredForArrival = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (selectedArrival === null) {
+      centeredForArrival.current = null;
+      return;
+    }
+    if (highlightedBus === null) return;
+    if (centeredForArrival.current === selectedArrival.id) return;
+    centeredForArrival.current = selectedArrival.id;
+
+    setSelectedBusNumber(highlightedBus.vehicle.number);
+    // A sheet at full height hides the bus it just centered on. Down to medium,
+    // never up: a rider at peek asked for the map, and the bus is on it.
+    if (detent > MEDIUM_DETENT) sheet.current?.snapToIndex(MEDIUM_DETENT);
+    frameOn(
+      highlightedBus.vehicle.position,
+      Math.min(detent, MEDIUM_DETENT),
+      BUS_FRAME_METERS,
+    );
+  }, [selectedArrival, highlightedBus, detent, frameOn]);
+
+  /**
+   * The trip of a row that promised a live bus the map has not got.
+   *
+   * **The residual case, once the direction bug is fixed.** The row's offer is
+   * gated on a fleet snapshot up to `FLEET_TTL_MS` old, while the map draws
+   * from one at most `VEHICLE_POLL_MS` old — so a bus can stop reporting in
+   * between, and the row that said *Live · Bus 261* leads to a map with no
+   * dot. Truman's standing requirement is that these two never disagree
+   * silently; when they unavoidably do, the row says so rather than leaving the
+   * app looking broken.
+   *
+   * **`busesFetchedAt` is the guard that stops it being a lie.** Until the
+   * first fleet answer lands, every arrival has no bus — that is loading, not
+   * a bus gone dark, and the pair `CLAUDE.md` says must never render alike.
+   */
+  const arrivalWithoutBus =
+    selectedArrival !== null &&
+    selectedArrival.estimate === 'live' &&
+    selectedArrival.vehicle !== null &&
+    highlightedBus === null &&
+    busesFetchedAt !== null
+      ? selectedArrival.tripId
+      : null;
+
+  /**
    * The line the map draws, decoded from the direction's representative shape.
    *
    * Empty rather than null: `RouteLine` is always mounted and only its
@@ -841,7 +928,15 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const select = useCallback(
     (stop: StopWithDistance, { pan }: { pan: boolean }) => {
       setSelectedStop(stop);
-      if (detent < MEDIUM_DETENT) sheet.current?.snapToIndex(MEDIUM_DETENT);
+      // **Both ways to medium, and coming down is the newer half.** Raising
+      // from peek was always here. Coming down from full is Truman's call from
+      // the round-4 device pass: selecting a stop while the sheet covers the
+      // screen used to leave it covering the screen, so the thing just selected
+      // was behind it. The argument that once stopped this — that dropping the
+      // sheet moves the row out from under the thumb that just touched it —
+      // does not apply to a *stop*: selecting one replaces the whole list with
+      // that stop's card, so there is no row left under the thumb either way.
+      if (detent !== MEDIUM_DETENT) sheet.current?.snapToIndex(MEDIUM_DETENT);
       // Against the detent the sheet is *heading to*, not the one it is
       // leaving. Selection raises the sheet, so framing against the peek would
       // put the stop under where the sheet is about to be.
@@ -1261,7 +1356,16 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
       // A route the asset does not carry leaves the map where it was rather
       // than half-entering route mode.
       const route = await routeByShortName(asked.routeName);
-      if (route !== null) enterRouteMode(route.route_id);
+      if (route !== null) {
+        // **Which way, resolved before entering rather than after.** Entering
+        // at 0 and correcting would fire every effect keyed on
+        // `directionIndex` twice — dropping the selection this request is in
+        // the middle of making — and flash the wrong direction's line on the
+        // way past. One extra local query buys the map opening right the first
+        // time. `undefined` leaves the direction alone; see `directionIndexFor`.
+        const directions = await routeStops(route.route_id);
+        enterRouteMode(route.route_id, directionIndexFor(directions, asked.headsign));
+      }
       if (asked.stopId === null) return;
       // **Only with a route to draw.** `onSelectArrival` is wired to route
       // mode, so a trip recorded without one could never be consumed — it
@@ -1635,6 +1739,7 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
         onSelectArrival={routeMode === null ? undefined : selectArrival}
         selectedTripId={selectedArrival?.tripId ?? null}
         preselectTripId={preselectTripId}
+        busMissingTripId={arrivalWithoutBus}
         routeView={
           routeMode === null
             ? null

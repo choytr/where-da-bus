@@ -30,6 +30,17 @@ export type ArrivalRowProps = {
    * `reportingBuses.ts`.
    */
   reportingTrips?: ReportingTrips;
+  /**
+   * This row promised a live bus and the map has none to show.
+   *
+   * Set only by the map host, and only once the fleet has actually answered —
+   * "no bus yet" is loading and must not read like a bus that went dark. The
+   * gap is real but small: the row's offer is checked against a fleet snapshot
+   * up to two minutes old, while the map draws from one at most a minute old,
+   * so a bus can stop reporting in between. Saying so is the difference between
+   * "that bus went dark" and "this app is broken".
+   */
+  busMissing?: boolean;
 };
 
 /**
@@ -67,6 +78,7 @@ export function ArrivalRow({
   selected = false,
   stopId,
   reportingTrips = null,
+  busMissing = false,
 }: ArrivalRowProps) {
   const { palette } = useTheme();
   const isLive = arrival.estimate === 'live';
@@ -80,12 +92,28 @@ export function ArrivalRow({
   const showsLiveBus = hasDrawableBus(arrival, reportingTrips) && stopId !== null;
 
   const showLiveBus = () =>
-    showOnMap({ kind: 'arrival', routeName: arrival.route, tripId: arrival.tripId, stopId });
+    showOnMap({
+      kind: 'arrival',
+      routeName: arrival.route,
+      tripId: arrival.tripId,
+      headsign: arrival.headsign,
+      stopId,
+    });
 
   // Null trip: the route, without singling out a bus. Every arrival can answer
   // this one, which is why it is the entry that is always there.
   const showRoute = () =>
-    showOnMap({ kind: 'arrival', routeName: arrival.route, tripId: null, stopId });
+    showOnMap({
+      kind: 'arrival',
+      routeName: arrival.route,
+      tripId: null,
+      // Still the bus's own sign, even with no trip singled out: a rider asking
+      // for "this route" from a row about a Waikiki-bound bus means the Waikiki
+      // direction, and opening the other way is the same wrong answer with no
+      // dot to make it obvious.
+      headsign: arrival.headsign,
+      stopId,
+    });
 
   const openMenu = () =>
     void showRowMenu([
@@ -117,11 +145,17 @@ export function ArrivalRow({
    * one riders here already know; "Scheduled" is what it *means*, and dropping
    * either leaves the row saying less than it should.
    */
-  const status = isLive
-    ? arrival.vehicle === null
-      ? 'Live'
-      : `Live · Bus ${arrival.vehicle}`
-    : 'Scheduled · no GPS';
+  const status =
+    busMissing && arrival.vehicle !== null
+      ? // Named, rather than silently falling back to `Live · Bus 261` beside a
+        // map with no bus on it. The row is where the promise was made, so it
+        // is where the retraction belongs.
+        `Bus ${arrival.vehicle} stopped reporting`
+      : isLive
+        ? arrival.vehicle === null
+          ? 'Live'
+          : `Live · Bus ${arrival.vehicle}`
+        : 'Scheduled · no GPS';
 
   // Always a `Pressable`, and every row now does something on a tap.
   const Row = Pressable;
@@ -139,7 +173,7 @@ export function ArrivalRow({
       accessibilityLabel={
         `Route ${arrival.route} to ${arrival.headsign}, ` +
         `${countdown(arrival.arrivesAt, now)}, at ${hawaiiClock(arrival.arrivesAt)}, ` +
-        (isLive ? 'tracked live' : 'scheduled, not tracked') +
+        (busMissing ? 'stopped reporting' : isLive ? 'tracked live' : 'scheduled, not tracked') +
         (arrival.canceled ? ', canceled' : '') +
         (onPress === undefined ? `. ${showsLiveBus ? 'Shows the bus' : 'Shows the route'} on the map` : '')
       }

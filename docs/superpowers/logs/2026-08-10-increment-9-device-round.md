@@ -191,3 +191,65 @@ left to me to tweak, so I'll just have you do everything else. Just get stuff
 working well and reliably and I'll tweak it to my preferences when I have the
 time."* The tuning knobs left named for him: `SHEET_DRAG_THRESHOLD`,
 `ARROW_SPACING_METERS`, `PAN_SCREENS_FOR_OFFER`.
+
+---
+
+## Round 4 — 2026-08-21, in Expo Go
+
+The three fixes from round 3, on a phone. **No screenshots**; this is the whole
+record.
+
+**What worked:** the popup's *next stop* ("works and is nice"), and the firmer
+sheet swipe — `SHEET_DRAG_THRESHOLD` is his knob and he will tweak it himself.
+
+**What did not, and it was one bug wearing two hats.**
+
+> "There are arrival rows that say live bus but don't seem to correspond to any
+> on the map when pressed." … "I really want to have the data of the map and the
+> arrivals synced. My brain is telling me that those two should correspond, but
+> there's like bus icons on the map that don't correspond to arrival rows with
+> live buses."
+
+**`enterRouteMode` opened every route at direction 0**, unconditionally, while
+the map hides the other direction's buses by design (`drawsInDirection`, from
+Increment 9). So a rider tapping a live arrival signed the other way got a map
+that had deliberately hidden the very bus the row promised — and could not fix
+it by tapping again, because the early return skipped a route already showing.
+The counts disagreed for the same reason: the board lists both directions at a
+stop, the map counted one direction island-wide.
+
+The join needed nothing new. GTFS `route_directions` carries each direction's
+headsigns and the live feed's headsign is byte-identical to them, so the request
+now resolves a direction and opens in it (`features/map/direction.ts`).
+
+**`hasDrawableBus` needed no direction term after all**, which is worth writing
+down because the opposite was assumed while speccing. The gate checks that the
+fleet carries the arrival's *trip*; the map opens the direction holding the
+arrival's *headsign*; a vehicle on that trip carries that headsign. The
+direction fix makes the existing gate correct rather than leaving it a second
+hole.
+
+**Three smaller things, all his calls:**
+
+- **A tap on a live row now centers on the bus and opens its popup.** It only
+  ever set `selectedArrival` — bigger dot, fleet number — while
+  `selectedBusNumber`, which is what opens the popup, stayed null. Street zoom
+  (`BUS_FRAME_METERS`, 500 m) rather than fitting bus and stop together: he was
+  offered both and chose to go to the bus.
+- **A fullscreen sheet now drops to medium when a stop is selected.**
+  **This reverses a round-1/2 decision** — see the test, which asserted the
+  opposite by name. The old reasoning was that dropping the sheet moves the row
+  out from under the thumb; it does not, because selecting a stop replaces the
+  whole list with that stop's card.
+- **A row whose promised bus is not on the map says so** ("Bus 261 stopped
+  reporting") instead of reading *Live · Bus 261* beside an empty map. Gated on
+  the fleet having actually answered, so a fetch in flight never renders as a
+  bus gone dark.
+
+**Deferred, deliberately:** reconciling the *Live* badge against the fleet feed,
+which would make roughly ten times as many rows read as tracked and over-claims
+about the ETA being real-time. Truman chose to re-observe after the direction
+fix first — the symptom may simply be gone.
+
+**Not re-observed yet.** Nothing in this round has been on a phone.
+

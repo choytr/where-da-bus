@@ -21,7 +21,16 @@ moment Metro reloads. Nothing in `e1ae620` has been seen on a phone. Confirmed
 as the next action on 2026-08-21, over both the crash chase and the `main`
 merge.
 
-**What round 4 is actually checking** — `e1ae620` is the only code commit since
+**Round 4 happened, and its fixes are on `dev` unseen.** The one real finding
+was that `enterRouteMode` opened every route at direction 0 while the map hides
+the other direction's buses — so half of all live arrival taps led to a map that
+had hidden the bus the row promised. That, the tap centering on the bus, the
+sheet dropping out of fullscreen and the "stopped reporting" wording are all
+written up in the device-round log's Round 4. **Round 5 re-observes those**, and
+in particular whether "the counts don't match" survives the direction fix; if it
+does, the deferred piece is reconciling the *Live* badge against the fleet feed.
+
+**What round 4 was checking** — `e1ae620` is the only code commit since
 round 3, so the round is short:
 
 - **Tapping an arrival row now shows that stop on the map.** It did nothing

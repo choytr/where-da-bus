@@ -197,6 +197,8 @@ export type StopSheetProps = {
   selectedTripId?: string | null;
   /** Threaded to `StopCard` — see its own `preselectTripId`. */
   preselectTripId?: string | null;
+  /** Forwarded to the card: the trip whose promised bus the map has not got. */
+  busMissingTripId?: string | null;
 };
 
 /**
@@ -324,6 +326,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
     onSelectArrival,
     selectedTripId = null,
     preselectTripId = null,
+    busMissingTripId = null,
   },
   ref,
 ) {
@@ -624,6 +627,7 @@ export const StopSheet = forwardRef<BottomSheet, StopSheetProps>(function StopSh
             onSelectArrival={onSelectArrival}
             selectedTripId={selectedTripId}
             preselectTripId={preselectTripId}
+            busMissingTripId={busMissingTripId}
           />
         )}
 

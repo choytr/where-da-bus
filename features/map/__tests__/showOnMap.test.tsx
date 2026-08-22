@@ -207,6 +207,10 @@ describe('ArrivalRow’s long press', () => {
       kind: 'arrival',
       routeName: '32',
       tripId: 'trip-1',
+      // The sign on the front of the bus, which is what tells the map which way
+      // to open. Without it every request opened at direction 0 and half of
+      // them hid the bus they had just promised.
+      headsign: 'AIRPORT',
       stopId: '5',
     });
   });
@@ -222,6 +226,9 @@ describe('ArrivalRow’s long press', () => {
       kind: 'arrival',
       routeName: '32',
       tripId: null,
+      // Carried even with no trip singled out: "this route" asked from a row
+      // about an AIRPORT-bound bus still means the AIRPORT direction.
+      headsign: 'AIRPORT',
       stopId: '5',
     });
   });
@@ -321,6 +328,10 @@ describe('tapping an arrival row', () => {
       kind: 'arrival',
       routeName: '32',
       tripId: 'trip-1',
+      // The sign on the front of the bus, which is what tells the map which way
+      // to open. Without it every request opened at direction 0 and half of
+      // them hid the bus they had just promised.
+      headsign: 'AIRPORT',
       stopId: '5',
     });
   });
@@ -342,6 +353,9 @@ describe('tapping an arrival row', () => {
       kind: 'arrival',
       routeName: '32',
       tripId: null,
+      // Carried even with no trip singled out: "this route" asked from a row
+      // about an AIRPORT-bound bus still means the AIRPORT direction.
+      headsign: 'AIRPORT',
       stopId: '5',
     });
   });
