@@ -272,10 +272,21 @@ but that'll come later. Functionality first."
   was the route view's X, which is the familiar gesture. The second was
   *panning*, after waking the phone from sleep — no control pressed, no
   direction flipped. If nothing mounted or unmounted, "a wholesale marker swap
-  provokes it" cannot be the whole story. **The unanswered question is whether a
-  route was showing at the time**: waking the app refetches the fleet, and bus
-  markers appearing or disappearing on that refetch *is* a tree change in the
-  seam. Ask before theorising further.
+  provokes it" cannot be the whole story.
+
+  **Whether a route was showing then is now unrecoverable.** Asked and answered
+  on 2026-08-21: Truman could not recall reliably and chose to record unknown
+  rather than guess. **Do not spend the question again** — this instance
+  discriminates nothing. What it would have cost is worth stating exactly, because
+  the next crash can still pay it: if a route was up, waking refetches the fleet
+  and bus markers come and go on their own, which *is* a tree change in the seam
+  and the theory survives; if not, pure panning provoked it with a static tree and
+  the theory is dead.
+
+  **So capture it at the moment of the next crash, not afterwards** — both halves,
+  in one line: *what was on screen* (route mode, or the plain map) and *what the
+  hands were doing*. Six reports now have recorded one half and lost the other,
+  and the lost half has been the deciding one twice.
 
   **Two changes landed in this seam on 2026-08-10 and are unexcluded**: marker
   `zIndex` came back as a per-layer constant (`features/map/layers.ts`), and the
@@ -283,6 +294,9 @@ but that'll come later. Functionality first."
   evidence; both are new, and the crash rate is visibly higher than the "four
   reports across several sessions" it used to be. A bisect in Expo Go is cheap
   — each is one constant — and is the next thing to do if it keeps happening.
+
+  **The chase stays halted** (Truman's call, 2026-08-09, reaffirmed 2026-08-21):
+  a device round on `dev`'s head comes first. Lifting the halt is his to say.
 
   **What is known, and what is not.** Pressing the X makes the largest tree
   change this app ever makes across that seam: `leaveRouteMode()` unmounts every

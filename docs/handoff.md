@@ -17,7 +17,25 @@ Last updated: **2026-08-21**. Increment 9 is built and has been through
 
 **The next action is a device round on `dev`'s current head**, in Expo Go —
 that is the loop Truman is using, and everything on `dev` is live in it the
-moment Metro reloads. Nothing in the last commit has been seen on a phone.
+moment Metro reloads. Nothing in `e1ae620` has been seen on a phone. Confirmed
+as the next action on 2026-08-21, over both the crash chase and the `main`
+merge.
+
+**What round 4 is actually checking** — `e1ae620` is the only code commit since
+round 3, so the round is short:
+
+- **Tapping an arrival row now shows that stop on the map.** It did nothing
+  before, because `/stop/[code]` sits on the *root* stack over the tab bar and
+  switching tabs changed the map underneath a screen still covering it.
+  `showOnMap` dismisses first now. Check it from a `/stop/<code>` board reached
+  from the Stops tab *and* from the Map tab's own sheet — the second is the
+  `canDismiss` branch, where there is nothing to pop.
+- **The bus popup names the bus's *next* stop**, derived by projecting bus and
+  stops onto the drawn line. Worth an eye on a route that doubles back (Kalihi)
+  and on a bus sitting at a terminus. A bus far off the line should name *no*
+  stop rather than a confident wrong one.
+- **The sheet takes a firmer swipe** (`SHEET_DRAG_THRESHOLD`) — his knob, his
+  call on the number.
 
 **Increment 9's spec and plan are still the record for *why*:**
 `docs/superpowers/specs/2026-08-09-increment-9-show-on-map.md` and its plan,
@@ -34,15 +52,20 @@ in Expo Go. Same faulting stack as the previous four, frame for frame:
 under the map section; the logs are in `~/wheredabus-device/crashes/2026-08-21/`
 and are **not** in this repo.
 
+**The chase is halted, and that is Truman's standing call** — 2026-08-09,
+reaffirmed 2026-08-21 when he was asked directly. A device round comes first.
+**Do not open a debugging session on it without asking him.**
+
 **Two things a cold session must not skip:**
 
-1. **Ask whether a route was showing during the second crash.** It happened
-   while *panning after waking the phone* — nothing pressed, nothing flipped.
-   If a route was up, waking refetches the fleet and bus markers come and go,
-   which is a tree change and keeps the leading theory alive. If not, the
-   theory is dead. **Do not theorise before asking**; every earlier report
-   recorded the state and not the gesture, and the gesture was the half that
-   mattered.
+1. **Do not ask whether a route was showing during the second crash — it is
+   settled and the answer is *unknown*.** Asked on 2026-08-21; Truman could not
+   recall reliably and chose to record unknown rather than guess. That instance
+   therefore discriminates nothing, and re-asking spends the one question a
+   cold session gets on something already spent. What is still owed is the
+   *next* crash: capture, at the moment it happens, **what was on screen**
+   (route mode or the plain map) and **what the hands were doing**. Six reports
+   have each recorded one half and lost the other.
 2. **Two changes landed in that seam on 2026-08-10 and are unexcluded**:
    marker `zIndex` came back as a per-layer constant (`features/map/layers.ts`)
    and the arrow pool went from 8 always-mounted markers to 40. Neither is

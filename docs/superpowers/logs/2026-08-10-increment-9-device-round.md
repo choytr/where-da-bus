@@ -181,8 +181,10 @@ What he asked for, and what was done:
 
 **And two crashes, eight minutes apart** — see `docs/backlog.md`, which carries
 the analysis. The important half: one was the familiar route-view X, the other
-was *panning after waking the phone*, which presses nothing. **Ask whether a
-route was showing** before theorising.
+was *panning after waking the phone*, which presses nothing. **Whether a route
+was showing then was asked the same day and could not be recalled** — recorded
+as unknown, deliberately, rather than guessed. Do not re-ask it; capture both
+halves at the moment of the next crash instead.
 
 **Truman's standing instruction from this round:** *"UI/UX stuff should be best
 left to me to tweak, so I'll just have you do everything else. Just get stuff
