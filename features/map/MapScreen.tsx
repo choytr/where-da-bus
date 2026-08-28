@@ -615,6 +615,14 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   const loadedRoute = routeDetail?.routeId === routeMode?.routeId ? routeDetail : null;
 
   /**
+   * The number on the buses the map is currently fetching, through a ref so
+   * that reading it does not give `selectArrival` a new identity on every
+   * camera move — the same idiom, for the same reason, as `selectFromSearchRef`.
+   */
+  const drawnRouteRef = useRef<string | null>(null);
+  drawnRouteRef.current = loadedRoute?.route?.short_name ?? null;
+
+  /**
    * The direction being drawn, clamped: `routeMode` stores an index because it
    * cannot know how many directions a route has, and 34 of Oahu's routes run
    * only one way.
@@ -726,8 +734,35 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    */
   const [selectedArrival, setSelectedArrival] = useState<Arrival | null>(null);
 
-  /** A new stop is a new board; the arrival selected on the last one is gone. */
+  /** Read by the effect below without making it a dependency of one. */
+  const selectedArrivalRef = useRef<Arrival | null>(null);
+  selectedArrivalRef.current = selectedArrival;
+
+  /**
+   * The arrival whose own selection is *causing* the route to change, by id.
+   *
+   * A board carries every route calling at the stop, so tapping a row can mean
+   * "draw that route instead" — and the route change that follows would
+   * otherwise clear, one commit later, the very selection that asked for it.
+   */
+  const switchingRouteFor = useRef<string | null>(null);
+
+  /**
+   * A new stop is a new board; the arrival selected on the last one is gone.
+   * A new route empties and rebuilds the bus layer, so a selection pointing
+   * into the old one goes too.
+   *
+   * **Unless this route change is the selection's own doing.** See
+   * `switchingRouteFor`.
+   */
   useEffect(() => {
+    if (
+      switchingRouteFor.current !== null &&
+      switchingRouteFor.current === selectedArrivalRef.current?.id
+    ) {
+      switchingRouteFor.current = null;
+      return;
+    }
     setSelectedArrival(null);
   }, [selectedStop?.stop_id, routeMode?.routeId, routeMode?.directionIndex]);
 
@@ -1425,10 +1460,44 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * reverting whatever the rider selected in between. It also leaves a stale
    * trip standing to fire again the next time that stop is opened.
    */
-  const selectArrival = useCallback((arrival: Arrival) => {
-    setSelectedArrival(arrival);
-    setPreselect(null);
-  }, []);
+  const selectArrival = useCallback(
+    (arrival: Arrival) => {
+      setSelectedArrival(arrival);
+      setPreselect(null);
+
+      /**
+       * **A row for another route redraws the map as that route.**
+       *
+       * The board at a stop like KUHIO AVE + LEWERS ST carries six routes while
+       * the map draws one, so before this most rows on it did nothing a rider
+       * could see: the row highlighted, and the bus it named was on a route
+       * nobody had asked the map to fetch. Truman's call from the round-4
+       * screenshots — whatever row you tap is the route you end up looking at,
+       * which is what makes the two views correspond by construction rather
+       * than by coincidence.
+       *
+       * Opened in the tapped bus's own direction, for the same reason every
+       * other entry point now is.
+       */
+      const drawn = drawnRouteRef.current;
+      if (drawn === null || sameRoute(arrival.route, drawn)) return;
+
+      switchingRouteFor.current = arrival.id;
+      void (async () => {
+        const route = await routeByShortName(arrival.route);
+        if (route === null) {
+          // A route the asset does not carry leaves the map where it was, and
+          // the flag with it — otherwise the next unrelated route change would
+          // spare a selection that has nothing to do with it.
+          switchingRouteFor.current = null;
+          return;
+        }
+        const directions = await routeStops(route.route_id);
+        enterRouteMode(route.route_id, directionIndexFor(directions, arrival.headsign));
+      })();
+    },
+    [routeByShortName, routeStops],
+  );
 
   const toggleFavorite = useCallback(
     async (stopId: string) => {

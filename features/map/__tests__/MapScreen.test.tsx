@@ -2859,6 +2859,49 @@ describe('MapScreen', () => {
     });
 
     /**
+     * **Whatever row you tap is the route you end up looking at.** A stop's
+     * board carries every route calling there, so before this most rows on a
+     * six-route board did nothing visible: the row highlighted and the bus it
+     * named was on a route nobody had asked the map to fetch. Truman's call
+     * from the round-4 screenshots.
+     */
+    it('redraws the map as the route of a row tapped for another one', async () => {
+      mockQueries.routeById.mockImplementation(async (routeId: string) => ({
+        route_id: routeId,
+        short_name: routeId === 'id-for-99' ? '99' : '32',
+        long_name: 'Mapunapuna-Airport',
+      }));
+      mockQueries.stopsByIds.mockResolvedValue([stop('r1', 'KALIHI TRANSIT CENTER')]);
+      mockArrivalsResult = boardOf(arrival('trip-252', 's-out'), {
+        ...arrival('trip-260', 's-out', '99'),
+        estimate: 'live',
+        vehicle: '260',
+      });
+      mockFleetResult = fleetOf(bus('252', '32'), bus('260', '99'));
+
+      showOnMap({
+        kind: 'arrival',
+        routeName: '32',
+        tripId: 'trip-252',
+        headsign: 'WAIKIKI',
+        stopId: 'r1',
+      });
+      await show();
+      await waitFor(() => screen.getByLabelText(/Route 99 to WAIKIKI/));
+
+      await fireEvent.press(screen.getByLabelText(/Route 99 to WAIKIKI/));
+
+      await waitFor(() => expect(mockQueries.routeByShortName).toHaveBeenCalledWith('99'));
+      // And the selection survives the route change it caused, rather than
+      // being cleared one commit later by the effect that watches routeMode.
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText(/Route 99 to WAIKIKI/).props.accessibilityState.selected,
+        ).toBe(true),
+      );
+    });
+
+    /**
      * **The board carries every route calling at the stop; the map holds buses
      * for one.** KUHIO AVE + LEWERS ST serves six routes. With the map drawing
      * 2L, tapping a Route 2 arrival found no bus — of course it did, no Route 2

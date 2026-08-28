@@ -253,3 +253,28 @@ fix first — the symptom may simply be gone.
 
 **Not re-observed yet.** Nothing in this round has been on a phone.
 
+### Round 4b — the screenshots, same evening
+
+Two screenshots of KUHIO AVE + LEWERS ST with Route 2L drawn, which caught the
+*"stopped reporting"* line being wrong twice over.
+
+- **It named a bus on a route the map was not drawing.** The board there carries
+  six routes; `useVehicles` holds buses for the one being drawn. Tapping the
+  Route 2 row found no bus — none is fetched — and the row announced that bus
+  260 had stopped reporting. Bus 260 was fine. Being confidently wrong is worse
+  than the silence it replaced: the line exists to make the two views
+  trustworthy, and a false claim spends exactly the trust it was added to earn.
+- **It kept the live dot.** Colour and glyph followed `isLive`, which the vendor
+  still reports as true, so a filled green ● sat beside words saying the bus was
+  gone.
+
+**And the deeper reason that row could not be answered: the map was showing a
+different route.** Truman's call — *switch the map to that route* — so tapping
+any row now redraws the map as that route, in that bus's direction, and centers
+on the bus. That is what makes the two views correspond by construction: on a
+six-route board, whatever row you tap is the route you end up looking at. Before
+this, most rows on such a board did nothing a rider could see, which is the
+thing that started the whole thread.
+
+Still not re-observed on a phone.
+
