@@ -2942,6 +2942,46 @@ describe('MapScreen', () => {
     });
 
     /**
+     * **The bus is right there and the row said it had gone.** Route 10 at
+     * HOUGHTAILING ST + KONIA ST, 2026-08-21: bus 035 drawn, popup open, "here
+     * now" — and the 36-minute row reading *Bus 035 stopped reporting*. The
+     * arrival names the bus that will run its trip; the fleet reports that bus
+     * on the trip it is finishing. Joining on the trip alone misses it.
+     */
+    it('finds the bus by its fleet number when it is still on an earlier trip', async () => {
+      mockQueries.routeById.mockResolvedValue({
+        route_id: 'id-for-32',
+        short_name: '32',
+        long_name: 'Mapunapuna-Airport',
+      });
+      mockQueries.stopsByIds.mockResolvedValue([stop('r1', 'KALIHI TRANSIT CENTER')]);
+      mockArrivalsResult = boardOf({
+        ...arrival('trip-later', 's-out'),
+        estimate: 'live',
+        vehicle: '035',
+      });
+      // `bus('035', …)` reports trip `trip-035` — the run it is on now, which is
+      // not the run the arrival is for.
+      mockFleetResult = fleetOf(bus('035', '32'));
+
+      showOnMap({
+        kind: 'arrival',
+        routeName: '32',
+        tripId: 'trip-later',
+        headsign: 'WAIKIKI',
+        stopId: 'r1',
+      });
+      await show();
+
+      await waitFor(() =>
+        expect(
+          StyleSheet.flatten(screen.getByTestId('bus-popup-035').props.style).opacity,
+        ).toBe(1),
+      );
+      expect(screen.queryByText(/stopped reporting/)).toBeNull();
+    });
+
+    /**
      * Until the fleet has answered at all, every arrival has no bus. That is
      * loading, and `CLAUDE.md` is explicit that it must never render like the
      * bus having gone.

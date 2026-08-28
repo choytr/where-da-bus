@@ -90,6 +90,18 @@ describe('parseVehicles', () => {
   });
 
   /**
+   * The feed's own sentinel, recorded live on 2026-08-10 when 32 reporting
+   * vehicles all carried `trip: "null_trip"`. Left as a literal it is an id
+   * that joins to nothing while looking exactly like one.
+   */
+  it('reads a trip of "null_trip" as no trip', () => {
+    const xml = FLEET.replace('<trip>5333993</trip>', '<trip>null_trip</trip>');
+    const bus = fleetOf(xml).vehicles.find((v) => v.number === '252');
+
+    expect(bus?.tripId).toBeNull();
+  });
+
+  /**
    * A bus with no fix would otherwise be drawn in the Gulf of Guinea, 6,000 km
    * away — the same sentinel `parse.ts` rejects on arrivals.
    */

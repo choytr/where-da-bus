@@ -170,9 +170,14 @@ function vehicle(block: string): Vehicle | null {
   const lastMessage = hawaiiTimestamp(reported);
   if (lastMessage === null) return null;
 
+  const tripId = text(from, 'trip');
+
   return {
     number,
-    tripId: text(from, 'trip'),
+    // `"null_trip"` is this feed's way of saying a bus is reporting without a
+    // trip — a deadhead, or a run the AVL has not attached yet. A literal
+    // string here would be an id that joins to nothing while looking like one.
+    tripId: tripId === 'null_trip' ? null : tripId,
     route: route(from),
     position: at,
     headsign: text(from, 'headsign'),

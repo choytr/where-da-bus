@@ -20,7 +20,7 @@ import { ArrivalRow } from './ArrivalRow';
 import { BoardHeader } from './BoardHeader';
 import { Attribution, LEGEND_GAP } from '../../lib/Attribution';
 import { NOTICES, describe, useArrivalBoard } from './board';
-import { useReportingTrips } from './reportingBuses';
+import { useReportingFleet } from './reportingBuses';
 import { useTheme } from '../../lib/theme';
 
 /**
@@ -49,7 +49,7 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
   const { searchByCode, routesForStops } = useStopQueries();
   const { requestIfAllowed } = useLocation();
   // So a row cannot offer a bus the map will not draw. See `reportingBuses.ts`.
-  const reportingTrips = useReportingTrips(client, stopCode);
+  const reportingFleet = useReportingFleet(client, stopCode);
   const { sections, board, failure, fetchedAt, loading, refreshing, refresh, now, tick } =
     useArrivalBoard(stopCode, client);
 
@@ -192,7 +192,7 @@ export function ArrivalsScreen({ stopCode, client }: ArrivalsScreenProps) {
             arrival={item}
             now={now}
             stopId={stop?.stop_id ?? null}
-            reportingTrips={reportingTrips}
+            reportingFleet={reportingFleet}
           />
         )}
         ListEmptyComponent={

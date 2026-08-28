@@ -45,14 +45,29 @@ export const FLEET_TTL_MS = 120_000;
  * evidence that a bus is missing, and hiding the entry on it would make a
  * network blip look like a bus that stopped existing.
  */
-export type ReportingTrips = ReadonlyMap<string, string | null> | null;
+export type ReportingFleet = {
+  /** Trip id → the route that trip's bus reports. */
+  readonly trips: ReadonlyMap<string, string | null>;
+  /**
+   * Fleet number → the route that bus reports.
+   *
+   * **The trip is not enough, and a device round proved it.** An arrival 36
+   * minutes out names the bus that will run it — bus 035 — while the fleet
+   * reports 035 on the trip it is *finishing now*. Same physical bus, different
+   * trip id, so a trip-only join misses it and the map calls a bus it is
+   * visibly drawing "stopped reporting" (Truman, 2026-08-21). The fleet number
+   * is the identity a rider reads off the front of the bus and the only one
+   * stable across a block's trips.
+   */
+  readonly vehicles: ReadonlyMap<string, string | null>;
+} | null;
 
 /**
  * The fleet, reduced to what a row needs, refreshed no more often than
  * `FLEET_TTL_MS` and re-asked when `key` changes — the stop, in practice.
  */
-export function useReportingTrips(client: TheBusClient, key: string): ReportingTrips {
-  const [trips, setTrips] = useState<ReportingTrips>(null);
+export function useReportingFleet(client: TheBusClient, key: string): ReportingFleet {
+  const [trips, setTrips] = useState<ReportingFleet>(null);
   const askedAt = useRef(0);
 
   useEffect(() => {
@@ -65,7 +80,7 @@ export function useReportingTrips(client: TheBusClient, key: string): ReportingT
       .vehicles({ signal: inFlight.signal })
       .then((result) => {
         if (inFlight.signal.aborted) return;
-        setTrips(result.ok ? reportingTripsOf(result.fleet) : null);
+        setTrips(result.ok ? reportingFleetOf(result.fleet) : null);
       })
       .catch(() => {
         if (!inFlight.signal.aborted) setTrips(null);
@@ -84,17 +99,20 @@ export function useReportingTrips(client: TheBusClient, key: string): ReportingT
  * "this row says a bus is out there" and "the map has a dot for it" are one
  * fact rather than two agreeing by luck.
  */
-export function reportingTripsOf(fleet: Fleet): ReadonlyMap<string, string | null> {
+export function reportingFleetOf(fleet: Fleet): NonNullable<ReportingFleet> {
   const fetchedAt = new Date();
   const trips = new Map<string, string | null>();
+  const vehicles = new Map<string, string | null>();
 
   for (const vehicle of fleet.vehicles) {
-    if (vehicle.tripId === null) continue;
     if (ageOf(vehicle, fleet, fetchedAt, fetchedAt) > FRESH_MS) continue;
-    trips.set(vehicle.tripId, vehicle.route);
+    // A bus reporting no trip still counts as a bus that is out there; it is
+    // only the trip index it cannot join.
+    if (vehicle.tripId !== null) trips.set(vehicle.tripId, vehicle.route);
+    vehicles.set(vehicle.number, vehicle.route);
   }
 
-  return trips;
+  return { trips, vehicles };
 }
 
 /** Route numbers are strings, and the two feeds disagree on case. */
@@ -110,11 +128,21 @@ function sameRoute(a: string | null, b: string | null): boolean {
  * itself, which is the behaviour that shipped and the only honest answer when
  * the fleet is unknown.
  */
-export function hasDrawableBus(arrival: Arrival, trips: ReportingTrips): boolean {
-  const claimsOne = arrival.estimate === 'live' && arrival.vehicle !== null;
-  if (!claimsOne) return false;
-  if (trips === null) return true;
-  // Present *and* attributed to this route: a bus reporting `route: null` is a
-  // deadhead, and `useVehicles` will not draw it whatever the board says.
-  return trips.has(arrival.tripId) && sameRoute(trips.get(arrival.tripId) ?? null, arrival.route);
+export function hasDrawableBus(arrival: Arrival, fleet: ReportingFleet): boolean {
+  if (arrival.estimate !== 'live' || arrival.vehicle === null) return false;
+  if (fleet === null) return true;
+
+  // Present *and* attributed to this route, in both indexes: a bus reporting
+  // `route: null` is a deadhead, and `useVehicles` will not draw it whatever
+  // the board says.
+  const onThisRoute = (route: string | null | undefined, present: boolean) =>
+    present && sameRoute(route ?? null, arrival.route);
+
+  // The trip first, because it names the exact run. Then the fleet number,
+  // which is what catches a bus still finishing an earlier trip of the same
+  // block — see `ReportingFleet.vehicles`.
+  return (
+    onThisRoute(fleet.trips.get(arrival.tripId), fleet.trips.has(arrival.tripId)) ||
+    onThisRoute(fleet.vehicles.get(arrival.vehicle), fleet.vehicles.has(arrival.vehicle))
+  );
 }

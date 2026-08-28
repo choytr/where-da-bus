@@ -4,7 +4,7 @@ import { countdown, hawaiiClock } from './format';
 import { useTheme } from '../../lib/theme';
 import { showRowMenu } from '../../lib/rowMenu';
 import { showOnMap } from '../map/showOnMap';
-import { hasDrawableBus, type ReportingTrips } from './reportingBuses';
+import { hasDrawableBus, type ReportingFleet } from './reportingBuses';
 
 export type ArrivalRowProps = {
   arrival: Arrival;
@@ -25,11 +25,11 @@ export type ArrivalRowProps = {
    */
   stopId: string | null;
   /**
-   * Which trips the fleet endpoint is actually reporting, so this row cannot
-   * offer a bus the map will not draw. Null while unknown — see
-   * `reportingBuses.ts`.
+   * What the fleet endpoint is actually reporting, by trip *and* by fleet
+   * number, so this row cannot offer a bus the map will not draw. Null while
+   * unknown — see `reportingBuses.ts`.
    */
-  reportingTrips?: ReportingTrips;
+  reportingFleet?: ReportingFleet;
   /**
    * This row promised a live bus and the map has none to show.
    *
@@ -77,7 +77,7 @@ export function ArrivalRow({
   onPress,
   selected = false,
   stopId,
-  reportingTrips = null,
+  reportingFleet = null,
   busMissing = false,
 }: ArrivalRowProps) {
   const { palette } = useTheme();
@@ -89,7 +89,7 @@ export function ArrivalRow({
    * because it *takes* the rider to the map rather than pointing at one behind
    * the sheet.
    */
-  const showsLiveBus = hasDrawableBus(arrival, reportingTrips) && stopId !== null;
+  const showsLiveBus = hasDrawableBus(arrival, reportingFleet) && stopId !== null;
 
   const showLiveBus = () =>
     showOnMap({

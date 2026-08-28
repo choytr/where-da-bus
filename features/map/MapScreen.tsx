@@ -787,20 +787,35 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
   }, [routeMode?.routeId, routeMode?.directionIndex]);
 
   /**
-   * The drawn bus behind the selected arrival, joined on trip id, or null.
+   * The drawn bus behind the selected arrival, or null.
    *
    * Hoisted out of the render so the labeller and the markers cannot disagree
    * about which bus is highlighted — one keeps its fleet number at any zoom and
    * the other draws larger, and a rider seeing one without the other would read
    * it as the tap having half worked.
    *
-   * Null far more often than not: only about one arrival in ten has a bus
-   * reporting against it. That is why the *line* switches on the arrival's own
-   * shape instead, which every arrival carries.
+   * **Trip first, then fleet number, and the second is not a fallback for
+   * tidiness.** An arrival 36 minutes out names the bus that will run it; the
+   * fleet reports that bus on the trip it is *finishing now*. Joining on the
+   * trip alone therefore misses a bus the map is visibly drawing — Truman's
+   * screenshot of Route 10 at HOUGHTAILING ST, where bus 035 sat on the map
+   * with its popup open while the row said it had stopped reporting. The fleet
+   * number is what a rider reads off the front of the bus and the only identity
+   * stable across a block's trips.
+   *
+   * Still null often: most arrivals have no bus reporting against them at all.
+   * That is why the *line* switches on the arrival's own shape instead, which
+   * every arrival carries.
    */
   const highlightedBus = useMemo(() => {
     if (selectedArrival === null) return null;
-    return buses.find((bus) => bus.vehicle.tripId === selectedArrival.tripId) ?? null;
+    const onTrip = buses.find(
+      (bus) => bus.vehicle.tripId !== null && bus.vehicle.tripId === selectedArrival.tripId,
+    );
+    if (onTrip !== undefined) return onTrip;
+    const number = selectedArrival.vehicle;
+    if (number === null) return null;
+    return buses.find((bus) => bus.vehicle.number.trim() === number.trim()) ?? null;
   }, [buses, selectedArrival]);
 
   /**

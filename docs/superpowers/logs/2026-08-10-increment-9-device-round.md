@@ -278,3 +278,24 @@ thing that started the whole thread.
 
 Still not re-observed on a phone.
 
+### Round 4c — the bus that was right there
+
+Route 10 at HOUGHTAILING ST + KONIA ST: bus 035 drawn on the map, its popup
+open and reading *here now*, while the 36-minute row said **Bus 035 stopped
+reporting**.
+
+**The join was on trip id, and a bus is not its trip.** An arrival names the bus
+that will run *its* trip; the fleet reports that bus on the trip it is
+**finishing now**. Same physical bus, two different trip ids, so the join missed
+a bus the map was visibly drawing. The fleet number is what a rider reads off
+the front of the bus and the only identity stable across a block's trips, so the
+highlight now tries the trip first and the number second.
+
+The same miss was in the *offer* gate, so `/stop/[code]` would decline to offer
+a bus the map would happily have drawn. `ReportingTrips` became `ReportingFleet`
+and carries both indexes.
+
+**Also fixed while in there:** the fleet's `trip: "null_trip"` sentinel was
+parsed as a literal string — an id that joins to nothing while looking like one.
+It is `null` now, like the self-closing element beside it.
+

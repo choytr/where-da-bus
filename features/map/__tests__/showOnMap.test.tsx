@@ -256,7 +256,7 @@ describe('ArrivalRow’s long press', () => {
           arrival={arrival()}
           now={new Date('2026-08-10T20:00:00Z')}
           stopId="5"
-          reportingTrips={new Map()}
+          reportingFleet={{ trips: new Map(), vehicles: new Map() }}
         />
       </TestTheme>,
     );
@@ -274,7 +274,55 @@ describe('ArrivalRow’s long press', () => {
           arrival={arrival()}
           now={new Date('2026-08-10T20:00:00Z')}
           stopId="5"
-          reportingTrips={new Map([['trip-1', null]])}
+          reportingFleet={{
+            trips: new Map([['trip-1', null]]),
+            vehicles: new Map([['252', null]]),
+          }}
+        />
+      </TestTheme>,
+    );
+
+    await longPress();
+
+    expect(offered().map((a) => a.label)).toEqual(['Show route on map']);
+  });
+
+  /**
+   * **The block case, which a trip-only gate got wrong.** An arrival well ahead
+   * names the bus that will run it, while the fleet still reports that bus on
+   * the trip it is finishing — so the trip index misses and the fleet number
+   * does not. Truman's Route 10 screenshot: bus 035 drawn on the map, popup
+   * open, with the row insisting it had stopped reporting.
+   */
+  it('offers the live bus when only its fleet number is reporting', async () => {
+    await render(
+      <TestTheme>
+        <ArrivalRow
+          arrival={arrival()}
+          now={new Date('2026-08-10T20:00:00Z')}
+          stopId="5"
+          reportingFleet={{ trips: new Map(), vehicles: new Map([['252', '32']]) }}
+        />
+      </TestTheme>,
+    );
+
+    await longPress();
+
+    expect(offered().map((a) => a.label)).toEqual([
+      'Show live bus on map',
+      'Show route on map',
+    ]);
+  });
+
+  /** Same bus number, but the fleet has it on another route entirely. */
+  it('offers no live bus when that fleet number is running something else', async () => {
+    await render(
+      <TestTheme>
+        <ArrivalRow
+          arrival={arrival()}
+          now={new Date('2026-08-10T20:00:00Z')}
+          stopId="5"
+          reportingFleet={{ trips: new Map(), vehicles: new Map([['252', '99']]) }}
         />
       </TestTheme>,
     );
@@ -291,7 +339,10 @@ describe('ArrivalRow’s long press', () => {
           arrival={arrival()}
           now={new Date('2026-08-10T20:00:00Z')}
           stopId="5"
-          reportingTrips={new Map([['trip-1', '32']])}
+          reportingFleet={{
+            trips: new Map([['trip-1', '32']]),
+            vehicles: new Map([['252', '32']]),
+          }}
         />
       </TestTheme>,
     );
@@ -317,7 +368,10 @@ describe('tapping an arrival row', () => {
           arrival={arrival()}
           now={new Date('2026-08-10T20:00:00Z')}
           stopId="5"
-          reportingTrips={new Map([['trip-1', '32']])}
+          reportingFleet={{
+            trips: new Map([['trip-1', '32']]),
+            vehicles: new Map([['252', '32']]),
+          }}
         />
       </TestTheme>,
     );
