@@ -208,8 +208,21 @@ export function ArrivalRow({
           </Text>
         </View>
 
-        <Text style={[styles.status, { color: isLive ? palette.live : palette.muted }]}>
-          {isLive ? '● ' : '○ '}
+        {/*
+          **`busMissing` beats `isLive`, and it has to.** The vendor still calls
+          this arrival live — that is what `isLive` reads — while the map has no
+          bus for it, so painting the filled green dot would say *tracked* in the
+          one place a rider actually looks for that, next to words saying the
+          opposite. Muted and hollow, like a scheduled row: both mean there is no
+          position to show, and the wording carries which of the two it is.
+        */}
+        <Text
+          style={[
+            styles.status,
+            { color: isLive && !busMissing ? palette.live : palette.muted },
+          ]}
+        >
+          {isLive && !busMissing ? '● ' : '○ '}
           {status}
         </Text>
 

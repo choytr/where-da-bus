@@ -51,6 +51,34 @@ describe('ArrivalRow', () => {
   });
 
   /**
+   * **A bus gone dark must not keep the live dot.** The vendor still calls this
+   * arrival live, so `isLive` is true while the map has no bus for it — and the
+   * filled green dot is exactly where a rider reads "tracked", right beside
+   * words saying the opposite. Truman's screenshot of 2026-08-21 caught it
+   * saying both at once.
+   */
+  it('drops the live dot when the map has no bus for the row', async () => {
+    await render(
+      <TestTheme>
+        <ArrivalRow stopId="1" arrival={live} now={NOW} busMissing />
+      </TestTheme>,
+    );
+
+    expect(screen.getByText(/○ .*Bus 240 stopped reporting/)).toBeTruthy();
+    expect(screen.queryByText(/● /)).toBeNull();
+  });
+
+  it('says it is tracked when it is', async () => {
+    await render(
+      <TestTheme>
+        <ArrivalRow stopId="1" arrival={live} now={NOW} />
+      </TestTheme>,
+    );
+
+    expect(screen.getByText(/● .*Live/)).toBeTruthy();
+  });
+
+  /**
    * **Every row is a button now.** It used to be plain text on the arrivals
    * screen, on the grounds that there was no map behind it to point at — but
    * since 2026-08-10 a tap there *takes* the rider to the map, so announcing a

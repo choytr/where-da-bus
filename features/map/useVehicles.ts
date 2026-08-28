@@ -80,7 +80,7 @@ export function ageOf(vehicle: Vehicle, fleet: Fleet, fetchedAt: Date, now: Date
 }
 
 /** Route numbers are strings — `1L`, `A LINE`, `C` — and the two sides disagree on case. */
-function sameRoute(a: string | null, b: string | null): boolean {
+export function sameRoute(a: string | null, b: string | null): boolean {
   if (a === null || b === null) return false;
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }

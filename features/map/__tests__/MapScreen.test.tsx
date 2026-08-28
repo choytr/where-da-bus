@@ -2859,6 +2859,46 @@ describe('MapScreen', () => {
     });
 
     /**
+     * **The board carries every route calling at the stop; the map holds buses
+     * for one.** KUHIO AVE + LEWERS ST serves six routes. With the map drawing
+     * 2L, tapping a Route 2 arrival found no bus — of course it did, no Route 2
+     * bus is fetched at all — and the row accused a perfectly healthy bus 260 of
+     * having stopped reporting. Truman's screenshot, 2026-08-21. Being
+     * confidently wrong is worse than the silence it replaced.
+     */
+    it('does not accuse a bus on a route the map is not drawing', async () => {
+      mockQueries.routeById.mockResolvedValue({
+        route_id: 'id-for-32',
+        short_name: '32',
+        long_name: 'Mapunapuna-Airport',
+      });
+      mockQueries.stopsByIds.mockResolvedValue([stop('r1', 'KALIHI TRANSIT CENTER')]);
+      mockArrivalsResult = boardOf(arrival('trip-252', 's-out'), {
+        // A live bus on a different route, exactly like the Route 2 row on a
+        // board opened while the map drew 2L.
+        ...arrival('trip-260', 's-out', '99'),
+        estimate: 'live',
+        vehicle: '260',
+      });
+      mockFleetResult = fleetOf(bus('252', '32'));
+
+      showOnMap({
+        kind: 'arrival',
+        routeName: '32',
+        tripId: 'trip-252',
+        headsign: 'WAIKIKI',
+        stopId: 'r1',
+      });
+      await show();
+      await waitFor(() => screen.getByLabelText(/Route 99 to WAIKIKI/));
+
+      await fireEvent.press(screen.getByLabelText(/Route 99 to WAIKIKI/));
+
+      await waitFor(() => screen.getByText(/Live · Bus 260/));
+      expect(screen.queryByText(/stopped reporting/)).toBeNull();
+    });
+
+    /**
      * Until the fleet has answered at all, every arrival has no bus. That is
      * loading, and `CLAUDE.md` is explicit that it must never render like the
      * bus having gone.

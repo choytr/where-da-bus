@@ -21,7 +21,7 @@ import { PendingMarker } from './PendingMarker';
 import { RouteLine } from './RouteLine';
 import { RouteArrows } from './RouteArrows';
 import { BusMarker } from './BusMarker';
-import { useVehicles, type BusOnMap } from './useVehicles';
+import { sameRoute, useVehicles, type BusOnMap } from './useVehicles';
 import {
   centeredOn,
   hasDriftedFrom,
@@ -836,13 +836,22 @@ export function MapScreen({ client, tabBarHeight }: MapScreenProps) {
    * **`busesFetchedAt` is the guard that stops it being a lie.** Until the
    * first fleet answer lands, every arrival has no bus — that is loading, not
    * a bus gone dark, and the pair `CLAUDE.md` says must never render alike.
+   *
+   * **And the routes have to match, which is the other way it lied.** A stop's
+   * board carries every route calling there — KUHIO AVE + LEWERS ST serves six
+   * — while `useVehicles` only ever holds buses for the *one* route being drawn.
+   * So without this term, tapping a Route 2 arrival while the map showed Route
+   * 2L accused a perfectly healthy bus 260 of having stopped reporting. Truman's
+   * screenshot, 2026-08-21, and a worse failure than the silence it replaced:
+   * the app was confidently wrong rather than merely quiet.
    */
   const arrivalWithoutBus =
     selectedArrival !== null &&
     selectedArrival.estimate === 'live' &&
     selectedArrival.vehicle !== null &&
     highlightedBus === null &&
-    busesFetchedAt !== null
+    busesFetchedAt !== null &&
+    sameRoute(selectedArrival.route, loadedRoute?.route?.short_name ?? null)
       ? selectedArrival.tripId
       : null;
 
